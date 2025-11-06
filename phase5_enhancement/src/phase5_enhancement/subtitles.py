@@ -270,7 +270,7 @@ class SubtitleGenerator:
 
         return segments, metrics
 
-    def save_subtitles(self, segments: List[Dict]):
+    def save_subtitles(self, segments: List[Dict], raw_segments: List[Dict] = None):
         """Save subtitles in SRT, VTT, and optionally ASS (karaoke) formats."""
         logger.info("Saving subtitle files...")
 
@@ -298,14 +298,16 @@ class SubtitleGenerator:
                 'fontname': 'Arial',
                 'fontsize': 32,
                 'primary_color': '&H00FFFFFF',  # White (default text)
-                'secondary_color': '&H00FFFF00',  # Yellow (highlighted word)
+                'secondary_color': '&H0000FFFF',  # Yellow (BGR format: BB GG RR)
                 'outline': 3,
                 'shadow': 2,
                 'alignment': 2,  # Bottom center
                 'margin_v': 80
             })
 
-            karaoke_stats = karaoke_gen.generate_ass(segments, ass_path)
+            # Use raw_segments (with word data) for karaoke, not processed segments
+            segments_for_karaoke = raw_segments if raw_segments is not None else segments
+            karaoke_stats = karaoke_gen.generate_ass(segments_for_karaoke, ass_path)
             logger.info(f"Saved karaoke ASS: {ass_path}")
 
             # Add karaoke stats to metrics
@@ -334,18 +336,21 @@ class SubtitleGenerator:
             # Initialize
             self.initialize()
 
-            # Transcribe
+            # Transcribe (captures word-level data for karaoke)
             raw_segments = self.transcribe()
 
-            # Process for display
+            # Process for display (optimizes for subtitle readability)
             processed_segments = self.process_segments()
 
-            # Align and validate
+            # Align and validate (uses processed segments for timing)
             final_segments, metrics = self.align_and_validate(processed_segments)
             self.metrics = metrics
 
-            # Save outputs
-            srt_path, vtt_path, ass_path = self.save_subtitles(final_segments)
+            # Save outputs (use raw_segments for karaoke to preserve word data)
+            srt_path, vtt_path, ass_path = self.save_subtitles(
+                final_segments, 
+                raw_segments=raw_segments if self.enable_karaoke else None
+            )
             self.save_metrics()
 
             # Calculate total time
