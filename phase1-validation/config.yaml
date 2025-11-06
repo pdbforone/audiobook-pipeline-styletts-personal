@@ -1,0 +1,6 @@
+max_file_size_mb: 500
+text_coverage_threshold: 0.05  # >5% for 'text'
+repair_retries: 2
+json_path: pipeline.json
+artifacts_dir: artifacts/phase1
+output_dir: /validated/  # Unused for now

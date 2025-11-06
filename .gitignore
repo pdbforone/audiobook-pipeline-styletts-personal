@@ -1,0 +1,80 @@
+# Large media files
+*.mp3
+*.mp4
+*.wav
+*.m4a
+*.flac
+*.avi
+*.mov
+
+# Pipeline data files
+pipeline.json
+pipeline.json.backup
+pipeline_*.json
+*/pipeline.json
+**/pipeline.json
+pipeline.json_backup_*
+
+# Data and chunks
+**/chunks/
+**/text_chunks/
+**/audio_chunks/
+audio_chunks/
+filelist_new.txt
+*.pdf
+artifacts/
+phase3-chunking/src/phase3_chunking/chunks/
+phase7_batch/chunks/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+.env/
+*/venv/
+**/venv/
+*/.venv/
+**/.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Logs and databases
+*.log
+*.db
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large text files
+directory_listing.txt
+directory_listing_full.txt
+directorytree.txt
+
+# Output directories
+YouTube_Ready/
+voice_samples/
+voice_comparison_samples/
+input/
+
+# Temporary files
+temp_*.txt
+*.tmp

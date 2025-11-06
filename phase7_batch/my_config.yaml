@@ -1,0 +1,21 @@
+# Test Configuration for Phase 6 Batch Processing
+# ================================================
+
+# Core Paths
+pipeline_json: ../pipeline.json
+input_dir: inputs
+log_file: batch.log
+
+# Performance Settings  
+max_workers: 2
+cpu_threshold: 75
+throttle_delay: 1.0
+phase_timeout: 600
+
+# Processing Options
+resume_enabled: true
+phases_to_run: [1, 2]  # Start with validation and extraction
+batch_size: 5
+
+# Logging
+log_level: DEBUG

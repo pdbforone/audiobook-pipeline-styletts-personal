@@ -1,0 +1,25 @@
+# Audio Cleanup Configuration
+# List phrases to detect and remove from audio files
+
+target_phrases:
+  - "You need to add some text for me to talk"
+  - "You need to add some text for me to talk."  # With period
+  - "You need to add text for me to talk"        # Without "some" (alternative)
+  - "You need to add text for me to talk."       # Without "some" with period
+  
+# Whisper model settings
+whisper:
+  model_size: "base"  # Options: tiny, base, small, medium, large
+  device: "cpu"
+  compute_type: "int8"  # CPU optimization
+  
+# Audio processing settings
+audio:
+  output_format: "mp3"
+  output_bitrate: "192k"
+  crossfade_ms: 200  # Crossfade duration to avoid clicks
+  
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  save_transcripts: true  # Save SRT files for review

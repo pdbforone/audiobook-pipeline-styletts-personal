@@ -1,0 +1,15 @@
+# config.yaml - Phase 4 TTS Configuration
+# Why: Centralizes settings for reproducibility and easy tuning. Loaded in main.py.
+# HQ Voice Cloning Tips: Use a clean 10-20s ref audio (e.g., neutral speech from LibriVox).
+# Adjust exaggeration for emotion (0.0-1.0; higher for dramatic audiobooks), cfg_weight for stability.
+
+sample_rate: 24000  # Matches model default; for high-quality audio
+language: "en"      # Language ID for multilingual model
+ref_url: "https://www.archive.org/download/roughing_it_jg/rough_09_twain.mp3"  # HQ public domain ref; download and trim in code
+exaggeration: 0.5   # Emotion intensity (0.0 neutral, 1.0 dramatic)
+cfg_weight: 0.5     # Pacing/stability (lower for faster speech)
+temperature: 0.7    # Creativity/randomness (lower for consistent cloning)
+sub_chunk_retries: 3  # Retries for failed sub-chunks to avoid artifacts
+silence_duration: 0.5  # Seconds of silence for failed parts
+enable_splitting: true  # NLTK-based splitting for long text (prevents truncation)
+output_dir: "audio_chunks"  # Relative to phase4_tts; absolute in code

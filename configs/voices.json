@@ -1,0 +1,286 @@
+{
+  "voices": {
+    "landon_elkind": {
+      "description": "Measured, analytical tone for philosophy (Bertrand Russell reader)",
+      "narrator": "Landon D. C. Elkind",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": ["philosophy", "academic"],
+      "source": "LibriVox - Mysticism and Logic",
+      "tts_engine_params": {
+        "pitch": -1,
+        "rate": 0.95,
+        "emphasis": "moderate"
+      },
+      "characteristics": {
+        "pace": "deliberate",
+        "tone": "scholarly",
+        "clarity": "high"
+      }
+    },
+    "pamela_nagami": {
+      "description": "Clear, authoritative female voice for modern philosophy",
+      "narrator": "Pamela Nagami",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": ["philosophy", "academic"],
+      "source": "LibriVox - History of Modern Philosophy",
+      "tts_engine_params": {
+        "pitch": 0.5,
+        "rate": 1.0,
+        "emphasis": "balanced"
+      },
+      "characteristics": {
+        "pace": "steady",
+        "tone": "authoritative",
+        "clarity": "maximum"
+      }
+    },
+    "hugh_mcguire": {
+      "description": "Classical philosophy with possible British accent (Boethius reader)",
+      "narrator": "Hugh McGuire",
+      "gender": "male",
+      "accent": "British (possibly)",
+      "preferred_profiles": ["philosophy", "academic"],
+      "source": "LibriVox - The Consolation of Philosophy",
+      "tts_engine_params": {
+        "pitch": -0.5,
+        "rate": 0.95,
+        "emphasis": "moderate"
+      },
+      "characteristics": {
+        "pace": "measured",
+        "tone": "contemplative",
+        "clarity": "high"
+      }
+    },
+    "david_barnes": {
+      "description": "BBC English male voice for British literature/philosophy",
+      "narrator": "David Barnes",
+      "gender": "male",
+      "accent": "British (BBC English)",
+      "preferred_profiles": ["philosophy", "academic", "poetry"],
+      "source": "LibriVox - Holy Sonnets (Donne)",
+      "tts_engine_params": {
+        "pitch": -0.5,
+        "rate": 0.95,
+        "emphasis": "formal"
+      },
+      "characteristics": {
+        "pace": "precise",
+        "tone": "refined",
+        "clarity": "maximum"
+      }
+    },
+    "ruth_golding": {
+      "description": "RP/BBC English female voice for British literature",
+      "narrator": "Ruth Golding",
+      "gender": "female",
+      "accent": "British (RP)",
+      "preferred_profiles": ["fiction", "poetry", "memoir"],
+      "source": "LibriVox - To a Dog (Josephine Peabody)",
+      "tts_engine_params": {
+        "pitch": 1.0,
+        "rate": 1.0,
+        "emphasis": "refined"
+      },
+      "characteristics": {
+        "pace": "elegant",
+        "tone": "cultivated",
+        "clarity": "high"
+      }
+    },
+    "tom_weiss": {
+      "description": "Engaging male narrator for thrillers and suspense",
+      "narrator": "Tom Weiss",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": ["fiction"],
+      "source": "LibriVox - The Masquerader",
+      "tts_engine_params": {
+        "pitch": -0.5,
+        "rate": 1.1,
+        "emphasis": "dramatic"
+      },
+      "characteristics": {
+        "pace": "dynamic",
+        "tone": "engaging",
+        "expressiveness": "high"
+      }
+    },
+    "bella_bolster": {
+      "description": "Female narrator for horror and dark fiction",
+      "narrator": "Bella Bolster",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": ["fiction"],
+      "source": "LibriVox - Short Ghost and Horror Collection 074",
+      "tts_engine_params": {
+        "pitch": 0.5,
+        "rate": 1.0,
+        "emphasis": "atmospheric"
+      },
+      "characteristics": {
+        "pace": "measured",
+        "tone": "mysterious",
+        "expressiveness": "high"
+      }
+    },
+    "kara_shallenberg": {
+      "description": "Warm female voice for classic fiction and romance",
+      "narrator": "Kara Shallenberg",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": ["fiction", "memoir"],
+      "source": "LibriVox - Pride and Prejudice",
+      "tts_engine_params": {
+        "pitch": 0.5,
+        "rate": 1.05,
+        "emphasis": "natural"
+      },
+      "characteristics": {
+        "pace": "natural",
+        "tone": "conversational",
+        "expressiveness": "high"
+      }
+    },
+    "gareth_holmes": {
+      "description": "British male voice for poetry and epic works",
+      "narrator": "Gareth Holmes",
+      "gender": "male",
+      "accent": "British",
+      "preferred_profiles": ["poetry"],
+      "source": "LibriVox - Short Poetry Collection 227",
+      "tts_engine_params": {
+        "pitch": 0,
+        "rate": 0.9,
+        "emphasis": "rhythmic"
+      },
+      "characteristics": {
+        "pace": "rhythmic",
+        "tone": "expressive",
+        "clarity": "high"
+      }
+    },
+    "wayne_cooke": {
+      "description": "Male narrator for theology and religious texts",
+      "narrator": "Wayne Cooke",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": ["academic", "theology"],
+      "source": "LibriVox - Rational Theology",
+      "tts_engine_params": {
+        "pitch": -0.5,
+        "rate": 0.95,
+        "emphasis": "contemplative"
+      },
+      "characteristics": {
+        "pace": "reverent",
+        "tone": "thoughtful",
+        "clarity": "high"
+      }
+    },
+    "eric_metzler": {
+      "description": "Male narrator for medieval theology and mysticism",
+      "narrator": "Eric Metzler",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": ["academic", "theology"],
+      "source": "LibriVox - Meister Eckhart's Sermons",
+      "tts_engine_params": {
+        "pitch": -0.5,
+        "rate": 0.9,
+        "emphasis": "meditative"
+      },
+      "characteristics": {
+        "pace": "slow",
+        "tone": "mystical",
+        "clarity": "high"
+      }
+    },
+    "cori_samuel": {
+      "description": "RP via Estuary English female voice",
+      "narrator": "Cori Samuel",
+      "gender": "female",
+      "accent": "British (RP/Estuary)",
+      "preferred_profiles": ["fiction", "memoir"],
+      "source": "LibriVox - Wrinkles (Landor)",
+      "tts_engine_params": {
+        "pitch": 0.5,
+        "rate": 1.0,
+        "emphasis": "natural"
+      },
+      "characteristics": {
+        "pace": "conversational",
+        "tone": "approachable",
+        "clarity": "high"
+      }
+    },
+    "peter_yearsley": {
+      "description": "South-east England with London colouring male voice",
+      "narrator": "Peter Yearsley",
+      "gender": "male",
+      "accent": "British (London)",
+      "preferred_profiles": ["fiction", "memoir"],
+      "source": "LibriVox - Various",
+      "tts_engine_params": {
+        "pitch": -0.5,
+        "rate": 1.0,
+        "emphasis": "natural"
+      },
+      "characteristics": {
+        "pace": "comfortable",
+        "tone": "friendly",
+        "clarity": "high"
+      }
+    },
+    "neutral_narrator": {
+      "description": "Fallback clear, impartial voice for general content",
+      "narrator": "Default (Mark Twain reader)",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": ["auto", "technical"],
+      "source": "LibriVox - Roughing It",
+      "tts_engine_params": {
+        "pitch": 0,
+        "rate": 1.0,
+        "emphasis": "balanced"
+      },
+      "characteristics": {
+        "pace": "steady",
+        "tone": "professional",
+        "clarity": "maximum"
+      }
+    },
+    "george_mckayland": {
+      "description": "Deep, measured tone for philosophy/academic texts",
+      "reference_audio": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-chatterbox\\Voices\\George Mckayland 01.mp3",
+      "start_time": 950,
+      "duration": 30,
+      "preferred_profiles": ["philosophy", "academic"],
+      "tts_engine_params": {
+        "pitch": -0.5,
+        "rate": 0.95,
+        "emphasis": "moderate"
+      },
+      "characteristics": {
+        "pace": "deliberate",
+        "tone": "scholarly",
+        "clarity": "high"
+      }
+    }
+  },
+  "default_voice": "neutral_narrator",
+  "fallback_voice": "neutral_narrator",
+  "voice_selection_rules": {
+    "prefer_gender_match": false,
+    "prefer_accent_match": true,
+    "prefer_narrator_experience": true
+  },
+  "notes": {
+    "usage": "Voices auto-selected based on genre profile. Override in pipeline.json with 'tts_voice' field.",
+    "selection_priority": "1. Explicit tts_voice, 2. Genre + accent match, 3. Genre match only, 4. Default",
+    "british_voices": ["david_barnes", "ruth_golding", "gareth_holmes", "hugh_mcguire", "cori_samuel", "peter_yearsley"],
+    "american_voices": ["landon_elkind", "pamela_nagami", "tom_weiss", "bella_bolster", "kara_shallenberg", "wayne_cooke", "eric_metzler", "neutral_narrator"]
+  }
+}

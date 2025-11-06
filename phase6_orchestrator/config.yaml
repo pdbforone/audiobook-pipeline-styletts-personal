@@ -1,0 +1,10 @@
+# Phase 6 Orchestrator Configuration
+pipeline_json: "C:\\Users\\myson\\Pipeline\\audiobook-pipeline\\pipeline.json"
+phases_to_run: [1, 2, 3, 4, 5]
+phase_timeout: 600  # 10 minutes per phase
+resume_enabled: true
+log_level: "INFO"
+log_file: "orchestrator.log"
+
+# Phase 4 Conda environment
+phase4_conda_env: "phase4_tts"

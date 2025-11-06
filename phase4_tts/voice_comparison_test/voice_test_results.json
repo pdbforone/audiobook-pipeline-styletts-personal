@@ -1,0 +1,177 @@
+{
+  "test_date": "2025-10-22 20:56:23",
+  "chunk_path": "phase3-chunking\\chunks\\Gift of the Magi_chunk_001.txt",
+  "chunk_text": "One dollar and eighty-seven cents. That was all. She had put it aside, one cent and then another and then another, in her careful buying of meat and other food. Della counted it three times. One dollar and eighty-seven cents.",
+  "total_voices": 13,
+  "results": [
+    {
+      "voice_id": "bob_neufeld",
+      "success": true,
+      "mos_score": 0.8005304969676983,
+      "duration": 87.22185319999699,
+      "file_size": 1321040,
+      "output_path": "phase4_tts\\voice_comparison_test\\voice_test_bob_neufeld.wav",
+      "split_metadata": {
+        "split_applied": false,
+        "num_sub_chunks": 1,
+        "failed_sub_chunks": []
+      }
+    },
+    {
+      "voice_id": "de_wittkower",
+      "success": true,
+      "mos_score": 0.8933426507251028,
+      "duration": 78.6927227000051,
+      "file_size": 1225040,
+      "output_path": "phase4_tts\\voice_comparison_test\\voice_test_de_wittkower.wav",
+      "split_metadata": {
+        "split_applied": false,
+        "num_sub_chunks": 1,
+        "failed_sub_chunks": []
+      }
+    },
+    {
+      "voice_id": "geoffrey_edwards",
+      "success": true,
+      "mos_score": 1.1002205883543825,
+      "duration": 134.60809389999486,
+      "file_size": 2089040,
+      "output_path": "phase4_tts\\voice_comparison_test\\voice_test_geoffrey_edwards.wav",
+      "split_metadata": {
+        "split_applied": false,
+        "num_sub_chunks": 1,
+        "failed_sub_chunks": []
+      }
+    },
+    {
+      "voice_id": "david_leeson",
+      "success": true,
+      "mos_score": 0.8372966189433431,
+      "duration": 93.18655220000073,
+      "file_size": 1436240,
+      "output_path": "phase4_tts\\voice_comparison_test\\voice_test_david_leeson.wav",
+      "split_metadata": {
+        "split_applied": false,
+        "num_sub_chunks": 1,
+        "failed_sub_chunks": []
+      }
+    },
+    {
+      "voice_id": "maryann_spiegel",
+      "success": true,
+      "mos_score": 0.9893017371172014,
+      "duration": 83.1750772000014,
+      "file_size": 1267280,
+      "output_path": "phase4_tts\\voice_comparison_test\\voice_test_maryann_spiegel.wav",
+      "split_metadata": {
+        "split_applied": false,
+        "num_sub_chunks": 1,
+        "failed_sub_chunks": []
+      }
+    },
+    {
+      "voice_id": "ruth_golding_local",
+      "success": true,
+      "mos_score": 0.9883809663612153,
+      "duration": 96.74397999999928,
+      "file_size": 1443920,
+      "output_path": "phase4_tts\\voice_comparison_test\\voice_test_ruth_golding_local.wav",
+      "split_metadata": {
+        "split_applied": false,
+        "num_sub_chunks": 1,
+        "failed_sub_chunks": []
+      }
+    },
+    {
+      "voice_id": "vincent_price_01",
+      "success": true,
+      "mos_score": 1.0059930162391935,
+      "duration": 88.68877920000523,
+      "file_size": 1401680,
+      "output_path": "phase4_tts\\voice_comparison_test\\voice_test_vincent_price_01.wav",
+      "split_metadata": {
+        "split_applied": false,
+        "num_sub_chunks": 1,
+        "failed_sub_chunks": []
+      }
+    },
+    {
+      "voice_id": "vincent_price_02",
+      "success": true,
+      "mos_score": 0.6453052112078748,
+      "duration": 116.42838340000162,
+      "file_size": 1889360,
+      "output_path": "phase4_tts\\voice_comparison_test\\voice_test_vincent_price_02.wav",
+      "split_metadata": {
+        "split_applied": false,
+        "num_sub_chunks": 1,
+        "failed_sub_chunks": []
+      }
+    },
+    {
+      "voice_id": "vincent_price_03",
+      "success": true,
+      "mos_score": 0.6606101740608148,
+      "duration": 111.44578419999743,
+      "file_size": 1739600,
+      "output_path": "phase4_tts\\voice_comparison_test\\voice_test_vincent_price_03.wav",
+      "split_metadata": {
+        "split_applied": false,
+        "num_sub_chunks": 1,
+        "failed_sub_chunks": []
+      }
+    },
+    {
+      "voice_id": "mercedes_mccambridge",
+      "success": true,
+      "mos_score": 0.8269827186882419,
+      "duration": 103.74141240000608,
+      "file_size": 1566800,
+      "output_path": "phase4_tts\\voice_comparison_test\\voice_test_mercedes_mccambridge.wav",
+      "split_metadata": {
+        "split_applied": false,
+        "num_sub_chunks": 1,
+        "failed_sub_chunks": []
+      }
+    },
+    {
+      "voice_id": "agnes_moorehead",
+      "success": true,
+      "mos_score": 1.0044708786626615,
+      "duration": 97.7487667000023,
+      "file_size": 1566800,
+      "output_path": "phase4_tts\\voice_comparison_test\\voice_test_agnes_moorehead.wav",
+      "split_metadata": {
+        "split_applied": false,
+        "num_sub_chunks": 1,
+        "failed_sub_chunks": []
+      }
+    },
+    {
+      "voice_id": "greenman",
+      "success": true,
+      "mos_score": 1.7897398134116345,
+      "duration": 103.97186489999876,
+      "file_size": 1616720,
+      "output_path": "phase4_tts\\voice_comparison_test\\voice_test_greenman.wav",
+      "split_metadata": {
+        "split_applied": false,
+        "num_sub_chunks": 1,
+        "failed_sub_chunks": []
+      }
+    },
+    {
+      "voice_id": "neutral_narrator",
+      "success": true,
+      "mos_score": 1.3209914226296997,
+      "duration": 86.62556979999499,
+      "file_size": 1355600,
+      "output_path": "phase4_tts\\voice_comparison_test\\voice_test_neutral_narrator.wav",
+      "split_metadata": {
+        "split_applied": false,
+        "num_sub_chunks": 1,
+        "failed_sub_chunks": []
+      }
+    }
+  ]
+}

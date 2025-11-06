@@ -1,0 +1,19 @@
+# Phase 3 Chunking Configuration - Optimized for Fish Speech TTS
+
+json_path: pipeline.json
+chunks_dir: chunks
+
+# Fish Speech optimized chunk sizes (MUCH larger than Chatterbox)
+chunk_min_words: 200   # ~750 chars (was 60)
+chunk_max_words: 400   # ~1750 chars (was 100)
+chunk_min_chars: 1000   # Minimum chunk size (was 200)
+chunk_max_chars: 2000  # Maximum chunk size (was 312)
+
+# Quality thresholds
+coherence_threshold: 0.4  # LOWERED: Classical texts have lower coherence due to aphorisms
+flesch_threshold: 60
+max_chunk_duration: 45.0  # Increased from 25s (Fish Speech can handle longer)
+
+# Fish Speech can handle much larger chunks than Chatterbox (500 chars max)
+# This reduces total chunk count and overhead significantly
+# Example: 441 chunks (old) → ~150 chunks (new) for same audiobook

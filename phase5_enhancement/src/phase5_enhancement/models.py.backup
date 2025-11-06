@@ -1,0 +1,168 @@
+from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Optional, List
+from pathlib import Path
+import os
+import json
+
+
+class EnhancementConfig(BaseModel):
+    """Configuration for audio enhancement pipeline"""
+
+    # Input/Output Paths
+    input_dir: str = Field(
+        default="../phase4_tts/audio_chunks",
+        description="Input directory for WAV chunks from Phase 4",
+    )
+    output_dir: str = Field(
+        default="processed", description="Output directory for enhanced audio"
+    )
+    pipeline_json: str = Field(
+        default="../../pipeline.json", description="Path to pipeline.json"
+    )
+
+    # Audio Processing Parameters
+    sample_rate: int = Field(default=48000, description="Audio sample rate")
+    lufs_target: float = Field(
+        default=-23.0, ge=-40.0, le=-10.0, description="Target LUFS for normalization"
+    )
+    snr_threshold: float = Field(
+        default=15.0,
+        ge=5.0,
+        le=60.0,
+        description="Minimum SNR for quality validation in dB",
+    )
+    noise_reduction_factor: float = Field(
+        default=0.8,
+        ge=0.1,
+        le=1.0,
+        description="Noise reduction strength for noisereduce",
+    )
+    enable_volume_normalization: bool = Field(
+        default=True,
+        description="Enable pydub volume normalization before processing",
+    )
+    volume_norm_headroom: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Headroom for volume normalization (prevents clipping)",
+    )
+
+    # Output Parameters
+    crossfade_duration: float = Field(
+        default=0.5, ge=0.0, le=5.0, description="Crossfade duration in seconds"
+    )
+    mp3_bitrate: str = Field(
+        default="192k",
+        pattern=r"^\d{2,3}k$",
+        description="MP3 export bitrate (e.g., '192k')",
+    )
+
+    # Metadata
+    audiobook_title: str = Field(
+        default="The Analects of Confucius", description="Title for metadata"
+    )
+    audiobook_author: str = Field(
+        default="Confucius", description="Author for metadata"
+    )
+
+    # Processing Parameters
+    retries: int = Field(
+        default=2, ge=0, le=5, description="Max retries on quality failure"
+    )
+    max_workers: int = Field(
+        default=2, ge=1, le=16, description="Max parallel workers for batch processing"
+    )
+    chunk_size_seconds: int = Field(
+        default=30, ge=10, le=300, description="Chunk size for large audio processing"
+    )
+
+    # Quality Control
+    quality_validation_enabled: bool = Field(
+        default=True, description="Enable quality validation checks"
+    )
+    processing_timeout: int = Field(
+        default=60, ge=10, le=300, description="Processing timeout per chunk in seconds"
+    )
+
+    # System Resources
+    memory_limit_mb: int = Field(
+        default=1024,
+        ge=256,
+        le=8192,
+        description="Memory limit per process in MB",
+    )
+    temp_dir: str = Field(
+        default="temp", description="Temporary directory for processing"
+    )
+    cleanup_temp_files: bool = Field(
+        default=True, description="Cleanup temp files after processing"
+    )
+
+    # Logging
+    log_level: str = Field(
+        default="INFO",
+        pattern=r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
+        description="Logging level",
+    )
+    log_file: str = Field(default="audio_enhancement.log", description="Log file path")
+
+    # Recovery Options
+    resume_on_failure: bool = Field(
+        default=True, description="Resume from failures using JSON checkpoints"
+    )
+    backup_original: bool = Field(
+        default=False, description="Backup original chunks before enhancement"
+    )
+
+    @field_validator("input_dir", "output_dir", "temp_dir")
+    @classmethod
+    def validate_directories(cls, v: str) -> str:
+        """Create directories if they don't exist"""
+        path = Path(v)
+        path.mkdir(parents=True, exist_ok=True)
+        return str(path)
+
+    @model_validator(mode="after")
+    def validate_paths_exist(self):
+        """Additional validation for critical paths"""
+        path = Path(self.pipeline_json)
+        if not path.exists():
+            # Create empty pipeline.json if missing
+            with open(path, "w") as f:
+                json.dump({"phase5": {}}, f)
+        return self
+
+    class Config:
+        validate_assignment = True
+        extra = "forbid"
+
+
+class AudioMetadata(BaseModel):
+    """Metadata for audio chunks"""
+
+    chunk_id: int
+    wav_path: str
+    enhanced_path: Optional[str] = None
+    snr_pre: Optional[float] = None
+    snr_post: Optional[float] = None
+    rms_pre: Optional[float] = None
+    rms_post: Optional[float] = None
+    rms_volume_norm_pre: Optional[float] = None
+    rms_volume_norm_post: Optional[float] = None
+    lufs_pre: Optional[float] = None
+    lufs_post: Optional[float] = None
+    status: str = "pending"
+    error_message: Optional[str] = None
+    duration: Optional[float] = None
+
+
+class ProcessingResult(BaseModel):
+    """Overall processing result"""
+
+    successful_chunks: int
+    failed_chunks: int
+    total_duration: float
+    artifacts: List[str]
+    metrics: dict  # e.g., {"avg_snr_improvement": float}
+    errors: List[str]

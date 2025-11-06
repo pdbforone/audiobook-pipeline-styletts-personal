@@ -1,0 +1,154 @@
+# ==============================================================================
+# Gift of The Magi - ELL-Optimized Audiobook Video Generator
+# ==============================================================================
+# This script:
+# 1. Generates accurate subtitles using faster-whisper
+# 2. Creates professional video with hardcoded, styled subtitles for ELL learners
+# ==============================================================================
+
+$ErrorActionPreference = "Stop"
+
+# Configuration
+$PROJECT_ROOT = "C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox"
+$AUDIO_FILE = "$PROJECT_ROOT\Gift of The Magi.mp3"
+$FILE_ID = "Gift_of_The_Magi"
+$PHASE5_DIR = "$PROJECT_ROOT\phase5_enhancement"
+$SUBTITLE_DIR = "$PHASE5_DIR\subtitles"
+$OUTPUT_VIDEO = "$PROJECT_ROOT\Gift_of_The_Magi_ELL_FINAL.mp4"
+
+# Subtitle styling for ELL learners
+$FONT_NAME = "Arial"
+$FONT_SIZE = 32
+$OUTLINE_WIDTH = 3
+$SHADOW_DEPTH = 2
+$MARGIN_BOTTOM = 80
+
+Write-Host "==== Gift of The Magi - ELL Video Generator ====" -ForegroundColor Cyan
+Write-Host ""
+
+# Step 1: Check if audio file exists
+Write-Host "[1/4] Checking audio file..." -ForegroundColor Yellow
+if (-Not (Test-Path $AUDIO_FILE)) {
+    Write-Host "ERROR: Audio file not found: $AUDIO_FILE" -ForegroundColor Red
+    exit 1
+}
+Write-Host "  ✓ Found: $AUDIO_FILE" -ForegroundColor Green
+Write-Host ""
+
+# Step 2: Generate subtitles using Phase 5.5
+Write-Host "[2/4] Generating subtitles with faster-whisper..." -ForegroundColor Yellow
+Write-Host "  This may take 15-30 minutes depending on audio length..." -ForegroundColor Gray
+
+Set-Location $PHASE5_DIR
+
+$subtitleCmd = "poetry run python -m phase5_enhancement.subtitles " +
+               "--audio `"$AUDIO_FILE`" " +
+               "--file-id `"$FILE_ID`" " +
+               "--output-dir `"$SUBTITLE_DIR`" " +
+               "--model small"
+
+Write-Host "  Command: $subtitleCmd" -ForegroundColor Gray
+Invoke-Expression $subtitleCmd
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Subtitle generation failed!" -ForegroundColor Red
+    exit 1
+}
+
+$SRT_FILE = "$SUBTITLE_DIR\$FILE_ID.srt"
+if (-Not (Test-Path $SRT_FILE)) {
+    Write-Host "ERROR: Subtitle file not created: $SRT_FILE" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "  ✓ Subtitles generated: $SRT_FILE" -ForegroundColor Green
+Write-Host ""
+
+# Step 3: Check subtitle metrics
+$METRICS_FILE = "$SUBTITLE_DIR\${FILE_ID}_metrics.json"
+if (Test-Path $METRICS_FILE) {
+    Write-Host "[3/4] Subtitle Quality Metrics:" -ForegroundColor Yellow
+    $metrics = Get-Content $METRICS_FILE | ConvertFrom-Json
+    if ($metrics.coverage) {
+        Write-Host "  Coverage: $([math]::Round($metrics.coverage * 100, 2))%" -ForegroundColor Green
+    }
+    if ($metrics.wer -ne $null) {
+        Write-Host "  WER (Word Error Rate): $([math]::Round($metrics.wer * 100, 2))%" -ForegroundColor Green
+    }
+    Write-Host ""
+}
+
+# Step 4: Create video with burned-in subtitles
+Write-Host "[4/4] Creating ELL-optimized video with hardcoded subtitles..." -ForegroundColor Yellow
+Write-Host "  Font: $FONT_NAME (${FONT_SIZE}px)" -ForegroundColor Gray
+Write-Host "  Style: White text, black outline, centered bottom" -ForegroundColor Gray
+
+Set-Location $PROJECT_ROOT
+
+# Escape subtitle path for FFmpeg (Windows paths need backslash escaping AND colon escaping)
+$srtEscaped = $SRT_FILE -replace '\\', '\\\\' -replace ':', '\\:'
+
+# FFmpeg subtitle filter with force_style
+$vfFilter = "subtitles=$srtEscaped" +
+            ":force_style='" +
+            "FontName=$FONT_NAME," +
+            "FontSize=$FONT_SIZE," +
+            "PrimaryColour=&HFFFFFF&," +
+            "OutlineColour=&H000000&," +
+            "Outline=$OUTLINE_WIDTH," +
+            "Shadow=$SHADOW_DEPTH," +
+            "Bold=1," +
+            "Alignment=2," +
+            "MarginV=$MARGIN_BOTTOM'"
+
+Write-Host "  Rendering video (this may take 5-10 minutes)..." -ForegroundColor Gray
+
+# Use native FFmpeg command with proper escaping
+$ffmpegArgs = @(
+    '-y'
+    '-f', 'lavfi'
+    '-i', 'color=c=black:s=1920x1080:r=25'
+    '-i', $AUDIO_FILE
+    '-vf', $vfFilter
+    '-c:v', 'libx264'
+    '-c:a', 'copy'
+    '-shortest'
+    '-pix_fmt', 'yuv420p'
+    $OUTPUT_VIDEO
+)
+
+& ffmpeg @ffmpegArgs
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Video creation failed!" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Troubleshooting:" -ForegroundColor Yellow
+    Write-Host "  - Check that FFmpeg supports subtitle filters: ffmpeg -filters | findstr subtitles" -ForegroundColor Gray
+    Write-Host "  - Verify SRT file is valid: notepad `"$SRT_FILE`"" -ForegroundColor Gray
+    exit 1
+}
+
+if (-Not (Test-Path $OUTPUT_VIDEO)) {
+    Write-Host "ERROR: Video file not created: $OUTPUT_VIDEO" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "  ✓ Video created: $OUTPUT_VIDEO" -ForegroundColor Green
+Write-Host ""
+
+# Final summary
+Write-Host "==== SUCCESS ====" -ForegroundColor Green
+Write-Host ""
+Write-Host "Output Files:" -ForegroundColor Cyan
+Write-Host "  Subtitles (SRT): $SRT_FILE" -ForegroundColor White
+Write-Host "  Subtitles (VTT): $SUBTITLE_DIR\$FILE_ID.vtt" -ForegroundColor White
+Write-Host "  Final Video:     $OUTPUT_VIDEO" -ForegroundColor White
+Write-Host ""
+Write-Host "Next Steps:" -ForegroundColor Cyan
+Write-Host "  1. Preview the video to verify subtitle styling" -ForegroundColor White
+Write-Host "  2. Upload to YouTube with SEO-optimized metadata" -ForegroundColor White
+Write-Host "  3. Enable monetization (estimated `$0.50-`$2 per 1,000 views)" -ForegroundColor White
+Write-Host ""
+Write-Host "YouTube Title Suggestion:" -ForegroundColor Yellow
+Write-Host "  'The Gift of the Magi by O. Henry | Full Audiobook with Subtitles | ELL'" -ForegroundColor Gray
+Write-Host ""

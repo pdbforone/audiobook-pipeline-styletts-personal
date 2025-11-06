@@ -1,0 +1,21 @@
+Random sample accuracy data:
+1Chunk 339 skipped  [" The Master said,]
+2Chunk 172: perfect.
+3Chunk 83: Weird pause here [ " }
+4Chunk 308: perfect.
+5 Chunk 494: perfect.
+6. Chunk 225: Odd pause, but not bad [ "}
+7. Chunk 226: perfect
+8. Chunk 110: perfect
+9. 114: perfect
+10. 433: perfect
+11. 94: perfect
+12. 405: perfect
+13. 239: weird repetition of lu in [Tsze-lu]. Audio was [Tsze-lu. lu]
+14. 33: addition of mmhm sound in this section: [. "]
+15. 629: perfect.
+16. 597: perfect.
+17. 310: truncates the text here [. " Hsi pursued, "Master, why did you smile at Yu?"] with a weird sound and then continues to finish the rest with accuracy.
+18. 103: Perfect, even with strange extra quotation marks in the text.
+19. 106: Good job, but weird nasal sound here: [ "].
+20. 131: Perfect.

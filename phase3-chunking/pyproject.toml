@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "phase3-chunking"
+version = "0.1.0"
+description = "Phase 3: Chunking for Audiobook Pipeline"
+authors = ["Grok <grok@x.ai>"]
+
+[tool.poetry.scripts]
+phase3-chunking = "phase3_chunking.main:main"
+
+[tool.poetry.dependencies]
+python = "~3.12"
+spacy = "3.8.4"
+sentence-transformers = "5.1.0"  # Latest stable 2025
+gensim = "4.3.3"
+textstat = "0.7.4"  # Latest stable
+nltk = "3.9.1"
+ftfy = "6.3.1"  # With 2024 heuristics
+pyyaml = "^6.0.1"  # For config
+filelock = "^3.19.1"  # Add for locking
+langdetect = "1.0.9"  # For language detection
+charset-normalizer = "^3.4.3"
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.2"
+pytest-cov = "^7.0.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

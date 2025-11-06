@@ -1,0 +1,239 @@
+{
+  "voice_references": {
+    "bob_neufeld": {
+      "local_path": "C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/voice_samples/processed/Bob_Neufeld_01_sample.wav",
+      "description": "Bob Neufeld - Philosophy/Analytic (Plato's Republic)",
+      "narrator_name": "Bob Neufeld",
+      "preferred_profiles": ["philosophy", "academic"],
+      "notes": "LibriVox - Clean, measured delivery for analytical philosophy"
+    },
+    "de_wittkower": {
+      "local_path": "C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/voice_samples/processed/D.E._Wittkower_01_sample.wav",
+      "description": "D.E. Wittkower - Philosophy/Continental (Descartes' Meditations)",
+      "narrator_name": "D.E. Wittkower",
+      "preferred_profiles": ["philosophy", "academic"],
+      "notes": "LibriVox - Thoughtful tone for continental philosophy"
+    },
+    "geoffrey_edwards": {
+      "local_path": "C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/voice_samples/processed/Geoffrey_Edwards_01_sample.wav",
+      "description": "Geoffrey Edwards - Philosophy/Classical (Aristotle's Nicomachean Ethics)",
+      "narrator_name": "Geoffrey Edwards",
+      "preferred_profiles": ["philosophy", "academic"],
+      "notes": "LibriVox - Authoritative for classical Greek philosophy"
+    },
+    "david_leeson": {
+      "local_path": "C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/voice_samples/processed/David_Leeson_01_sample.wav",
+      "description": "David Leeson - Theology/Modern (The Pursuit of God by Tozer)",
+      "narrator_name": "David Leeson",
+      "preferred_profiles": ["theology", "philosophy"],
+      "notes": "LibriVox - Warm, reverent tone for modern theology"
+    },
+    "maryann_spiegel": {
+      "local_path": "C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/voice_samples/processed/MaryAnn_Spiegel_01_sample.wav",
+      "description": "MaryAnn Spiegel - Theology/Historical (Augustine's Confessions)",
+      "narrator_name": "MaryAnn Spiegel",
+      "preferred_profiles": ["theology", "philosophy", "memoir"],
+      "notes": "LibriVox - Contemplative female voice for patristic theology"
+    },
+    "ruth_golding_local": {
+      "local_path": "C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/voice_samples/processed/Ruth_Golding_01_sample.wav",
+      "description": "Ruth Golding - British Female/Fiction (Wuthering Heights)",
+      "narrator_name": "Ruth Golding",
+      "preferred_profiles": ["fiction", "memoir"],
+      "notes": "LibriVox - Elegant British female voice for classic literature"
+    },
+    "vincent_price_01": {
+      "local_path": "C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/voice_samples/processed/Vincent_Price_01_sample.wav",
+      "description": "Vincent Price - Gothic/Horror (Sample 1)",
+      "narrator_name": "Vincent Price",
+      "preferred_profiles": ["fiction", "gothic"],
+      "notes": "Dramatic horror narration - iconic voice"
+    },
+    "vincent_price_02": {
+      "local_path": "C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/voice_samples/processed/Vincent_Price_02_sample.wav",
+      "description": "Vincent Price - Gothic/Horror (Sample 2)",
+      "narrator_name": "Vincent Price",
+      "preferred_profiles": ["fiction", "gothic"],
+      "notes": "Dramatic horror narration - alternative sample"
+    },
+    "vincent_price_03": {
+      "local_path": "C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/voice_samples/processed/Vincent_Price_03_sample.wav",
+      "description": "Vincent Price - Gothic/Horror (Sample 3)",
+      "narrator_name": "Vincent Price",
+      "preferred_profiles": ["fiction", "gothic"],
+      "notes": "Dramatic horror narration - third sample"
+    },
+    "mercedes_mccambridge": {
+      "local_path": "C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/voice_samples/processed/Mercedes_McCambridge_02_sample.wav",
+      "description": "Mercedes McCambridge - Drama/Thriller",
+      "narrator_name": "Mercedes McCambridge",
+      "preferred_profiles": ["fiction", "thriller"],
+      "notes": "Intense dramatic female narration"
+    },
+    "agnes_moorehead": {
+      "local_path": "C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/voice_samples/processed/Agnes_Moorehead_02_sample.wav",
+      "description": "Agnes Moorehead - Drama/Horror",
+      "narrator_name": "Agnes Moorehead",
+      "preferred_profiles": ["fiction", "gothic"],
+      "notes": "Atmospheric horror - legendary actress voice"
+    },
+    "greenman": {
+      "local_path": "C:/Users/myson/Pipeline/greenman_ref.wav",
+      "description": "Greenman reference voice",
+      "narrator_name": "Greenman",
+      "preferred_profiles": ["fiction", "narrative"],
+      "notes": "Primary test reference - general narrative"
+    },
+    "george_mckayland": {
+      "local_path": "C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/Voices/George Mckayland 01.mp3",
+      "description": "George Mckayland - User-provided voice for Marcus Aurelius Meditations",
+      "narrator_name": "George Mckayland",
+      "trim_start": 26,
+      "trim_duration": 30,
+      "preferred_profiles": ["philosophy", "memoir", "academic"],
+      "notes": "Custom voice clone for Meditations project. Using 30s clip starting at 0:26."
+    },
+    "landon_elkind": {
+      "source_url": "https://archive.org/download/mysticism_logic_1603_librivox/mysticism_logic_01_russell.mp3",
+      "description": "Landon Elkind reading Bertrand Russell - Mysticism and Logic (Chapter 1)",
+      "narrator_name": "Landon D. C. Elkind",
+      "trim_start": 10,
+      "trim_end": 30,
+      "preferred_profiles": ["philosophy", "academic"],
+      "notes": "Measured, analytical British RP tone. Full audiobook available if needed for longer sample."
+    },
+    "pamela_nagami": {
+      "source_url": "https://archive.org/download/history_modern_philosophy_2208_librivox/historymodernphilosophy_01_hoffding.mp3",
+      "description": "Pamela Nagami reading History of Modern Philosophy (Chapter 1)",
+      "narrator_name": "Pamela Nagami",
+      "trim_start": 15,
+      "trim_end": 35,
+      "preferred_profiles": ["philosophy", "academic"],
+      "notes": "Clear, authoritative female American voice for modern philosophy."
+    },
+    "hugh_mcguire": {
+      "source_url": "https://archive.org/download/consolation_philosophy_librivox/consolationofphilosophy_01_boethius.mp3",
+      "description": "Hugh McGuire reading Boethius - The Consolation of Philosophy (Book 1)",
+      "narrator_name": "Hugh McGuire",
+      "trim_start": 20,
+      "trim_end": 40,
+      "preferred_profiles": ["philosophy", "academic"],
+      "notes": "Classical philosophy with possible British accent. Contemplative tone."
+    },
+    "david_barnes": {
+      "source_url": "https://archive.org/download/holy_sonnets_1508_librivox/holysonnets_01_donne.mp3",
+      "description": "David Barnes reading John Donne - Holy Sonnets",
+      "narrator_name": "David Barnes",
+      "trim_start": 5,
+      "trim_end": 25,
+      "preferred_profiles": ["philosophy", "academic", "poetry"],
+      "notes": "BBC English male voice. Refined, precise delivery for British literature."
+    },
+    "ruth_golding": {
+      "source_url": "https://archive.org/download/short_poetry_002_1508_librivox/shortpoetry002_01_various.mp3",
+      "description": "Ruth Golding reading 'To a Dog' by Josephine Peabody",
+      "narrator_name": "Ruth Golding",
+      "trim_start": 10,
+      "trim_end": 30,
+      "preferred_profiles": ["fiction", "poetry", "memoir"],
+      "notes": "RP/BBC English female voice. Elegant, cultivated tone."
+    },
+    "tom_weiss": {
+      "source_url": "https://archive.org/download/masquerader_librivox/masquerader_01_thurston.mp3",
+      "description": "Tom Weiss reading The Masquerader (Chapter 1)",
+      "narrator_name": "Tom Weiss",
+      "trim_start": 30,
+      "trim_end": 50,
+      "preferred_profiles": ["fiction"],
+      "notes": "Dynamic thriller narrator with clear pacing. Engaging for suspense."
+    },
+    "bella_bolster": {
+      "source_url": "https://archive.org/download/short_ghost_horror_074_2110_librivox/shortghostandhorrorcollection074_01_various.mp3",
+      "description": "Bella Bolster reading from Short Ghost and Horror Collection 074",
+      "narrator_name": "Bella Bolster",
+      "trim_start": 15,
+      "trim_end": 35,
+      "preferred_profiles": ["fiction"],
+      "notes": "Female narrator for horror and dark fiction. Atmospheric delivery."
+    },
+    "kara_shallenberg": {
+      "source_url": "https://archive.org/download/pride_and_prejudice_librivox/prideandprejudice_01_austen.mp3",
+      "description": "Kara Shallenberg reading Pride and Prejudice (Chapter 1)",
+      "narrator_name": "Kara Shallenberg",
+      "trim_start": 60,
+      "trim_end": 80,
+      "preferred_profiles": ["fiction", "memoir"],
+      "notes": "Warm female voice for classic fiction. Natural, conversational tone."
+    },
+    "gareth_holmes": {
+      "source_url": "https://archive.org/download/short_poetry_227_2311_librivox/shortpoetrycollection227_01_various.mp3",
+      "description": "Gareth Holmes reading from Short Poetry Collection 227",
+      "narrator_name": "Gareth Holmes",
+      "trim_start": 10,
+      "trim_end": 30,
+      "preferred_profiles": ["poetry"],
+      "notes": "British male voice for poetry and epic works. Rhythmic, expressive delivery."
+    },
+    "wayne_cooke": {
+      "source_url": "https://archive.org/download/rational_theology_2005_librivox/rationaltheology_01_tulloch.mp3",
+      "description": "Wayne Cooke reading Rational Theology (Chapter 1)",
+      "narrator_name": "Wayne Cooke",
+      "trim_start": 20,
+      "trim_end": 40,
+      "preferred_profiles": ["academic", "theology"],
+      "notes": "Male American narrator for theology. Thoughtful, reverent tone."
+    },
+    "eric_metzler": {
+      "source_url": "https://archive.org/download/meister_eckhart_sermons_librivox/meistereckhartsermons_01_eckhart.mp3",
+      "description": "Eric Metzler reading Meister Eckhart's Sermons (Sermon 1)",
+      "narrator_name": "Eric Metzler",
+      "trim_start": 15,
+      "trim_end": 35,
+      "preferred_profiles": ["academic", "theology"],
+      "notes": "Male narrator for medieval theology and mysticism. Meditative, slow pace."
+    },
+    "cori_samuel": {
+      "source_url": "https://archive.org/download/wrinkles_librivox/wrinkles_01_landor.mp3",
+      "description": "Cori Samuel reading Wrinkles by Walter Savage Landor",
+      "narrator_name": "Cori Samuel",
+      "trim_start": 10,
+      "trim_end": 30,
+      "preferred_profiles": ["fiction", "memoir"],
+      "notes": "RP via Estuary English female voice. Approachable, conversational."
+    },
+    "peter_yearsley": {
+      "source_url": "https://archive.org/download/short_nonfiction_collection_vol_081_2302_librivox/shortnonfiction081_01_various.mp3",
+      "description": "Peter Yearsley reading from Short Nonfiction Collection",
+      "narrator_name": "Peter Yearsley",
+      "trim_start": 15,
+      "trim_end": 35,
+      "preferred_profiles": ["fiction", "memoir"],
+      "notes": "South-east England with London colouring. Friendly, comfortable tone."
+    },
+    "neutral_narrator": {
+      "source_url": "https://www.archive.org/download/roughing_it_jg/rough_09_twain.mp3",
+      "description": "Current default (Mark Twain reading)",
+      "narrator_name": "Default",
+      "trim_start": 0,
+      "trim_end": 20,
+      "preferred_profiles": ["technical", "auto"],
+      "notes": "Fallback clear, professional voice for general content."
+    }
+  },
+  "preparation_settings": {
+    "sample_rate": 24000,
+    "target_duration_min": 10,
+    "target_duration_max": 30,
+    "normalize_audio": true,
+    "mono": true,
+    "output_format": "wav"
+  },
+  "notes": {
+    "local_vs_url": "Voices with 'local_path' are loaded from disk. Voices with 'source_url' are downloaded and trimmed.",
+    "usage": "Phase 4 reads 'selected_voice' from Phase 3 output, maps to voice reference here, and prepares audio for zero-shot cloning.",
+    "trimming": "For source_url entries, trim_start and trim_end are in seconds. Adjust if audio has silence or intro/outro.",
+    "full_books": "For higher quality cloning, consider using full LibriVox audiobooks (1-2 hours). Download full ZIP and concatenate chapters.",
+    "fallback": "If voice reference fails to load, Phase 4 falls back to neutral_narrator.",
+    "processed_samples": "Local samples (Bob Neufeld, etc.) are already validated at 19-23s duration, 44.1kHz, and will be auto-resampled to 24kHz."
+  }
+}

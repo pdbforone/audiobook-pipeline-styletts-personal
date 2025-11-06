@@ -1,0 +1,4 @@
+pipeline.json filter=lfs diff=lfs merge=lfs -text
+phase2-extraction/pipeline.json filter=lfs diff=lfs merge=lfs -text
+phase3-chunking/pipeline.json filter=lfs diff=lfs merge=lfs -text
+pipeline.json.backup filter=lfs diff=lfs merge=lfs -text

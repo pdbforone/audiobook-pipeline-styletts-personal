@@ -1,0 +1,35 @@
+{
+  "voice_references": {
+    "george_mckayland": {
+      "description": "Custom voice - George Mckayland",
+      "local_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-chatterbox\\Voices\\George Mckayland 01.mp3",
+      "trim_start": 26,
+      "trim_end": 56,
+      "preferred_profiles": ["philosophy", "academic"],
+      "tts_engine_params": {
+        "pitch": 0,
+        "rate": 1.0,
+        "emphasis": "natural"
+      }
+    },
+    "neutral_narrator": {
+      "description": "Fallback voice - Mark Twain reader",
+      "source_url": "https://www.archive.org/download/roughing_it_jg/rough_09_twain.mp3",
+      "trim_start": 0,
+      "trim_end": 20,
+      "preferred_profiles": ["auto", "technical"],
+      "tts_engine_params": {
+        "pitch": 0,
+        "rate": 1.0,
+        "emphasis": "balanced"
+      }
+    }
+  },
+  "reference_prep_settings": {
+    "target_sample_rate": 24000,
+    "target_duration_min": 10,
+    "target_duration_max": 30,
+    "normalize_audio": true
+  },
+  "default_voice": "neutral_narrator"
+}

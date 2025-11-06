@@ -1,0 +1,28 @@
+# Phase 7 Batch Processing Configuration
+
+# Phases to run for each file (1-5)
+phases_to_run: [1, 2, 3, 4, 5]
+
+# Resume from checkpoints (skip already completed files)
+resume_enabled: true
+
+# Input directory containing PDFs/ebooks to process
+input_dir: ../input
+
+# Path to pipeline.json (shared across all files)
+pipeline_json: ../pipeline.json
+
+# Logging configuration
+log_level: INFO
+log_file: batch.log
+
+# Parallel processing settings
+max_workers: 2  # Number of files to process simultaneously
+batch_size: null  # Limit number of files to process (null = all)
+
+# CPU monitoring
+cpu_threshold: 85  # Throttle if CPU exceeds this percentage
+throttle_delay: 1.0  # Seconds to wait when throttling
+
+# Phase timeout (passed to orchestrator)
+phase_timeout: 600  # 10 minutes per phase

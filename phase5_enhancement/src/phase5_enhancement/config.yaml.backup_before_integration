@@ -1,0 +1,25 @@
+audiobook_author: Confucius
+audiobook_title: The Analects of Confucius
+backup_original: false
+chunk_size_seconds: 30
+cleanup_temp_files: true
+crossfade_duration: 0.2
+enable_volume_normalization: true
+input_dir: ../phase4_tts/audio_chunks
+log_file: audio_enhancement.log
+log_level: INFO
+lufs_target: -18.0
+max_workers: 2
+memory_limit_mb: 1024
+mp3_bitrate: 192k
+noise_reduction_factor: 0.02
+output_dir: processed
+pipeline_json: C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\pipeline_magi.json
+processing_timeout: 60
+quality_validation_enabled: false
+resume_on_failure: false
+retries: 0
+sample_rate: 24000
+snr_threshold: 0.0
+temp_dir: temp
+volume_norm_headroom: 0.3

@@ -1,0 +1,3 @@
+[submodule "phase4_tts/Chatterbox-TTS-Extended"]
+	path = phase4_tts/Chatterbox-TTS-Extended
+	url = https://github.com/resemble-ai/chatterbox.git

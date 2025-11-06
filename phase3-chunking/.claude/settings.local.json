@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Measure-Object)",
+      "Bash(Select-Object -ExpandProperty Count)",
+      "Bash(powershell -Command \"(Get-ChildItem ''chunks'' -Filter ''*meditations*.txt'' | Measure-Object).Count\")",
+      "Bash(find:*)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(while read f)",
+      "Bash(do wc -w \"$f\")",
+      "Bash(done)",
+      "Bash(for i in 001 002 003 004 005 006 007 008 009 010)",
+      "Bash(do file=\"chunks/the meditations, by Marcus Aurelius_chunk_$i.txt\")",
+      "Bash(if [ -f \"$file\" ])",
+      "Bash(fi)",
+      "Bash(for i in 206 207 208 209 210 211 212 213 214 215)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

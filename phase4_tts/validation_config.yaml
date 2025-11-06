@@ -1,0 +1,46 @@
+# Phase 4 Validation Configuration
+#
+# Two-tier validation strategy for TTS quality control:
+# - Tier 1: Fast checks (every chunk, ~2s)
+# - Tier 2: Whisper validation (selective sampling, ~60s)
+
+validation:
+  # Tier 1: Quick Checks (Always Enabled)
+  tier1:
+    enabled: true
+    duration_tolerance_sec: 5.0      # Allow ±5s difference between expected and actual
+    silence_threshold_sec: 2.0       # Flag silence gaps longer than 2s
+    min_amplitude_db: -40.0          # Flag audio quieter than -40dB
+    
+  # Tier 2: Whisper Validation (Selective Sampling)
+  tier2:
+    enabled: true                    # Set to false to disable Whisper validation
+    whisper_model: "base"            # Options: tiny, base, small, medium, large
+    whisper_sample_rate: 0.05        # Validate 5% random sample (0.0-1.0)
+    whisper_first_n: 10              # Always validate first N chunks
+    whisper_last_n: 10               # Always validate last N chunks
+    max_wer: 0.10                    # Maximum Word Error Rate (10%)
+  
+  # Retry Logic for Failed Chunks
+  retry:
+    enabled: true
+    max_attempts: 3                  # Retry failed chunks up to 3 times
+    retry_delay_sec: 5.0             # Wait 5s between retries
+  
+  # Known Error Phrases (from TTS corruption)
+  error_phrases:
+    - "you need to add some text for me to talk"
+    - "i need text to speak"
+    - "please provide text"
+    - "add text for me"
+    - "need some text"
+  
+  # Logging
+  logging:
+    log_validation_details: true     # Log detailed validation results
+    log_tier2_transcriptions: false  # Log full Whisper transcriptions (verbose)
+
+# Performance Notes:
+# - Tier 1 adds ~2-3s per chunk (~30-45 min total for 899 chunks)
+# - Tier 2 adds ~60s per sampled chunk (~1 hour for 5% sample + first/last 10)
+# - Total overhead: ~1.5 hours on a 2.25 day runtime (2.8% increase)

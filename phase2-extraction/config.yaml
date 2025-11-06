@@ -1,0 +1,6 @@
+json_path: pipeline.json
+extracted_dir: extracted_text
+retry_limit: 1  # Specs: retry once on empty
+gibberish_threshold: 0.5  # <0.5 triggers retry (specs inverted from nostril >1.0 gibberish)
+perplexity_threshold: 0.92  # >0.92 acceptable
+lang_confidence: 0.9  # >0.9 preferred for English

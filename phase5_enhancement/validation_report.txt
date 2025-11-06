@@ -1,0 +1,14 @@
+======================================================================
+SUBTITLE VALIDATION REPORT
+======================================================================
+Source words:    44,743
+Subtitle words:  38,884
+Accuracy:        81.09%
+Missing words:   8,462
+Extra words:     2,603
+
+UNWANTED PHRASES:
+  [99x] You need to add some text for me to talk
+
+⚠ Review recommended
+======================================================================

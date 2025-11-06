@@ -1,0 +1,14 @@
+[33m2b98451a[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m Add Claude Code configuration and update video generator script
+[33m8fc59957[m Refactor FFmpeg command construction in video generator
+[33m7070494b[m yt 1.1
+[33m30ca8cd6[m yt 1.0
+[33m0f2ee36d[m yt beginnings
+[33m914639bb[m chore: commit workspace snapshot
+[33m5e070f94[m Improve Phase 3 aphoristic chunk handling
+[33m151402d4[m Use direct script paths for all phases to fix module imports
+[33m65cb219e[m Fix Phase 2 to use module mode for relative imports
+[33m8489aa61[m Fix Phase 2 command to use direct script path
+[33mbfac5cf7[m Add charset-normalizer to suppress RequestsDependencyWarning
+[33m01466496[m Add .gitignore and finalize submodule setup
+[33mc3ae0990[m Add Chatterbox-TTS-Extended as a submodule for Phase 4
+[33mefc40e1a[m Initial commit of audiobook pipeline

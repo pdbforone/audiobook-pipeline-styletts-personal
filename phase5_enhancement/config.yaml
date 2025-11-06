@@ -1,0 +1,35 @@
+pipeline_json: C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\pipeline.json
+input_dir: meditations_chunks
+output_dir: processed
+sample_rate: 24000
+lufs_target: -18.0
+snr_threshold: 10.0
+noise_reduction_factor: 0.1
+enable_volume_normalization: true
+volume_norm_headroom: 0.3
+crossfade_duration: 0.2
+mp3_bitrate: 192k
+audiobook_title: Meditations
+audiobook_author: Marcus Aurelius
+max_workers: 2
+chunk_size_seconds: 30
+retries: 2
+quality_validation_enabled: false
+processing_timeout: 60
+memory_limit_mb: 1024
+temp_dir: temp
+cleanup_temp_files: true
+log_level: INFO
+log_file: audio_enhancement.log
+resume_on_failure: false
+backup_original: false
+
+# Phrase Cleanup Settings (NEW)
+enable_phrase_cleanup: true
+cleanup_target_phrases:
+  - "You need to add some text for me to talk"
+  - "You need to add some text for me to talk."
+  - "You need to add text for me to talk"
+  - "You need to add text for me to talk."
+cleanup_whisper_model: base  # Options: tiny, base, small, medium, large
+cleanup_save_transcripts: false  # Set to true to save .srt files for debugging

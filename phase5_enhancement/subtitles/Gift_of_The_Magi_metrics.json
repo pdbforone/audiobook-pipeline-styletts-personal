@@ -1,0 +1,11 @@
+{
+  "coverage": 1.0026533450446493,
+  "last_timestamp": 547.93,
+  "timestamp_drift": -1.4499999999999318,
+  "drift_corrected": true,
+  "wer": null,
+  "segment_count": 133,
+  "avg_segment_duration": 4.107297411488131,
+  "avg_segment_length": 62.857142857142854,
+  "max_segment_length": 89
+}

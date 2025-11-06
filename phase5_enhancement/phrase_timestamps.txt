@@ -1,0 +1,127 @@
+AUDACITY REMOVAL GUIDE
+======================================================================
+
+Total instances: 37
+
+HOW TO USE:
+1. Open meditations_audiobook.mp3 in Audacity
+2. For each timestamp below:
+   a. Press Ctrl+F to open 'Selection Toolbar'
+   b. Enter the START time
+   c. Listen to verify it's the phrase
+   d. Select from START to END time
+   e. Press Delete or Ctrl+K to remove
+
+======================================================================
+
+[1/37] START: 2:10.610  END: 2:15.750
+    Text: or does benevolent acts in order to. You need to add some text for me to talk.
+
+[2/37] START: 2:39.550  END: 2:45.110
+    Text: You need to add some text for me to talk. To be easily disposed, to be pacified and
+
+[3/37] START: 3:20.650  END: 3:28.590
+    Text: reason. You need to add some text for me to talk. Yielding, and not peevish
+
+[4/37] START: 3:48.730  END: 3:54.880
+    Text: them pass. You need to add some text for me to talk, from Sextus. A
+
+[5/37] START: 7:23.420  END: 7:29.140
+    Text: sweetness and dignity, you need to add some text for me to talk,
+
+[6/37] START: 8:02.040  END: 8:09.950
+    Text: from all falsehood, you need to add some text for me to talk,
+
+[7/37] START: 102:47.160  END: 102:49.540
+    Text: You need to add some text for me to talk.
+
+[8/37] START: 104:25.370  END: 104:27.490
+    Text: You need to add some text for me to talk.
+
+[9/37] START: 114:42.720  END: 114:44.740
+    Text: You need to add some text for me to talk.
+
+[10/37] START: 115:09.260  END: 115:12.000
+    Text: You need to add some text for me to talk.
+
+[11/37] START: 174:38.220  END: 174:40.420
+    Text: You need to add some text for me to talk,
+
+[12/37] START: 178:13.580  END: 178:15.800
+    Text: You need to add some text for me to talk.
+
+[13/37] START: 180:41.300  END: 180:45.820
+    Text: And further, you need to add some text for me to talk.
+
+[14/37] START: 182:11.530  END: 182:17.760
+    Text: affected. You need to add some text for me to talk. And I say that the universal nature
+
+[15/37] START: 186:25.000  END: 186:30.310
+    Text: Keep the ruling faculty in its own power. You need to add some text for me to talk,
+
+[16/37] START: 188:00.350  END: 188:06.390
+    Text: and to be fused with that which is akin to it. You need to add some text for me to talk.
+
+[17/37] START: 191:49.180  END: 191:59.940
+    Text: under thy father. You need to add some text for me to talk. Hasten to examine thy own
+
+[18/37] START: 194:09.170  END: 194:16.350
+    Text: those things on which they set a value. You need to add some text for me to talk.
+
+[19/37] START: 201:27.410  END: 201:31.790
+    Text: You need to add some text for me to talk. Epicurus says,
+
+[20/37] START: 202:03.080  END: 202:05.160
+    Text: You need to add some text for me to talk.
+
+[21/37] START: 205:36.140  END: 205:38.280
+    Text: You need to add some text for me to talk.
+
+[22/37] START: 206:13.180  END: 206:17.020
+    Text: for the enjoyment of? You need to add some text for me to talk.
+
+[23/37] START: 214:16.760  END: 214:23.660
+    Text: You need to add some text for me to talk. In order, however, to the remembrance of these names,
+
+[24/37] START: 215:20.020  END: 215:25.060
+    Text: but yet not concealed. You need to add some text for me to talk.
+
+[25/37] START: 224:32.180  END: 224:37.480
+    Text: You need to add some text for me to talk. When thou hast seen Satyron the Socratic,
+
+[26/37] START: 226:28.160  END: 226:33.740
+    Text: conformable to reason? You need to add some text for me to talk. Thou wilt not cease
+
+[27/37] START: 233:15.440  END: 233:21.400
+    Text: my own, you need to add some text for me to talk. And further, it traverses the whole
+
+[28/37] START: 235:01.200  END: 235:07.620
+    Text: You need to add some text for me to talk. What a soul that is, which is ready, if at any
+
+[29/37] START: 238:42.430  END: 238:48.490
+    Text: with it. You need to add some text for me to talk. As those who try to stand in thy way when
+
+[30/37] START: 243:06.540  END: 243:12.350
+    Text: indifferent. You need to add some text for me to talk, and it will be indifferent.
+
+[31/37] START: 254:53.680  END: 255:03.390
+    Text: You need to add some text for me to talk. Epictetus also said, A man must discover
+
+[32/37] START: 258:05.710  END: 258:16.590
+    Text: and suchlike externals, and show. You need to add some text for me to talk. Therefore,
+
+[33/37] START: 258:58.990  END: 259:06.160
+    Text: if thou wilt separate, I say. You need to add some text for me to talk.
+
+[34/37] START: 259:51.360  END: 259:56.600
+    Text: he could not endure it even for a single day. You need to add some text for me to talk.
+
+[35/37] START: 260:27.470  END: 260:32.990
+    Text: to have been otherwise, the gods would have done it. You need to add some text for me to talk.
+
+[36/37] START: 267:31.240  END: 267:38.180
+    Text: is resolved. You need to add some text for me to talk. Third, if thou shouldst suddenly be raised
+
+[37/37] START: 268:25.180  END: 268:30.800
+    Text: not of a little blood or seed, but of intelligence. You need to add some text for me to talk,
+

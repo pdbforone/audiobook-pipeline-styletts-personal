@@ -1,0 +1,43 @@
+{
+  "title": "The Analects of Confucius",
+  "author": "Unknown",
+  "quality_score": 1.0,
+  "tool_used": "pypdf",
+  "char_count": 154505,
+  "methods_tried": [
+    "pypdf",
+    "pdfplumber",
+    "pymupdf"
+  ],
+  "all_scores": {
+    "pypdf": 1.0,
+    "pdfplumber": 1.0,
+    "pymupdf": 1.0
+  },
+  "removed_junk_lines": 16,
+  "removed_inline_numbers": 49,
+  "converted_numbers_to_words": 0,
+  "converted_quotes": true,
+  "preserved_headings": 0,
+  "extracted_footnotes": 0,
+  "language": "en",
+  "language_confidence": 0.9,
+  "changes": [
+    "Detected language: en",
+    "Removed 16 junk lines",
+    "Removed 49 inline page numbers",
+    "Converted curly quotes to straight quotes",
+    "TTS: Normalized unicode characters",
+    "TTS: Removed PDF artifacts",
+    "TTS: Fixed punctuation spacing"
+  ],
+  "tts_ready": true,
+  "original_length": 154505,
+  "final_length": 155139,
+  "size_change": 634,
+  "text_yield": 1.0041034270735576,
+  "file_id": "analects_test_v2",
+  "source_file": "..\\The Analects of Confucius.pdf",
+  "detected_format": "pdf",
+  "classification": "unknown"
+}

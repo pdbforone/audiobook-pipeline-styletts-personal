@@ -1,0 +1,25 @@
+pipeline_json: ../pipeline.json
+input_dir: ../phase4_tts/audio_chunks
+output_dir: processed
+sample_rate: 24000
+lufs_target: -18.0
+snr_threshold: 0.0
+noise_reduction_factor: 0.02
+enable_volume_normalization: true
+volume_norm_headroom: 0.3
+crossfade_duration: 0.2
+mp3_bitrate: 192k
+audiobook_title: The Analects of Confucius
+audiobook_author: Confucius
+max_workers: 2
+chunk_size_seconds: 30
+retries: 0
+quality_validation_enabled: false
+processing_timeout: 60
+memory_limit_mb: 1024
+temp_dir: temp
+cleanup_temp_files: true
+log_level: INFO
+log_file: audio_enhancement.log
+resume_on_failure: false
+backup_original: false

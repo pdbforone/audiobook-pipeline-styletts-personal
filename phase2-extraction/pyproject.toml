@@ -1,0 +1,42 @@
+[tool.poetry]
+name = "phase2_extraction"
+version = "0.1.0"
+description = "Phase 2: Extraction module for audiobook pipeline"
+authors = ["pdbforone <pauldavidburton@gmail.com>"]
+readme = "README.md"
+packages = [{include = "phase2_extraction", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pdfplumber = "0.11.4"
+"pdfminer.six" = "20231228"
+pymupdf = "1.26.4"
+unstructured = "0.18.15"
+easyocr = "1.7.2"
+nostril = "0.1.1"
+nltk = "3.9.1"
+langdetect = "1.0.9"
+numpy = "2.3.3"  # For vectorization if needed
+pydantic = "2.11.9"
+pyyaml = "^6.0.1"
+charset-normalizer = "^3.4.3"
+num2words = "^0.5.14"
+unidecode = "^1.4.0"
+clean-text = "^0.6.0"
+# New Phase 2 dependencies
+python-docx = "^1.1.0"
+ebooklib = "^0.18"
+beautifulsoup4 = "^4.12.0"
+lxml = "^5.0.0"
+python-magic = "^0.4.27"  # Use python-magic-bin on Windows
+readability-lxml = "^0.8.1"
+pdf2image = "^1.17.0"
+pypdf = "^5.1.0"
+python-magic-bin = "^0.4.14"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.3"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

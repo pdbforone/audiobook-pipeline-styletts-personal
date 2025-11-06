@@ -1,0 +1,126 @@
+You are assisting with a **commercial audiobook production pipeline** that converts public domain texts into revenue-generating audiobooks for distribution on YouTube, podcasts, and streaming platforms.
+
+## Project Overview
+**Commercial Goal:** Build a profitable audiobook business with near-zero marginal costs by using:
+- Public domain content (zero licensing fees)
+- Open-source software (zero software costs)
+- CPU-only processing (consumer hardware)
+- Batch automation (scale to 100+ books/month)
+
+**Revenue Model:**
+- YouTube ad revenue (monetized videos)
+- Podcast sponsorships
+- Future: Audible, Spotify, Patreon
+
+## Architecture
+7-phase modular pipeline (monorepo with Poetry + Conda):
+
+**Phase 1 - Validation:** SQLite/Pydantic metadata, pikepdf repair, PyMuPDF classification  
+**Phase 2 - Extraction:** Multi-format ingestion (PDF/EPUB/DOCX/HTML), OCR for scanned docs, TTS normalization  
+**Phase 3 - Chunking:** Genre-aware semantic segmentation (spaCy + sentence-transformers), voice selection  
+**Phase 4 - TTS Synthesis:** Chatterbox TTS Extended (voice cloning), two-tier validation, CPU-optimized  
+**Phase 5 - Enhancement:** Librosa + PyDub polishing, LUFS normalization, noise reduction  
+**Phase 5.5 - Subtitles:** faster-whisper transcription (CPU), SRT/VTT generation, WER tracking  
+**Phase 6 - Orchestration:** Single-file pipeline, resume capability, Conda activation for Phase 4  
+**Phase 7 - Batch:** Parallel processing (joblib/Trio), CPU monitoring, queue management
+
+## Current Status
+✅ ALL PHASES COMPLETE AND OPERATIONAL  
+✅ Production-tested and battle-hardened  
+✅ End-to-end pipeline working  
+✅ Batch processing functional  
+✅ Multi-format output (audio/video/subtitles)
+
+## Quality Targets (ACHIEVED)
+- Text extraction yield: >98% (target met)
+- Semantic coherence: >0.87 (target met)
+- Audio quality (MOS): >4.5 (target met)
+- Subtitle accuracy (WER): <15% (target met)
+- LUFS normalization: -23 dB ±2dB (target met)
+- Processing time: ~2 hours/book (acceptable for commercial use)
+
+## Technical Constraints
+- **CPU-only:** No GPU dependencies allowed (accessibility, cost)
+- **Open-source:** No commercial licenses or paid APIs
+- **Modular:** Poetry virtualenvs per phase, Conda for Phase 4 only
+- **State management:** pipeline.json as single source of truth
+- **Error handling:** Structured logging, retry logic, resume capability
+- **Quality control:** Validation at every phase, metrics tracking
+
+## Development Priorities
+1. **Commercial viability:** Prioritize features that improve revenue potential
+2. **Automation:** Minimize manual intervention for scale
+3. **Quality:** Maintain commercial-grade output
+4. **Cost:** Keep marginal cost near zero
+5. **Reliability:** Batch processing must be robust
+
+## When Helping With Code
+- Follow PEP 8 style
+- Include comprehensive error handling (Pydantic validation)
+- Add pytest tests (target >85% coverage)
+- Use absolute paths (cross-platform compatibility)
+- Log metrics to pipeline.json
+- CPU-optimize all operations
+- Provide actionable error messages
+- Include timing benchmarks
+
+## Dependencies (2025 Updates)
+- Chatterbox TTS Extended (voice cloning, multilingual)
+- faster-whisper (CPU-optimized transcription)
+- sentence-transformers (semantic analysis)
+- librosa 0.11.0 (NumPy 2.x compatibility)
+- pikepdf 9.11.0 (PDF repair)
+- spaCy 3.8+ (NLP)
+
+**Verify compatibility:** All dependencies must support CPU-only operation
+
+## Business Context Awareness
+When making architectural decisions, consider:
+- **Scale:** Will this work for 100+ books/month?
+- **Cost:** Does this maintain near-zero marginal cost?
+- **Quality:** Is output commercially competitive?
+- **Automation:** Can this run without manual intervention?
+- **Revenue:** Does this enable new monetization streams?
+
+## File Organization
+- Each phase: Own pyproject.toml + virtualenv
+- Phase 4: Separate Conda environment (TTS dependencies)
+- Artifacts: Organized by phase (/artifacts/text/, /artifacts/audio/, etc.)
+- State: pipeline.json tracks everything (thread-safe updates)
+- Logs: Structured, timestamped, actionable
+
+## Testing Expectations
+- Unit tests: Mock file I/O and external dependencies
+- Integration tests: End-to-end with sample public domain texts
+- Error tests: Simulate failures, verify recovery
+- Coverage: >85% target (except Phase 4 currently)
+
+## Quality Assurance
+- Text yield >98% (validated)
+- Coherence >0.87 (semantic analysis)
+- MOS >4.5 (audio quality)
+- WER <15% (subtitle accuracy)
+- Zero unnatural TTS breaks (genre-aware chunking)
+
+## Current Focus Areas
+- Maintaining production stability
+- Optimizing batch processing throughput
+- Improving subtitle generation accuracy
+- Adding Phase 4 test coverage
+- Documenting production workflows
+
+## Legal Considerations
+- **Only process public domain texts**
+- Verify copyright status before processing
+- USA: Pre-1928 generally safe, but verify jurisdiction
+- Include copyright checks in Phase 1 validation
+- Commercial use requires explicit public domain status
+
+## Output Format
+- Markdown documentation with code blocks
+- Tables for metrics and dependencies
+- CLI examples using Poetry/Conda
+- Benchmarks with real numbers
+- Phased progress tracking
+
+**Remember:** This is a commercial venture optimized for profitability through volume production while maintaining professional quality standards.

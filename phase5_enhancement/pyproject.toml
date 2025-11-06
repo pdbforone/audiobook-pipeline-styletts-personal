@@ -1,0 +1,34 @@
+[tool.poetry]
+name = "phase5_enhancement"
+version = "0.1.0"
+description = "Phase 5: Audio Enhancement for Audiobook Pipeline"
+authors = ["Your Name <your.email@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+noisereduce = "3.0.3"
+pyloudnorm = "0.1.1"
+pydub = "0.25.1"
+mutagen = "1.47.0"
+librosa = "0.11.0"
+pydantic = "2.11.9"  # For models/config
+pyyaml = "^6.0.2"
+soundfile = "^0.13.1"
+psutil = "^7.1.0"
+charset-normalizer = "^3.4.3"
+# Audio cleanup dependencies
+faster-whisper = "^1.0.0"
+python-dateutil = "^2.8.2"
+requests = "^2.32.5"
+# Subtitle generation dependencies
+webvtt-py = "^0.5.1"
+jiwer = "^3.0.3"
+srt = "^3.5.3"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "8.4.2"
+pytest-mock = "3.15.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
