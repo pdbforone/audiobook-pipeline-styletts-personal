@@ -317,7 +317,9 @@ with state._file_lock(timeout=10.0):
     write_state(data)
 ```
 
-Uses `fcntl.flock()` for advisory locking:
+**Cross-Platform Locking:**
+- **Unix/Linux/macOS**: Uses `fcntl.flock()` for advisory locking
+- **Windows**: Uses `msvcrt.locking()` for mandatory locking
 - **Exclusive lock** during write operations
 - **Timeout-based** to prevent deadlocks
 - **Automatic cleanup** on process exit
