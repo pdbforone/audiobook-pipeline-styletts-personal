@@ -22,12 +22,16 @@ class KaraokeGenerator:
             style_config: Dictionary containing:
                 - fontname: Font family (e.g., 'Arial')
                 - fontsize: Font size in pixels (e.g., 32)
-                - primary_color: Default text color in ASS format (e.g., '&H00FFFFFF')
-                - secondary_color: Highlight color in ASS format (e.g., '&H00FFFF00')
+                - primary_color: Color for current/highlighted word (e.g., '&H0000FFFF' for yellow)
+                - secondary_color: Color for unread words (e.g., '&H00FFFFFF' for white)
                 - outline: Outline width (e.g., 3)
                 - shadow: Shadow depth (e.g., 2)
                 - alignment: Text alignment (2 = bottom center)
                 - margin_v: Vertical margin in pixels (e.g., 80)
+                
+        Note: ASS karaoke format uses {\k##} tags where:
+            - SecondaryColour = color BEFORE karaoke timing (unread words)
+            - PrimaryColour = color AFTER karaoke timing starts (currently being read)
         """
         self.style = style_config
         logger.info(f"Initialized KaraokeGenerator with font: {style_config['fontname']} {style_config['fontsize']}px")
@@ -52,6 +56,9 @@ class KaraokeGenerator:
     def _generate_karaoke_line(self, words: List[Dict[str, Any]], line_start: float, line_end: float) -> str:
         """
         Generate karaoke tags for a subtitle line.
+        
+        CRITICAL: Karaoke duration includes the word PLUS any gap until the next word starts.
+        This ensures the highlighting stays synced with actual speech timing.
 
         Args:
             words: List of word dictionaries with 'word', 'start', 'end' keys
@@ -67,9 +74,18 @@ class KaraokeGenerator:
         karaoke_text = ""
 
         for i, word in enumerate(words):
-            # Calculate duration in centiseconds (1/100th of a second)
-            # ASS karaoke format: {\k##} where ## is duration in centiseconds
-            duration_cs = int((word['end'] - word['start']) * 100)
+            # Calculate duration INCLUDING gap until next word
+            # This is the time from this word's start to the next word's start
+            # (or to line end for the last word)
+            if i < len(words) - 1:
+                # Duration = time until next word starts
+                duration = words[i + 1]['start'] - word['start']
+            else:
+                # Last word: duration = time until line ends
+                duration = line_end - word['start']
+            
+            # Convert to centiseconds (1/100th of a second)
+            duration_cs = int(duration * 100)
 
             # Ensure minimum duration of 10 centiseconds (0.1 seconds) for visibility
             duration_cs = max(10, duration_cs)
@@ -111,8 +127,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """.format(
             fontname=self.style['fontname'],
             fontsize=self.style['fontsize'],
-            primary_color=self.style['primary_color'],  # White (default)
-            secondary_color=self.style['secondary_color'],  # Yellow (highlight)
+            primary_color=self.style['primary_color'],  # Yellow (currently being read/highlighted)
+            secondary_color=self.style['secondary_color'],  # White (not yet read)
             outline_color='&H00000000',  # Black outline
             back_color='&H00000000',  # Black background (transparent)
             bold=1,  # Bold text
@@ -160,13 +176,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         word_durations = []
 
         for seg in segments:
-            start_time = self._format_ass_timestamp(seg['start'])
-            end_time = self._format_ass_timestamp(seg['end'])
-
             # Check if word-level data is available
             if 'words' in seg and seg['words']:
+                # Use FIRST WORD start time as line start (not segment start)
+                # This ensures karaoke timing matches actual speech
+                first_word_start = seg['words'][0]['start']
+                last_word_end = seg['words'][-1]['end']
+                
+                start_time = self._format_ass_timestamp(first_word_start)
+                end_time = self._format_ass_timestamp(last_word_end)
+                
                 # Generate karaoke line with word-level timing
-                karaoke_text = self._generate_karaoke_line(seg['words'], seg['start'], seg['end'])
+                karaoke_text = self._generate_karaoke_line(seg['words'], first_word_start, last_word_end)
                 total_words += len(seg['words'])
 
                 # Calculate average word duration for this segment
@@ -174,6 +195,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     word_durations.append(word['end'] - word['start'])
             else:
                 # Fallback: Use plain text without karaoke tags
+                start_time = self._format_ass_timestamp(seg['start'])
+                end_time = self._format_ass_timestamp(seg['end'])
                 karaoke_text = seg['text']
                 logger.warning(f"No word-level data for segment at {seg['start']:.2f}s - using plain text")
 
