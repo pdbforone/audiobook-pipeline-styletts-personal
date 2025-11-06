@@ -8,7 +8,9 @@
       "Bash(gh auth login:*)",
       "Bash(git config:*)",
       "Bash(cat:*)",
-      "Bash(git init:*)"
+      "Bash(git init:*)",
+      "Bash(git push:*)",
+      "Bash(git log:*)"
     ],
     "deny": [],
     "ask": []
