@@ -297,8 +297,8 @@ class SubtitleGenerator:
             karaoke_gen = KaraokeGenerator(style_config={
                 'fontname': 'Arial',
                 'fontsize': 32,
-                'primary_color': '&H00FFFFFF',  # White (default text)
-                'secondary_color': '&H0000FFFF',  # Yellow (BGR format: BB GG RR)
+                'primary_color': '&H0000FFFF',  # Yellow (currently being read/highlighted)
+                'secondary_color': '&H00FFFFFF',  # White (not yet read)
                 'outline': 3,
                 'shadow': 2,
                 'alignment': 2,  # Bottom center
