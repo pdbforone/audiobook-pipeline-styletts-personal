@@ -24,17 +24,25 @@ Usage:
         # Commits atomically on __exit__, rolls back on exception
 """
 
-import fcntl
 import json
 import logging
 import os
+import platform
 import shutil
+import sys
 import time
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 from copy import deepcopy
+
+# Platform-specific file locking imports
+_IS_WINDOWS = platform.system() == 'Windows'
+if _IS_WINDOWS:
+    import msvcrt
+else:
+    import fcntl
 
 from .models import PipelineSchema, PYDANTIC_AVAILABLE
 
@@ -269,10 +277,49 @@ class PipelineState:
 
         logger.debug(f"StateManager initialized: {self.path}")
 
+    def _acquire_lock(self, lock_file):
+        """
+        Platform-specific lock acquisition.
+
+        Args:
+            lock_file: Open file handle to lock
+
+        Raises:
+            BlockingIOError/OSError: If lock cannot be acquired immediately
+        """
+        if _IS_WINDOWS:
+            # Windows: Use msvcrt.locking()
+            # Lock 1 byte at the beginning of the file
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            # Unix: Use fcntl.flock()
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def _release_lock(self, lock_file):
+        """
+        Platform-specific lock release.
+
+        Args:
+            lock_file: Open file handle to unlock
+        """
+        try:
+            if _IS_WINDOWS:
+                # Windows: Unlock the byte
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                # Unix: Unlock with fcntl
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        except Exception as e:
+            logger.warning(f"Lock release failed: {e}")
+
     @contextmanager
     def _file_lock(self, timeout: float = 10.0):
         """
-        Acquire exclusive file lock.
+        Acquire exclusive file lock (cross-platform).
+
+        Works on both Windows (msvcrt) and Unix (fcntl).
 
         Args:
             timeout: Maximum seconds to wait for lock
@@ -282,15 +329,18 @@ class PipelineState:
         """
         lock_file = None
         try:
+            # Open lock file for writing
             lock_file = open(self.lock_path, 'w')
             start_time = time.time()
 
+            # Try to acquire lock with timeout
             while True:
                 try:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    self._acquire_lock(lock_file)
                     logger.debug("Lock acquired")
                     break
-                except BlockingIOError:
+                except (BlockingIOError, OSError) as e:
+                    # Both platforms raise exceptions when lock unavailable
                     if time.time() - start_time > timeout:
                         raise StateLockError(
                             f"Could not acquire lock after {timeout}s. "
@@ -301,12 +351,9 @@ class PipelineState:
             yield
         finally:
             if lock_file:
-                try:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-                    lock_file.close()
-                    logger.debug("Lock released")
-                except Exception as e:
-                    logger.warning(f"Lock release failed: {e}")
+                self._release_lock(lock_file)
+                lock_file.close()
+                logger.debug("Lock released")
 
     def read(self, validate: bool = None) -> Dict[str, Any]:
         """
