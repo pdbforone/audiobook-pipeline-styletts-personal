@@ -18,6 +18,7 @@ import webvtt
 from .models import SubtitleConfig
 from .subtitle_aligner import align_timestamps, detect_drift
 from .subtitle_validator import calculate_wer, validate_coverage, format_srt, format_vtt
+from .subtitle_karaoke import KaraokeGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +26,9 @@ logger = logging.getLogger(__name__)
 class SubtitleGenerator:
     """Generate subtitles from audiobook with quality validation."""
 
-    def __init__(self, config: SubtitleConfig):
+    def __init__(self, config: SubtitleConfig, enable_karaoke: bool = False):
         self.config = config
+        self.enable_karaoke = enable_karaoke
         self.model = None
         self.audio_duration = None
         self.segments = []
@@ -73,6 +75,7 @@ class SubtitleGenerator:
                 logger.info(f"Resuming from {last_end:.2f}s")
 
         # Transcribe with faster-whisper
+        # Enable word-level timestamps for karaoke mode
         segments_iter, info = self.model.transcribe(
             str(self.config.audio_path),
             language=self.config.language,
@@ -82,7 +85,8 @@ class SubtitleGenerator:
             vad_parameters=dict(
                 min_silence_duration_ms=500,
                 threshold=0.5
-            )
+            ),
+            word_timestamps=self.enable_karaoke  # Enable word-level timestamps for karaoke
         )
 
         logger.info(f"Detected language: {info.language} (confidence: {info.language_probability:.2f})")
@@ -96,6 +100,19 @@ class SubtitleGenerator:
                 'text': segment.text.strip(),
                 'no_speech_prob': segment.no_speech_prob
             }
+
+            # Capture word-level timestamps for karaoke mode
+            if self.enable_karaoke and hasattr(segment, 'words') and segment.words:
+                segment_data['words'] = [
+                    {
+                        'word': word.word,
+                        'start': word.start,
+                        'end': word.end,
+                        'probability': word.probability
+                    }
+                    for word in segment.words
+                ]
+                logger.debug(f"Captured {len(segment_data['words'])} words at {segment.start:.2f}s")
 
             # Handle silence/non-speech
             if segment.no_speech_prob > 0.8 and (segment.end - segment.start) > 3.0:
@@ -254,7 +271,7 @@ class SubtitleGenerator:
         return segments, metrics
 
     def save_subtitles(self, segments: List[Dict]):
-        """Save subtitles in both SRT and VTT formats."""
+        """Save subtitles in SRT, VTT, and optionally ASS (karaoke) formats."""
         logger.info("Saving subtitle files...")
 
         # Generate filenames
@@ -273,7 +290,31 @@ class SubtitleGenerator:
             f.write(vtt_content)
         logger.info(f"Saved VTT: {vtt_path}")
 
-        return srt_path, vtt_path
+        # Save ASS (karaoke) if enabled
+        ass_path = None
+        if self.enable_karaoke:
+            ass_path = self.config.output_dir / f"{self.config.file_id}_karaoke.ass"
+            karaoke_gen = KaraokeGenerator(style_config={
+                'fontname': 'Arial',
+                'fontsize': 32,
+                'primary_color': '&H00FFFFFF',  # White (default text)
+                'secondary_color': '&H00FFFF00',  # Yellow (highlighted word)
+                'outline': 3,
+                'shadow': 2,
+                'alignment': 2,  # Bottom center
+                'margin_v': 80
+            })
+
+            karaoke_stats = karaoke_gen.generate_ass(segments, ass_path)
+            logger.info(f"Saved karaoke ASS: {ass_path}")
+
+            # Add karaoke stats to metrics
+            self.metrics['karaoke_enabled'] = True
+            self.metrics['karaoke_stats'] = karaoke_stats
+        else:
+            self.metrics['karaoke_enabled'] = False
+
+        return srt_path, vtt_path, ass_path
 
     def save_metrics(self):
         """Save metrics to JSON."""
@@ -304,7 +345,7 @@ class SubtitleGenerator:
             self.metrics = metrics
 
             # Save outputs
-            srt_path, vtt_path = self.save_subtitles(final_segments)
+            srt_path, vtt_path, ass_path = self.save_subtitles(final_segments)
             self.save_metrics()
 
             # Calculate total time
@@ -317,13 +358,20 @@ class SubtitleGenerator:
             if metrics['wer'] is not None:
                 logger.info(f"WER: {metrics['wer']:.2%}")
             logger.info(f"Segments: {metrics['segment_count']}")
+            if self.enable_karaoke:
+                logger.info(f"Karaoke mode: ENABLED (ASS file generated)")
 
-            return {
+            result = {
                 'status': 'success',
                 'srt_path': str(srt_path),
                 'vtt_path': str(vtt_path),
                 'metrics': self.metrics
             }
+
+            if ass_path:
+                result['ass_path'] = str(ass_path)
+
+            return result
 
         except Exception as e:
             logger.error(f"Subtitle generation failed: {e}", exc_info=True)
@@ -352,6 +400,8 @@ def main():
                        help='Disable checkpoint/resume')
     parser.add_argument('--no-drift-correction', action='store_true',
                        help='Disable timestamp drift correction')
+    parser.add_argument('--karaoke', action='store_true',
+                       help='Generate karaoke-style word highlighting (ASS format)')
 
     args = parser.parse_args()
 
@@ -373,7 +423,7 @@ def main():
     )
 
     # Generate subtitles
-    generator = SubtitleGenerator(config)
+    generator = SubtitleGenerator(config, enable_karaoke=args.karaoke)
     result = generator.generate()
 
     # Print result
@@ -381,11 +431,17 @@ def main():
         print(f"\n✅ Subtitles generated successfully!")
         print(f"SRT: {result['srt_path']}")
         print(f"VTT: {result['vtt_path']}")
+        if 'ass_path' in result:
+            print(f"ASS (Karaoke): {result['ass_path']}")
         print(f"\nMetrics:")
         print(f"  Coverage: {result['metrics']['coverage']:.2%}")
         if result['metrics']['wer'] is not None:
             print(f"  WER: {result['metrics']['wer']:.2%}")
         print(f"  Segments: {result['metrics']['segment_count']}")
+        if result['metrics'].get('karaoke_enabled'):
+            karaoke_stats = result['metrics'].get('karaoke_stats', {})
+            print(f"  Karaoke words: {karaoke_stats.get('total_words', 0)}")
+            print(f"  Avg word duration: {karaoke_stats.get('avg_word_duration', 0):.3f}s")
         print(f"  Processing time: {result['metrics']['processing_time']:.1f}s")
     else:
         print(f"\n❌ Failed: {result['error']}")
