@@ -19,6 +19,10 @@ import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+# Add parent directory to path for pipeline_common
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from pipeline_common import PipelineState, StateError
+
 try:
     from rich.console import Console
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
@@ -130,33 +134,41 @@ def check_conda_environment(env_name: str) -> Tuple[bool, Optional[str]]:
 
 def load_pipeline_json(json_path: Path) -> Dict:
     """
-    Load pipeline.json with error handling.
-    
+    Load pipeline.json with atomic state manager.
+
     Returns:
         Dictionary with pipeline data, or empty dict on error
     """
-    if not json_path.exists():
-        logger.info(f"Pipeline JSON not found: {json_path} (will create on first run)")
-        return {}
-    
     try:
-        with open(json_path, 'r') as f:
-            data = json.load(f)
-        
-        # Validate structure
-        if not isinstance(data, dict):
-            logger.warning(f"Invalid pipeline.json structure, starting fresh")
-            return {}
-        
-        logger.info(f"Loaded pipeline.json: {len(data)} phase(s) recorded")
+        state = PipelineState(json_path, validate_on_read=False)
+        data = state.read()
+
+        if data:
+            logger.info(f"Loaded pipeline.json: {len(data)} phase(s) recorded")
+        else:
+            logger.info(f"Pipeline JSON not found: {json_path} (will create on first run)")
+
         return data
-        
-    except json.JSONDecodeError as e:
+
+    except StateError as e:
         logger.error(f"Corrupt pipeline.json: {e}")
-        backup_path = json_path.with_suffix('.json.corrupt')
-        json_path.rename(backup_path)
-        logger.info(f"Moved corrupt file to: {backup_path}")
+
+        # Try to restore from backup
+        try:
+            state = PipelineState(json_path)
+            backups = state.list_backups()
+            if backups:
+                logger.info(f"Found {len(backups)} backup(s), restoring most recent...")
+                if state.restore_backup(backups[0]):
+                    logger.info("✓ Restored from backup")
+                    return state.read()
+        except Exception as restore_error:
+            logger.warning(f"Backup restore failed: {restore_error}")
+
+        # Last resort: start fresh
+        logger.warning("Starting with empty pipeline state")
         return {}
+
     except Exception as e:
         logger.error(f"Failed to load pipeline.json: {e}")
         return {}
@@ -424,8 +436,8 @@ def run_phase4_with_conda(phase_dir: Path, file_id: str, pipeline_json: Path, vo
     
     # Load chunks from pipeline.json
     try:
-        with open(pipeline_json, 'r') as f:
-            pipeline = json.load(f)
+        state = PipelineState(pipeline_json, validate_on_read=False)
+        pipeline = state.read()
         
         phase3_files = pipeline.get("phase3", {}).get("files", {})
         
@@ -588,37 +600,33 @@ def finalize_phase4(phase_dir: Path, file_id: str, pipeline_json: Path, expected
     
     logger.info(f"Sample paths: {audio_paths[:3]}...")
     
-    # Update pipeline.json
+    # Update pipeline.json atomically
     try:
-        with open(pipeline_json, 'r') as f:
-            pipeline = json.load(f)
-        
-        # Ensure phase4 structure exists
-        if 'phase4' not in pipeline:
-            pipeline['phase4'] = {'status': 'success', 'files': {}}
-        if 'files' not in pipeline['phase4']:
-            pipeline['phase4']['files'] = {}
-        if file_id not in pipeline['phase4']['files']:
-            pipeline['phase4']['files'][file_id] = {}
-        
-        # Update chunk_audio_paths with ABSOLUTE paths
-        pipeline['phase4']['files'][file_id]['chunk_audio_paths'] = audio_paths
-        pipeline['phase4']['files'][file_id]['status'] = 'success'
-        pipeline['phase4']['status'] = 'success'
-        
-        # Add metadata for debugging
-        pipeline['phase4']['files'][file_id]['total_chunks'] = len(audio_paths)
-        pipeline['phase4']['files'][file_id]['audio_dir'] = str(audio_dir.resolve())
-        
-        # Write back
-        with open(pipeline_json, 'w') as f:
-            json.dump(pipeline, f, indent=4)
-        
-        logger.info(f"OK Updated pipeline.json with {len(audio_paths)} ABSOLUTE audio paths")
+        state = PipelineState(pipeline_json, validate_on_read=False)
+
+        with state.transaction() as txn:
+            # Ensure phase4 structure exists
+            if 'phase4' not in txn.data:
+                txn.data['phase4'] = {'status': 'success', 'files': {}}
+            if 'files' not in txn.data['phase4']:
+                txn.data['phase4']['files'] = {}
+            if file_id not in txn.data['phase4']['files']:
+                txn.data['phase4']['files'][file_id] = {}
+
+            # Update chunk_audio_paths with ABSOLUTE paths
+            txn.data['phase4']['files'][file_id]['chunk_audio_paths'] = audio_paths
+            txn.data['phase4']['files'][file_id]['status'] = 'success'
+            txn.data['phase4']['status'] = 'success'
+
+            # Add metadata for debugging
+            txn.data['phase4']['files'][file_id]['total_chunks'] = len(audio_paths)
+            txn.data['phase4']['files'][file_id]['audio_dir'] = str(audio_dir.resolve())
+
+        logger.info(f"✓ Updated pipeline.json atomically with {len(audio_paths)} audio paths")
         logger.info(f"  First: {audio_paths[0]}")
         logger.info(f"  Last:  {audio_paths[-1]}")
         return True
-        
+
     except Exception as e:
         logger.error(f"Failed to update pipeline.json: {e}")
         import traceback
@@ -695,18 +703,15 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
     
     # CRITICAL FIX #2: Clear Phase 5's old data from pipeline.json to prevent resume logic from filtering chunks
     try:
-        with open(pipeline_json, 'r') as f:
-            pipeline_data = json.load(f)
-        
-        if 'phase5' in pipeline_data:
-            old_chunk_count = len(pipeline_data.get('phase5', {}).get('chunks', []))
-            logger.info(f"WARNING: Clearing {old_chunk_count} old Phase 5 chunks from pipeline.json")
-            del pipeline_data['phase5']
-            
-            with open(pipeline_json, 'w') as f:
-                json.dump(pipeline_data, f, indent=4)
-            
-            logger.info("OK Cleared Phase 5 data - starting fresh")
+        state = PipelineState(pipeline_json, validate_on_read=False)
+
+        with state.transaction() as txn:
+            if 'phase5' in txn.data:
+                old_chunk_count = len(txn.data.get('phase5', {}).get('chunks', []))
+                logger.info(f"WARNING: Clearing {old_chunk_count} old Phase 5 chunks from pipeline.json")
+                del txn.data['phase5']
+
+        logger.info("✓ Cleared Phase 5 data atomically - starting fresh")
     except Exception as e:
         logger.warning(f"Could not clear Phase 5 data (non-fatal): {e}")
     
@@ -809,8 +814,8 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
 
     try:
         # Load pipeline data to get audiobook path
-        with open(pipeline_json, 'r') as f:
-            pipeline_data = json.load(f)
+        state = PipelineState(pipeline_json, validate_on_read=False)
+        pipeline_data = state.read()
 
         # Phase schema note: downstream phases store file artifacts under phaseX["files"][file_id]["path"]
         phase5_data = pipeline_data.get('phase5', {})
@@ -902,14 +907,18 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
         if result.returncode != 0:
             logger.error(f"Phase 5.5 FAILED (exit {result.returncode}) in {duration:.1f}s")
             logger.error(f"Error: {result.stderr[-1000:]}")
-            # Update pipeline.json with failure
-            pipeline_data['phase5_5'] = {
-                'status': 'failed',
-                'error': result.stderr[-500:],
-                'timestamp': time.time()
-            }
-            with open(pipeline_json, 'w') as f:
-                json.dump(pipeline_data, f, indent=4)
+
+            # Update pipeline.json with failure atomically
+            try:
+                with state.transaction() as txn:
+                    txn.data['phase5_5'] = {
+                        'status': 'failed',
+                        'error': result.stderr[-500:],
+                        'timestamp': time.time()
+                    }
+            except Exception as e:
+                logger.warning(f"Could not update pipeline.json with failure: {e}")
+
             return False
 
         # Parse output to get subtitle paths
@@ -923,18 +932,16 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
             with open(metrics_path, 'r') as f:
                 metrics = json.load(f)
 
-        # Update pipeline.json with success
-        pipeline_data['phase5_5'] = {
-            'status': 'success',
-            'srt_file': str(srt_path),
-            'vtt_file': str(vtt_path),
-            'metrics': metrics,
-            'timestamp': time.time(),
-            'duration': duration
-        }
-
-        with open(pipeline_json, 'w') as f:
-            json.dump(pipeline_data, f, indent=4)
+        # Update pipeline.json with success atomically
+        with state.transaction() as txn:
+            txn.data['phase5_5'] = {
+                'status': 'success',
+                'srt_file': str(srt_path),
+                'vtt_file': str(vtt_path),
+                'metrics': metrics,
+                'timestamp': time.time(),
+                'duration': duration
+            }
 
         logger.info(f"Phase 5.5 SUCCESS in {duration:.1f}s")
         logger.info(f"SRT: {srt_path}")
@@ -1019,8 +1026,8 @@ def process_single_chunk(
 def summarize_results(pipeline_json: Path):
     """Create summary table of pipeline results."""
     try:
-        with open(pipeline_json, 'r') as f:
-            data = json.load(f)
+        state = PipelineState(pipeline_json, validate_on_read=False)
+        data = state.read()
     except:
         return
     
