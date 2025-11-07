@@ -66,10 +66,52 @@ def print_panel(content: str, title: str = "", style: str = ""):
         print("="*60 + "\n")
 
 
+def get_clean_env_for_poetry() -> Dict[str, str]:
+    """
+    Create a clean environment for Poetry subprocess calls.
+
+    When the orchestrator runs in its own Poetry virtualenv, os.environ contains
+    Poetry/virtualenv variables that interfere with Poetry's ability to detect
+    and activate the correct virtualenv for phase subdirectories.
+
+    This function creates a clean environment by removing Poetry-specific variables
+    while preserving necessary system variables.
+
+    Returns:
+        Clean environment dict suitable for subprocess.run(env=...)
+    """
+    env = os.environ.copy()
+
+    # Remove Poetry and virtualenv variables that interfere with Poetry's detection
+    vars_to_remove = [
+        'VIRTUAL_ENV',           # Points to current virtualenv
+        'POETRY_ACTIVE',         # Indicates Poetry is active
+        'PYTHONHOME',            # Can override Python location
+        '_OLD_VIRTUAL_PATH',     # Backup of PATH before virtualenv activation
+        '_OLD_VIRTUAL_PYTHONHOME',  # Backup of PYTHONHOME
+    ]
+
+    for var in vars_to_remove:
+        env.pop(var, None)
+
+    # Clean PATH to remove current virtualenv's Scripts/bin directory
+    # This allows Poetry to add the correct virtualenv's Scripts/bin
+    if 'PATH' in env:
+        path_parts = env['PATH'].split(os.pathsep)
+        # Filter out paths containing current virtualenv indicators
+        clean_path_parts = [
+            p for p in path_parts
+            if not any(indicator in p.lower() for indicator in ['virtualenvs', '.venv', 'poetry'])
+        ]
+        env['PATH'] = os.pathsep.join(clean_path_parts)
+
+    return env
+
+
 def check_conda_environment(env_name: str) -> Tuple[bool, Optional[str]]:
     """
     Check if Conda environment exists and is accessible.
-    
+
     Returns:
         (exists: bool, error_message: Optional[str])
     """
@@ -388,7 +430,7 @@ def run_phase_standard(
         result = subprocess.run(
             cmd,
             cwd=str(phase_dir),
-            env=os.environ.copy(),  # Pass environment to subprocess (critical for Poetry on Windows)
+            env=get_clean_env_for_poetry(),  # Clean environment for Poetry virtualenv detection
             capture_output=True,
             text=True,
             encoding='utf-8',
@@ -774,7 +816,7 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
         result = subprocess.run(
             cmd,
             cwd=str(phase_dir),
-            env=os.environ.copy(),  # Pass environment to subprocess (critical for Poetry on Windows)
+            env=get_clean_env_for_poetry(),  # Clean environment for Poetry virtualenv detection
             capture_output=True,
             text=True,
             encoding='utf-8',
@@ -902,7 +944,7 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
         result = subprocess.run(
             cmd,
             cwd=str(phase5_dir),
-            env=os.environ.copy(),  # Pass environment to subprocess (critical for Poetry on Windows)
+            env=get_clean_env_for_poetry(),  # Clean environment for Poetry virtualenv detection
             capture_output=True,
             text=True,
             encoding='utf-8',
