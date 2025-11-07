@@ -42,6 +42,20 @@ foreach ($phase in $phases) {
             # Verify Python version
             $pythonVersion = poetry run python --version 2>&1
             Write-Host "  [OK] $pythonVersion" -ForegroundColor Green
+
+            # Special handling for Phase 3: Download spaCy language model
+            if ($phase -eq "phase3-chunking") {
+                Write-Host "  Downloading spaCy language model (en_core_web_sm)..." -ForegroundColor Gray
+                $spacyResult = poetry run python -m spacy download en_core_web_sm 2>&1
+
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "  [OK] spaCy model downloaded" -ForegroundColor Green
+                } else {
+                    Write-Host "  [WARN] spaCy model download failed - you may need to run this manually:" -ForegroundColor Yellow
+                    Write-Host "    cd phase3-chunking && poetry run python -m spacy download en_core_web_sm" -ForegroundColor Gray
+                }
+            }
+
             $success++
         } else {
             Write-Host "  [FAIL] Installation failed" -ForegroundColor Red
