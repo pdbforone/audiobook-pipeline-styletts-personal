@@ -12,6 +12,7 @@ Production-ready orchestrator - runs phases 1-5 sequentially with:
 import argparse
 import json
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -387,6 +388,7 @@ def run_phase_standard(
         result = subprocess.run(
             cmd,
             cwd=str(phase_dir),
+            env=os.environ.copy(),  # Pass environment to subprocess (critical for Poetry on Windows)
             capture_output=True,
             text=True,
             encoding='utf-8',
@@ -772,6 +774,7 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
         result = subprocess.run(
             cmd,
             cwd=str(phase_dir),
+            env=os.environ.copy(),  # Pass environment to subprocess (critical for Poetry on Windows)
             capture_output=True,
             text=True,
             encoding='utf-8',
@@ -899,6 +902,7 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
         result = subprocess.run(
             cmd,
             cwd=str(phase5_dir),
+            env=os.environ.copy(),  # Pass environment to subprocess (critical for Poetry on Windows)
             capture_output=True,
             text=True,
             encoding='utf-8',
