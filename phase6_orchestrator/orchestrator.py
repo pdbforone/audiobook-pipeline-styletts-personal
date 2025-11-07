@@ -365,8 +365,10 @@ def run_phase_standard(
     if not main_script.exists():
         logger.error(f"Script not found: {main_script}")
         return False
-    
-    cmd = ["poetry", "run", "python", str(main_script)]
+
+    # Use relative path from phase directory (critical for Poetry venv resolution)
+    script_relative = main_script.relative_to(phase_dir)
+    cmd = ["poetry", "run", "python", str(script_relative)]
     
     # Add phase-specific arguments
     if phase_num == 1:
@@ -750,13 +752,15 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
     
     # Build command - Phase 5 only accepts --config, --chunk_id, --skip_concatenation
     main_script = phase_dir / "src" / "phase5_enhancement" / "main.py"
-    
+
     if not main_script.exists():
         logger.error(f"Phase 5 script not found: {main_script}")
         return False
-    
+
+    # Use relative path from phase directory (critical for Poetry venv resolution)
+    script_relative = main_script.relative_to(phase_dir)
     cmd = [
-        "poetry", "run", "python", str(main_script),
+        "poetry", "run", "python", str(script_relative),
         "--config=config.yaml"
     ]
     
