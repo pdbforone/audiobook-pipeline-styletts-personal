@@ -10,10 +10,11 @@
 
 This will:
 - Install dependencies for all Poetry-managed phases (1, 2, 3, 5, 6, 7)
+- Download spaCy language model for Phase 3 (en_core_web_sm)
 - Show Python version for each phase
 - Report any installation failures
 
-**Takes:** 5-10 minutes (downloads dependencies)
+**Takes:** 5-10 minutes (downloads dependencies + ~40MB spaCy model)
 
 ### 2. Verify Installation
 ```powershell
@@ -60,10 +61,27 @@ poetry run python -c "import ftfy; print('OK')"
 
 Repeat for:
 - `phase2-extraction` (test: `import pdfplumber`)
-- `phase3-chunking` (test: `import spacy`)
+- `phase3-chunking` (test: `import spacy` - see note below)
 - `phase5_enhancement` (test: `import librosa`)
 - `phase6_orchestrator` (test: `import rich`)
 - `phase7_batch` (test: `import typer`)
+
+#### Phase 3 Special Requirement: spaCy Language Model
+
+Phase 3 requires an additional step to download the spaCy language model:
+
+```powershell
+cd phase3-chunking
+poetry install --sync
+
+# Download spaCy language model (required!)
+poetry run python -m spacy download en_core_web_sm
+
+# Verify both spaCy and the model
+poetry run python -c "import spacy; nlp = spacy.load('en_core_web_sm'); print('OK')"
+```
+
+**Why?** The spaCy model is a ~40MB data file, not a Python package. It must be downloaded separately after installing spaCy.
 
 ### Phase 4 (Conda)
 
@@ -91,6 +109,18 @@ python -c "import torch; print('OK')"
 cd <phase_directory>
 poetry install --sync
 ```
+
+### Issue: "Can't find model 'en_core_web_sm'" (Phase 3)
+
+**Cause:** spaCy language model not downloaded
+
+**Fix:**
+```powershell
+cd phase3-chunking
+poetry run python -m spacy download en_core_web_sm
+```
+
+**Why this happens:** The spaCy model is a large data file (~40MB) that must be downloaded separately. It's not installed automatically with `poetry install`.
 
 ### Issue: "Python version (3.11.9) is not allowed"
 

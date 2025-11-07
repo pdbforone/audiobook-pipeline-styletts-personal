@@ -54,6 +54,19 @@ foreach ($phase in $phases) {
             $allGood = $false
         }
 
+        # Special check for Phase 3: Verify spaCy model
+        if ($phaseName -eq "phase3-chunking") {
+            $spacyModelTest = poetry run python -c "import spacy; nlp = spacy.load('en_core_web_sm'); print('OK')" 2>&1
+
+            if ($spacyModelTest -match "OK") {
+                Write-Host "  spaCy model 'en_core_web_sm': Installed ✓" -ForegroundColor Green
+            } else {
+                Write-Host "  spaCy model 'en_core_web_sm': MISSING ✗" -ForegroundColor Red
+                Write-Host "  Run: cd phase3-chunking && poetry run python -m spacy download en_core_web_sm" -ForegroundColor Yellow
+                $allGood = $false
+            }
+        }
+
         # Show installed packages count
         $packageCount = (poetry show 2>&1 | Measure-Object -Line).Lines
         Write-Host "  Installed packages: $packageCount" -ForegroundColor Gray
