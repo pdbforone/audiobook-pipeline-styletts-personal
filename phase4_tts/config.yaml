@@ -2,6 +2,17 @@
 # Why: Centralizes settings for reproducibility and easy tuning. Loaded in main.py.
 # HQ Voice Cloning Tips: Use a clean 10-20s ref audio (e.g., neutral speech from LibriVox).
 # Adjust exaggeration for emotion (0.0-1.0; higher for dramatic audiobooks), cfg_weight for stability.
+#
+# ⚡ NEW: Parallel Processing Support
+# - Use --workers N flag to set parallel chunk processing (auto-detected by default)
+# - Standalone mode: Auto-detects CPU cores (physical cores - 2, capped at 12)
+# - Batch mode (Phase 7): Auto-detects AUDIOBOOK_BATCH_MODE env var, uses 1 worker
+# - Expected speedup: 4-6x on 8-core CPU, 6-10x on 16-core CPU
+#
+# Examples:
+#   python src/main.py --file_id MyBook --workers 8   # Force 8 parallel workers
+#   python src/main.py --file_id MyBook --workers 1   # Force serial processing
+#   python src/main.py --file_id MyBook               # Auto-detect (recommended)
 
 sample_rate: 24000  # Matches model default; for high-quality audio
 language: "en"      # Language ID for multilingual model
