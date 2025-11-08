@@ -322,6 +322,14 @@ def _run_subprocess(
     # Set cwd to phase directory - FIXED
     phase_dir = main_script.parent.parent.parent  # src/phaseX_xxx -> phaseX_xxx
 
+    # Prepare environment variables for subprocess
+    env = os.environ.copy()
+
+    # Set batch mode flag for Phase 4 (prevents parallel processing conflicts)
+    if phase == 4:
+        env["AUDIOBOOK_BATCH_MODE"] = "1"
+        logger.debug("Set AUDIOBOOK_BATCH_MODE=1 for Phase 4 (serial chunk processing)")
+
     # If we have a conda env name, use conda run
     if env_identifier:
         cmd = [
@@ -345,6 +353,7 @@ def _run_subprocess(
             text=True,
             timeout=config.phase_timeout,
             cwd=str(phase_dir),  # FIXED: Set working directory
+            env=env,  # ADDED: Pass environment variables
         )
         if result.returncode != 0:
             err_msg = f"Phase {phase} failed (code {result.returncode}): {result.stderr.strip()}"
