@@ -668,10 +668,11 @@ def main():
                         )
 
             # ===== CONCATENATION =====
+            final_output_path = None
             if enhanced_chunks_dict and not args.skip_concatenation:
                 sorted_chunk_ids = sorted(enhanced_chunks_dict.keys())
                 enhanced_chunks = [enhanced_chunks_dict[cid] for cid in sorted_chunk_ids]
-                
+
                 logger.info(f"Creating final audiobook from {len(enhanced_chunks)} chunks...")
                 combined_audio = concatenate_with_crossfades(
                     enhanced_chunks, config.sample_rate, config.crossfade_duration
@@ -696,6 +697,7 @@ def main():
                     },
                 )
                 embed_metadata(str(mp3_path), config)
+                final_output_path = str(mp3_path)
                 logger.info(f"Final audiobook created: {mp3_path}")
                 logger.info(
                     f"Duration: {len(combined_audio) / config.sample_rate:.1f} seconds"
@@ -747,6 +749,7 @@ def main():
 
             phase5_data = {
                 "status": "success" if successful > 0 else "failed",
+                "output_file": final_output_path,  # Path to final audiobook.mp3
                 "metrics": {
                     "successful": successful,
                     "failed": failed,

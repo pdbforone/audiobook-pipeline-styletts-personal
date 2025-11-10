@@ -5,16 +5,28 @@
 
 ## 🎯 Quick Start
 ```bash
-# Single book (default run)
+# Single book (default run: Phases 1-5)
 cd phase6_orchestrator
 poetry run python orchestrator.py \
-  --pipeline ../pipeline.json \
+  --pipeline-json ../pipeline.json \
   /path/to/book.pdf
 
 # Single book with subtitles
 poetry run python orchestrator.py \
-  --pipeline ../pipeline.json \
+  --pipeline-json ../pipeline.json \
   --enable-subtitles \
+  /path/to/book.pdf
+
+# Single book with custom voice
+poetry run python orchestrator.py \
+  --pipeline-json ../pipeline.json \
+  --voice narrator_female_01 \
+  /path/to/book.pdf
+
+# Run specific phases only (e.g., phases 4 and 5)
+poetry run python orchestrator.py \
+  --pipeline-json ../pipeline.json \
+  --phases 4 5 \
   /path/to/book.pdf
 
 # Batch processing (10–50 titles)
@@ -24,6 +36,45 @@ poetry run python src/phase7_batch/main.py \
   --pipeline ../pipeline.json \
   --workers 6 \
   --enable-subtitles
+```
+
+---
+
+## ⚙️ Orchestrator CLI Options
+
+### Required Arguments
+- `input_file` — Path to source PDF/EPUB/TXT file
+
+### Optional Flags
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--pipeline-json PATH` | `../pipeline.json` | Path to pipeline state file |
+| `--phases N [N ...]` | `1 2 3 4 5` | Select which phases to run (e.g., `--phases 4 5` for TTS + enhancement only) |
+| `--voice VOICE_ID` | *(auto)* | Override TTS voice selection (e.g., `narrator_female_01`, `morgan_freeman`) |
+| `--max-retries N` | `2` | Maximum retry attempts for failed phases |
+| `--no-resume` | *(disabled)* | Disable checkpoint/resume logic (always start fresh) |
+| `--enable-subtitles` | *(disabled)* | Run Phase 5.5 subtitle generation after Phase 5 |
+
+### Examples
+```bash
+# Retry-tolerant run with custom voice
+poetry run python orchestrator.py \
+  --pipeline-json ../pipeline.json \
+  --max-retries 3 \
+  --voice narrator_male_deep \
+  book.pdf
+
+# Fresh run (ignore previous state)
+poetry run python orchestrator.py \
+  --pipeline-json ../pipeline.json \
+  --no-resume \
+  book.pdf
+
+# Re-run only TTS (Phase 4) after fixing config
+poetry run python orchestrator.py \
+  --pipeline-json ../pipeline.json \
+  --phases 4 \
+  book.pdf
 ```
 
 ---
