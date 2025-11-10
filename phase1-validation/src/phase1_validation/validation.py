@@ -136,7 +136,7 @@ def repair_pdf(file_path: str, retries: int = 2) -> bool:
     return False
 
 
-def repair_epub(file_path: str) -> bool:
+def repair_epub(file_path: str, retries: int = 2) -> bool:
     try:
         book = ebooklib.epub.read_epub(file_path)
         ebooklib.epub.write_epub(file_path, book)
@@ -146,7 +146,7 @@ def repair_epub(file_path: str) -> bool:
         return False
 
 
-def repair_docx(file_path: str) -> bool:
+def repair_docx(file_path: str, retries: int = 2) -> bool:
     try:
         doc = Document(file_path)
         doc.save(file_path)
@@ -156,7 +156,7 @@ def repair_docx(file_path: str) -> bool:
         return False
 
 
-def repair_txt(file_path: str) -> bool:
+def repair_txt(file_path: str, retries: int = 2) -> bool:
     try:
         with open(file_path, "rb") as f:
             raw = f.read()

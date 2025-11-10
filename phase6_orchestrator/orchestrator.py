@@ -12,6 +12,7 @@ Production-ready orchestrator - runs phases 1-5 sequentially with:
 import argparse
 import json
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -65,10 +66,52 @@ def print_panel(content: str, title: str = "", style: str = ""):
         print("="*60 + "\n")
 
 
+def get_clean_env_for_poetry() -> Dict[str, str]:
+    """
+    Create a clean environment for Poetry subprocess calls.
+
+    When the orchestrator runs in its own Poetry virtualenv, os.environ contains
+    Poetry/virtualenv variables that interfere with Poetry's ability to detect
+    and activate the correct virtualenv for phase subdirectories.
+
+    This function creates a clean environment by removing Poetry-specific variables
+    while preserving necessary system variables.
+
+    Returns:
+        Clean environment dict suitable for subprocess.run(env=...)
+    """
+    env = os.environ.copy()
+
+    # Remove Poetry and virtualenv variables that interfere with Poetry's detection
+    vars_to_remove = [
+        'VIRTUAL_ENV',           # Points to current virtualenv
+        'POETRY_ACTIVE',         # Indicates Poetry is active
+        'PYTHONHOME',            # Can override Python location
+        '_OLD_VIRTUAL_PATH',     # Backup of PATH before virtualenv activation
+        '_OLD_VIRTUAL_PYTHONHOME',  # Backup of PYTHONHOME
+    ]
+
+    for var in vars_to_remove:
+        env.pop(var, None)
+
+    # Clean PATH to remove current virtualenv's Scripts/bin directory
+    # This allows Poetry to add the correct virtualenv's Scripts/bin
+    if 'PATH' in env:
+        path_parts = env['PATH'].split(os.pathsep)
+        # Filter out paths containing current virtualenv indicators
+        clean_path_parts = [
+            p for p in path_parts
+            if not any(indicator in p.lower() for indicator in ['virtualenvs', '.venv', 'poetry'])
+        ]
+        env['PATH'] = os.pathsep.join(clean_path_parts)
+
+    return env
+
+
 def check_conda_environment(env_name: str) -> Tuple[bool, Optional[str]]:
     """
     Check if Conda environment exists and is accessible.
-    
+
     Returns:
         (exists: bool, error_message: Optional[str])
     """
@@ -387,6 +430,7 @@ def run_phase_standard(
         result = subprocess.run(
             cmd,
             cwd=str(phase_dir),
+            env=get_clean_env_for_poetry(),  # Clean environment for Poetry virtualenv detection
             capture_output=True,
             text=True,
             encoding='utf-8',
@@ -663,12 +707,17 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
         result = subprocess.run(
             ["poetry", "install", "--no-root"],
             cwd=str(phase_dir),
+            env=get_clean_env_for_poetry(),  # Use clean environment for Poetry
             capture_output=True,
             text=True,
             timeout=300
         )
         if result.returncode != 0:
-            logger.error(f"Poetry install failed: {result.stderr}")
+            logger.error(f"Poetry install failed (exit {result.returncode})")
+            if result.stdout:
+                logger.error(f"STDOUT: {result.stdout}")
+            if result.stderr:
+                logger.error(f"STDERR: {result.stderr}")
             return False
         logger.info("Dependencies verified/installed successfully")
     except Exception as e:
@@ -751,19 +800,12 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
         return False
     
     # Build command - Phase 5 only accepts --config, --chunk_id, --skip_concatenation
-    main_script = phase_dir / "src" / "phase5_enhancement" / "main.py"
-
-    if not main_script.exists():
-        logger.error(f"Phase 5 script not found: {main_script}")
-        return False
-
-    # Use relative path from phase directory (critical for Poetry venv resolution)
-    script_relative = main_script.relative_to(phase_dir)
+    # Run as module (not script) because main.py uses relative imports
     cmd = [
-        "poetry", "run", "python", str(script_relative),
+        "poetry", "run", "python", "-m", "phase5_enhancement.main",
         "--config=config.yaml"
     ]
-    
+
     logger.info(f"Command: {' '.join(cmd)}")
     
     # Execute
@@ -772,6 +814,7 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
         result = subprocess.run(
             cmd,
             cwd=str(phase_dir),
+            env=get_clean_env_for_poetry(),  # Clean environment for Poetry virtualenv detection
             capture_output=True,
             text=True,
             encoding='utf-8',
@@ -873,10 +916,9 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
                 )
 
         # Build subtitle generation command
-        subtitles_script = phase5_dir / "src" / "phase5_enhancement" / "subtitles.py"
-
+        # Run as module (not script) because subtitles.py uses relative imports
         cmd = [
-            'poetry', 'run', 'python', str(subtitles_script),
+            'poetry', 'run', 'python', '-m', 'phase5_enhancement.subtitles',
             '--audio', str(audiobook_path),
             '--file-id', file_id,
             '--output-dir', str(phase5_dir / 'subtitles'),
@@ -899,6 +941,7 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
         result = subprocess.run(
             cmd,
             cwd=str(phase5_dir),
+            env=get_clean_env_for_poetry(),  # Clean environment for Poetry virtualenv detection
             capture_output=True,
             text=True,
             encoding='utf-8',
