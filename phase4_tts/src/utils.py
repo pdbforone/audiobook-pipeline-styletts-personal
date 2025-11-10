@@ -440,7 +440,39 @@ def synthesize_chunk(model, text: str, ref_path: str, output_path: str, config: 
     if full_audio.numel() == 0:
         return False, split_metadata
 
-    ta.save(output_path, full_audio, config.sample_rate)
+    # Save audio with proper error handling
+    try:
+        # Normalize path for Windows
+        output_path_normalized = str(Path(output_path).resolve())
+
+        # Remove existing file if present (may be locked or corrupted from previous run)
+        if os.path.exists(output_path_normalized):
+            try:
+                os.remove(output_path_normalized)
+                logger.debug(f"Removed existing file: {output_path_normalized}")
+            except Exception as rm_e:
+                logger.warning(f"Could not remove existing file: {rm_e}")
+
+        # Ensure audio is on CPU and contiguous for saving
+        full_audio_cpu = full_audio.cpu().contiguous()
+
+        # Save with explicit format
+        ta.save(output_path_normalized, full_audio_cpu, config.sample_rate, format="wav")
+        logger.info(f"Successfully saved audio to: {output_path_normalized}")
+
+    except Exception as save_error:
+        logger.error(f"Failed to save audio file: {save_error}")
+        logger.error(f"Output path: {output_path_normalized}")
+        logger.error(f"Audio shape: {full_audio.shape}, dtype: {full_audio.dtype}")
+        logger.error(f"Sample rate: {config.sample_rate}")
+
+        # Try to provide more diagnostic information
+        output_dir = Path(output_path_normalized).parent
+        logger.error(f"Output directory exists: {output_dir.exists()}")
+        logger.error(f"Output directory writable: {os.access(output_dir, os.W_OK)}")
+
+        return False, split_metadata
+
     duration = time.perf_counter() - start
     return True, split_metadata
 
