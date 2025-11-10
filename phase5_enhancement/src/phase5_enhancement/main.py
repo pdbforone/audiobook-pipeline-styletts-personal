@@ -161,6 +161,114 @@ def reduce_noise(
         return audio
 
 
+def reduce_noise_deepfilternet(
+    audio: np.ndarray, sr: int
+) -> np.ndarray:
+    """
+    Professional noise reduction using DeepFilterNet (MIT licensed).
+
+    Args:
+        audio: Input audio array (mono, float32)
+        sr: Sample rate (must be 48000 Hz)
+
+    Returns:
+        Denoised audio array
+
+    Note: DeepFilterNet only supports 48kHz audio
+    """
+    try:
+        # Lazy import to avoid loading model if not used
+        from df import enhance, init_df
+
+        if sr != 48000:
+            logger.warning(f"DeepFilterNet requires 48kHz audio, got {sr}Hz. Falling back to noisereduce.")
+            return reduce_noise(audio, sr)
+
+        # Ensure float32
+        if audio.dtype != np.float32:
+            audio = audio.astype(np.float32)
+
+        # Initialize model (could cache this globally for performance)
+        logger.debug("Initializing DeepFilterNet model...")
+        model, df_state, _ = init_df()
+
+        # Process audio
+        logger.debug("Processing audio with DeepFilterNet...")
+        enhanced = enhance(model, df_state, audio)
+
+        logger.info("DeepFilterNet noise reduction complete")
+        return enhanced
+
+    except ImportError:
+        logger.warning("DeepFilterNet not installed, falling back to noisereduce")
+        return reduce_noise(audio, sr)
+    except Exception as e:
+        logger.warning(f"DeepFilterNet failed: {e}, falling back to noisereduce")
+        return reduce_noise(audio, sr)
+
+
+def apply_matchering(
+    input_path: str,
+    output_path: str,
+    reference_path: str,
+    config: EnhancementConfig
+) -> bool:
+    """
+    Apply reference-based mastering using Matchering (GPL-3.0, internal use only).
+
+    Args:
+        input_path: Path to input WAV file (must exist)
+        output_path: Path to output WAV file
+        reference_path: Path to reference WAV file for mastering
+        config: Enhancement configuration
+
+    Returns:
+        True if successful, False otherwise
+
+    Note: Matchering works with file paths only, not numpy arrays.
+          Input must be stereo WAV for best results.
+    """
+    try:
+        # Lazy import to avoid loading if not used
+        import matchering as mg
+        from matchering.config import Config as MatcheringConfig
+
+        # Validate inputs
+        if not Path(input_path).exists():
+            logger.error(f"Input file not found: {input_path}")
+            return False
+
+        if not Path(reference_path).exists():
+            logger.error(f"Reference file not found: {reference_path}")
+            return False
+
+        # Configure Matchering
+        mg_config = MatcheringConfig()
+        mg_config.max_length = config.matchering_max_length
+        mg_config.internal_sample_rate = config.sample_rate
+        mg_config.threshold = -3  # Sensitivity adjustment
+
+        logger.info(f"Applying Matchering mastering with reference: {reference_path}")
+
+        # Process
+        mg.process(
+            target=input_path,
+            reference=reference_path,
+            results=[mg.pcm24(output_path)],
+            config=mg_config,
+        )
+
+        logger.info(f"Matchering complete: {output_path}")
+        return True
+
+    except ImportError:
+        logger.warning("Matchering not installed, skipping reference-based mastering")
+        return False
+    except Exception as e:
+        logger.error(f"Matchering failed: {e}")
+        return False
+
+
 def normalize_lufs(
     audio: np.ndarray, sr: int, target: float = -23.0
 ) -> tuple[np.ndarray, float]:
@@ -313,16 +421,31 @@ def enhance_chunk(
 
         # ===== STEP 6: ENHANCEMENT LOOP =====
         for attempt in range(config.retries + 1):
-            # Noise reduction (with sub-chunking if large)
-            if len(audio) / sr > config.chunk_size_seconds:
-                enhanced = process_large_chunk(
-                    audio,
-                    sr,
-                    config.chunk_size_seconds,
-                    lambda sub: reduce_noise(sub, sr, config.noise_reduction_factor),
-                )
+            # Noise reduction - choose between DeepFilterNet or noisereduce
+            if config.enable_deepfilternet:
+                # Use DeepFilterNet (professional, MIT licensed)
+                if len(audio) / sr > config.chunk_size_seconds:
+                    enhanced = process_large_chunk(
+                        audio,
+                        sr,
+                        config.chunk_size_seconds,
+                        lambda sub: reduce_noise_deepfilternet(sub, sr),
+                    )
+                else:
+                    enhanced = reduce_noise_deepfilternet(audio, sr)
+                logger.debug(f"Applied DeepFilterNet to chunk {metadata.chunk_id}")
             else:
-                enhanced = reduce_noise(audio, sr, config.noise_reduction_factor)
+                # Use standard noisereduce (default)
+                if len(audio) / sr > config.chunk_size_seconds:
+                    enhanced = process_large_chunk(
+                        audio,
+                        sr,
+                        config.chunk_size_seconds,
+                        lambda sub: reduce_noise(sub, sr, config.noise_reduction_factor),
+                    )
+                else:
+                    enhanced = reduce_noise(audio, sr, config.noise_reduction_factor)
+                logger.debug(f"Applied noisereduce to chunk {metadata.chunk_id}")
 
             # Normalization
             enhanced, lufs_post = normalize_lufs(enhanced, sr, config.lufs_target)
@@ -702,6 +825,84 @@ def main():
                 logger.info(
                     f"Duration: {len(combined_audio) / config.sample_rate:.1f} seconds"
                 )
+
+                # ===== MATCHERING MASTERING (OPTIONAL) =====
+                if config.enable_matchering and config.matchering_reference:
+                    logger.info("=" * 60)
+                    logger.info("APPLYING MATCHERING REFERENCE-BASED MASTERING")
+                    logger.info("=" * 60)
+
+                    # Matchering requires stereo WAV input
+                    # Convert mono to stereo for Matchering
+                    import soundfile as sf_import
+
+                    temp_wav_mono = Path(config.output_dir) / "audiobook_temp_mono.wav"
+                    temp_wav_stereo = Path(config.output_dir) / "audiobook_temp_stereo.wav"
+                    temp_wav_mastered = Path(config.output_dir) / "audiobook_mastered.wav"
+
+                    try:
+                        # Save combined audio as mono WAV
+                        sf_import.write(temp_wav_mono, combined_audio, config.sample_rate)
+
+                        # Convert mono to stereo (duplicate channel)
+                        stereo_audio = np.stack([combined_audio, combined_audio], axis=1)
+                        sf_import.write(temp_wav_stereo, stereo_audio, config.sample_rate)
+                        logger.info(f"Converted mono to stereo for Matchering: {temp_wav_stereo}")
+
+                        # Apply Matchering
+                        success = apply_matchering(
+                            input_path=str(temp_wav_stereo),
+                            output_path=str(temp_wav_mastered),
+                            reference_path=config.matchering_reference,
+                            config=config
+                        )
+
+                        if success:
+                            # Load mastered audio and convert back to mono MP3
+                            mastered_audio, mastered_sr = sf_import.read(temp_wav_mastered)
+
+                            # If stereo, take left channel or average
+                            if mastered_audio.ndim == 2:
+                                mastered_audio = np.mean(mastered_audio, axis=1)
+
+                            # Export as MP3
+                            mastered_mp3_path = Path(config.output_dir) / "audiobook_mastered.mp3"
+                            audio_int16 = (mastered_audio * 32767).astype(np.int16)
+                            audio_segment = AudioSegment(
+                                audio_int16.tobytes(),
+                                frame_rate=mastered_sr,
+                                sample_width=2,
+                                channels=1,
+                            )
+                            audio_segment.export(
+                                mastered_mp3_path,
+                                format="mp3",
+                                bitrate=config.mp3_bitrate,
+                                tags={
+                                    "title": config.audiobook_title,
+                                    "artist": config.audiobook_author,
+                                    "album": "Audiobook (Mastered)",
+                                    "genre": "Audiobook",
+                                },
+                            )
+                            embed_metadata(str(mastered_mp3_path), config)
+                            logger.info(f"[OK] Mastered audiobook created: {mastered_mp3_path}")
+                            final_output_path = str(mastered_mp3_path)
+
+                        # Cleanup temp files
+                        for temp_file in [temp_wav_mono, temp_wav_stereo]:
+                            if temp_file.exists():
+                                temp_file.unlink()
+                                logger.debug(f"Cleaned up temp file: {temp_file}")
+
+                    except Exception as e:
+                        logger.error(f"Matchering failed: {e}")
+                        logger.info("Continuing with non-mastered audiobook")
+                        # Cleanup temp files on error
+                        for temp_file in [temp_wav_mono, temp_wav_stereo, temp_wav_mastered]:
+                            if temp_file.exists():
+                                temp_file.unlink()
+
                 create_playlist(config.output_dir, "audiobook.mp3")
 
             # ===== METRICS AND SUMMARY =====
