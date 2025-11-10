@@ -13,7 +13,7 @@ mutagen = "1.47.0"
 librosa = "0.11.0"
 pydantic = "2.11.9"  # For models/config
 pyyaml = "^6.0.2"
-soundfile = "^0.13.1"
+soundfile = "0.12.1"  # Downgraded from 0.13.1 for DeepFilterNet compatibility
 psutil = "^7.1.0"
 charset-normalizer = "^3.4.3"
 # Audio cleanup dependencies
@@ -24,6 +24,11 @@ requests = "^2.32.5"
 webvtt-py = "^0.5.1"
 jiwer = "^3.0.3"
 srt = "^3.5.3"
+# Advanced audio mastering (optional, CPU-optimized)
+deepfilternet = "0.5.6"  # MIT - Professional noise reduction
+matchering = "2.0.6"  # GPL-3.0 - Reference-based mastering
+torch = "^2.0"  # For DeepFilterNet
+torchaudio = "^2.0"  # For DeepFilterNet
 
 [tool.poetry.group.dev.dependencies]
 pytest = "8.4.2"
