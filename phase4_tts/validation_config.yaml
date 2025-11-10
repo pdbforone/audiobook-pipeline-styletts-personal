@@ -14,9 +14,9 @@ validation:
     
   # Tier 2: Whisper Validation (Selective Sampling)
   tier2:
-    enabled: true                    # Set to false to disable Whisper validation
-    whisper_model: "base"            # Options: tiny, base, small, medium, large
-    whisper_sample_rate: 0.05        # Validate 5% random sample (0.0-1.0)
+    enabled: false                   # ⚡ PRODUCTION: Disabled to save ~1 hour/book. Enable for QA.
+    whisper_model: "tiny"            # Options: tiny, base, small, medium, large (tiny is fastest)
+    whisper_sample_rate: 0.02        # Validate 2% random sample (0.0-1.0) - reduced from 5%
     whisper_first_n: 10              # Always validate first N chunks
     whisper_last_n: 10               # Always validate last N chunks
     max_wer: 0.10                    # Maximum Word Error Rate (10%)
