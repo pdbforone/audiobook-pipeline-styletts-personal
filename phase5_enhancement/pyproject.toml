@@ -25,10 +25,17 @@ webvtt-py = "^0.5.1"
 jiwer = "^3.0.3"
 srt = "^3.5.3"
 # Advanced audio mastering (optional, CPU-optimized)
-deepfilternet = "0.5.6"  # MIT - Professional noise reduction
 matchering = "2.0.6"  # GPL-3.0 - Reference-based mastering
-torch = "^2.0"  # For DeepFilterNet
-torchaudio = "^2.0"  # For DeepFilterNet
+
+[tool.poetry.group.deepfilternet]
+optional = true
+
+[tool.poetry.group.deepfilternet.dependencies]
+# DeepFilterNet requires Rust/Cargo to compile on Windows
+# Install manually if needed: pip install deepfilternet
+deepfilternet = "0.5.6"  # MIT - Professional noise reduction
+torch = "^2.0"  # For DeepFilterNet (already installed via pip)
+torchaudio = "^2.0"  # For DeepFilterNet (already installed via pip)
 
 [tool.poetry.group.dev.dependencies]
 pytest = "8.4.2"
