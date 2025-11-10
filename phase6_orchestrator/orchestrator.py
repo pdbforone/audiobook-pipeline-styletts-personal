@@ -864,28 +864,34 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
         state = PipelineState(pipeline_json, validate_on_read=False)
         pipeline_data = state.read()
 
-        # Phase schema note: downstream phases store file artifacts under phaseX["files"][file_id]["path"]
+        # Get audiobook path from Phase 5 output
         phase5_data = pipeline_data.get('phase5', {})
-        phase5_files = phase5_data.get('files', {}) or {}
         audiobook_path = None
 
-        if phase5_files:
-            phase5_file_id = file_id if file_id in phase5_files else next(iter(phase5_files))
-            phase5_entry = phase5_files.get(phase5_file_id, {})
-            audiobook_path = phase5_entry.get('path') or phase5_entry.get('output_file')
-        else:
-            logger.warning("Phase 5.5: No phase5.files entries found in pipeline.json")
+        # First, try to read from phase5["output_file"] (new structure)
+        if 'output_file' in phase5_data and phase5_data['output_file']:
+            audiobook_path = Path(phase5_data['output_file'])
+            logger.info(f"Phase 5.5: Found audiobook path in pipeline.json: {audiobook_path}")
 
+        # Legacy fallback: try phase5["files"][file_id] structure (if it exists)
+        if not audiobook_path:
+            phase5_files = phase5_data.get('files', {}) or {}
+            if phase5_files:
+                phase5_file_id = file_id if file_id in phase5_files else next(iter(phase5_files))
+                phase5_entry = phase5_files.get(phase5_file_id, {})
+                audiobook_path = phase5_entry.get('path') or phase5_entry.get('output_file')
+                if audiobook_path:
+                    audiobook_path = Path(audiobook_path)
+
+        # Final fallback: hardcoded path
         if not audiobook_path:
             audiobook_path = phase5_dir / "processed" / "audiobook.mp3"
-            if not audiobook_path.exists():
-                logger.error("Phase 5.5: Audiobook not found (Phase 5 incomplete?)")
-                return False
-        else:
-            audiobook_path = Path(audiobook_path)
-            if not audiobook_path.exists():
-                logger.error(f"Phase 5.5: Audiobook not found at {audiobook_path}")
-                return False
+            logger.warning(f"Phase 5.5: No audiobook path in pipeline.json, using fallback: {audiobook_path}")
+
+        # Validate that the file exists
+        if not audiobook_path.exists():
+            logger.error(f"Phase 5.5: Audiobook not found at {audiobook_path}")
+            return False
 
         phase2_data = pipeline_data.get('phase2', {})
         phase2_files = phase2_data.get('files', {}) or {}
