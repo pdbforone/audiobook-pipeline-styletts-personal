@@ -134,6 +134,26 @@ class EnhancementConfig(BaseModel):
         default=False, description="Save SRT transcripts during cleanup for debugging"
     )
 
+    # Advanced Audio Mastering (NEW)
+    enable_deepfilternet: bool = Field(
+        default=False,
+        description="Use DeepFilterNet for professional noise reduction (replaces noisereduce when enabled)"
+    )
+    enable_matchering: bool = Field(
+        default=False,
+        description="Apply reference-based mastering using Matchering (GPL-3.0, internal use only)"
+    )
+    matchering_reference: Optional[str] = Field(
+        default=None,
+        description="Path to reference audio file for Matchering mastering (WAV format, stereo recommended)"
+    )
+    matchering_max_length: int = Field(
+        default=1800,  # 30 minutes in seconds
+        ge=60,
+        le=7200,
+        description="Maximum audio length for Matchering processing in seconds"
+    )
+
     @field_validator("input_dir", "output_dir", "temp_dir")
     @classmethod
     def validate_directories(cls, v: str) -> str:
