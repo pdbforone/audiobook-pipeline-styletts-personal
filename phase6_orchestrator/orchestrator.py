@@ -800,19 +800,12 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
         return False
     
     # Build command - Phase 5 only accepts --config, --chunk_id, --skip_concatenation
-    main_script = phase_dir / "src" / "phase5_enhancement" / "main.py"
-
-    if not main_script.exists():
-        logger.error(f"Phase 5 script not found: {main_script}")
-        return False
-
-    # Use relative path from phase directory (critical for Poetry venv resolution)
-    script_relative = main_script.relative_to(phase_dir)
+    # Run as module (not script) because main.py uses relative imports
     cmd = [
-        "poetry", "run", "python", str(script_relative),
+        "poetry", "run", "python", "-m", "phase5_enhancement.main",
         "--config=config.yaml"
     ]
-    
+
     logger.info(f"Command: {' '.join(cmd)}")
     
     # Execute
@@ -923,10 +916,9 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
                 )
 
         # Build subtitle generation command
-        subtitles_script = phase5_dir / "src" / "phase5_enhancement" / "subtitles.py"
-
+        # Run as module (not script) because subtitles.py uses relative imports
         cmd = [
-            'poetry', 'run', 'python', str(subtitles_script),
+            'poetry', 'run', 'python', '-m', 'phase5_enhancement.subtitles',
             '--audio', str(audiobook_path),
             '--file-id', file_id,
             '--output-dir', str(phase5_dir / 'subtitles'),
