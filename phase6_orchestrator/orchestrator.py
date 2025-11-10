@@ -707,12 +707,17 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
         result = subprocess.run(
             ["poetry", "install", "--no-root"],
             cwd=str(phase_dir),
+            env=get_clean_env_for_poetry(),  # Use clean environment for Poetry
             capture_output=True,
             text=True,
             timeout=300
         )
         if result.returncode != 0:
-            logger.error(f"Poetry install failed: {result.stderr}")
+            logger.error(f"Poetry install failed (exit {result.returncode})")
+            if result.stdout:
+                logger.error(f"STDOUT: {result.stdout}")
+            if result.stderr:
+                logger.error(f"STDERR: {result.stderr}")
             return False
         logger.info("Dependencies verified/installed successfully")
     except Exception as e:
