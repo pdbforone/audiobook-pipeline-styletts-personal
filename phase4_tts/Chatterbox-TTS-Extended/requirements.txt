@@ -1,5 +1,6 @@
 gradio
 charset-normalizer==3.4.3
+requests>=2.31.0
 numpy
 faster-whisper
 openai-whisper
