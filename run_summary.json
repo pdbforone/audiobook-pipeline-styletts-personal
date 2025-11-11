@@ -1,0 +1,48 @@
+{
+  "generated_at": "2025-11-11T05:20:10.569477+00:00",
+  "pipeline_json": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\pipeline.json",
+  "phase_statuses": {
+    "phase1": {
+      "status": "pending",
+      "metadata": {
+        "hashes": [
+          "cd4206e9dfc52aabb655b27e3935da81b18f244209e30f8304b249f9156b96c9"
+        ],
+        "errors": [],
+        "metrics": {}
+      }
+    },
+    "phase2": {
+      "status": "pending",
+      "metadata": {
+        "errors": [],
+        "metrics": {}
+      }
+    },
+    "phase3": {
+      "status": "pending",
+      "metadata": {
+        "errors": [],
+        "metrics": {
+          "total_files": 1,
+          "successful": 1,
+          "partial": 0,
+          "failed": 0,
+          "total_chunks": 9
+        }
+      }
+    },
+    "phase4": {
+      "status": "success",
+      "metadata": {}
+    },
+    "phase5": {
+      "status": "pending",
+      "metadata": {}
+    }
+  },
+  "kokoro": {
+    "error": "kokoro_run_meta.json not found"
+  },
+  "audiobook_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase5_enhancement\\processed\\audiobook.mp3"
+}

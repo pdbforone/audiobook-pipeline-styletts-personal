@@ -12,8 +12,10 @@ import json
 import logging
 import sys
 import time
+from datetime import datetime, timezone
+import hashlib
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from .tts import VOICE_ALIASES, BritishFormalNarrator, StyleControls
 
@@ -102,6 +104,8 @@ def main() -> int:
         logger.info("Voice override requested -> %s", voice_id)
 
     overall_start = time.perf_counter()
+    produced_files: List[Dict[str, object]] = []
+
     for idx, chunk_file in enumerate(paths_to_process, start=1):
         if not chunk_file.exists():
             logger.error("Chunk missing: %s", chunk_file)
@@ -117,6 +121,14 @@ def main() -> int:
 
         start = time.perf_counter()
         narrator.synth(text, output_path)
+        digest = sha256_file(output_path)
+        produced_files.append(
+            {
+                "path": str(output_path),
+                "sha256": digest,
+                "bytes": output_path.stat().st_size,
+            }
+        )
         duration = time.perf_counter() - start
         logger.info(
             "Chunk %s (%d/%d) synthesized in %.2fs -> %s",
@@ -127,7 +139,9 @@ def main() -> int:
             output_path,
         )
 
-    logger.info("Kokoro synthesis finished in %.2fs", time.perf_counter() - overall_start)
+    total_duration = time.perf_counter() - overall_start
+    logger.info("Kokoro synthesis finished in %.2fs", total_duration)
+    write_metadata(output_dir, voice_id, produced_files, total_duration)
     return 0
 
 
@@ -141,6 +155,29 @@ def resolve_voice(requested: Optional[str]) -> str:
 
     logger.warning("Unknown voice_id '%s' - using Kokoro default.", requested)
     return VOICE_ALIASES.get("af_sky", "af_sky")
+
+
+def write_metadata(output_dir: Path, voice_id: str, files: List[Dict[str, object]], runtime_sec: float) -> None:
+    meta = {
+        "voice": voice_id,
+        "chunk_count": len(files),
+        "files": files,
+        "sample_rate_hz": 24000,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "runtime_seconds": runtime_sec,
+    }
+    meta_path = output_dir / "kokoro_run_meta.json"
+    with meta_path.open("w", encoding="utf-8") as fh:
+        json.dump(meta, fh, indent=2)
+    logger.info("Wrote Kokoro run metadata to %s", meta_path)
+
+
+def sha256_file(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(8192), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 if __name__ == "__main__":

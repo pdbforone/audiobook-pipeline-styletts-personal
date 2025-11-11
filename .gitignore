@@ -2,6 +2,7 @@
 *.mp3
 *.mp4
 *.wav
+!phase4_tts_styletts/tests/data/*.wav
 *.m4a
 *.flac
 *.avi
