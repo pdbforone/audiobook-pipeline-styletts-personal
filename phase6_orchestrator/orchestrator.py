@@ -13,6 +13,7 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -43,6 +44,41 @@ logger = logging.getLogger(__name__)
 
 # Initialize Rich console
 console = Console() if RICH_AVAILABLE else None
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PHASE4_AUDIO_DIR: Optional[Path] = None
+_ORCHESTRATOR_CONFIG: Optional[Dict] = None
+
+
+def get_orchestrator_config() -> Dict:
+    """Load phase6 config.yaml once."""
+    global _ORCHESTRATOR_CONFIG
+    if _ORCHESTRATOR_CONFIG is not None:
+        return _ORCHESTRATOR_CONFIG
+
+    config_path = Path(__file__).with_name("config.yaml")
+    data: Dict = {}
+    if config_path.exists():
+        try:
+            with config_path.open("r", encoding="utf-8") as handle:
+                data = yaml.safe_load(handle) or {}
+        except Exception as exc:
+            logger.warning("Failed to read orchestrator config (%s); using defaults.", exc)
+    _ORCHESTRATOR_CONFIG = data
+    return data
+
+
+def get_pipeline_mode() -> str:
+    return get_orchestrator_config().get("pipeline_mode", "commercial").lower()
+
+
+def get_tts_engine() -> str:
+    return get_orchestrator_config().get("tts_engine", "chatterbox").lower()
+
+
+def set_phase4_audio_dir(audio_dir: Path) -> None:
+    global PHASE4_AUDIO_DIR
+    PHASE4_AUDIO_DIR = audio_dir.resolve()
 
 
 def print_status(message: str, style: str = "bold"):
@@ -248,8 +284,8 @@ def check_phase_status(pipeline_data: Dict, phase_num: int, file_id: str) -> str
 
 def find_phase_dir(phase_num: int) -> Optional[Path]:
     """Find directory for a phase number."""
-    project_root = Path(__file__).parent.parent
-    
+    project_root = PROJECT_ROOT
+
     mapping = {
         1: "phase1-validation",
         2: "phase2-extraction",
@@ -270,13 +306,41 @@ def find_phase_dir(phase_num: int) -> Optional[Path]:
     return None
 
 
+def load_phase3_chunks(file_id: str, pipeline_json: Path) -> Tuple[str, List[str]]:
+    """Return the resolved Phase 3 key and its chunk paths."""
+    state = PipelineState(pipeline_json, validate_on_read=False)
+    pipeline = state.read()
+    phase3_files = pipeline.get("phase3", {}).get("files", {})
+
+    resolved_id = file_id
+    chunks: List[str] = []
+
+    if file_id in phase3_files:
+        chunks = phase3_files[file_id].get("chunk_paths", [])
+    else:
+        for key, entry in phase3_files.items():
+            if file_id in key or key in file_id:
+                logger.info(f"Using Phase 3 file_id: '{key}'")
+                resolved_id = key
+                chunks = entry.get("chunk_paths", [])
+                break
+
+    if not chunks:
+        raise RuntimeError(
+            f"No chunks found for '{file_id}'. Available keys: {list(phase3_files.keys())}"
+        )
+
+    return resolved_id, chunks
+
+
 def run_phase_with_retry(
     phase_num: int,
     file_path: Path,
     file_id: str,
     pipeline_json: Path,
     max_retries: int = 2,
-    voice_id: Optional[str] = None
+    voice_id: Optional[str] = None,
+    pipeline_mode: str = "commercial",
 ) -> bool:
     """
     Run a phase with retry logic.
@@ -297,7 +361,14 @@ def run_phase_with_retry(
             logger.info(f"Retry attempt {attempt}/{max_retries} for Phase {phase_num}")
             time.sleep(2)  # Brief pause before retry
         
-        success = run_phase(phase_num, file_path, file_id, pipeline_json, voice_id)
+        success = run_phase(
+            phase_num,
+            file_path,
+            file_id,
+            pipeline_json,
+            voice_id,
+            pipeline_mode,
+        )
         
         if success:
             return True
@@ -311,7 +382,8 @@ def run_phase(
     file_path: Path,
     file_id: str,
     pipeline_json: Path,
-    voice_id: Optional[str] = None
+    voice_id: Optional[str] = None,
+    pipeline_mode: str = "commercial",
 ) -> bool:
     """
     Run a single phase.
@@ -334,7 +406,10 @@ def run_phase(
     
     # Special handling for Phase 4 (Conda environment)
     if phase_num == 4:
-        return run_phase4_with_conda(phase_dir, file_id, pipeline_json, voice_id)
+        tts_engine = get_tts_engine()
+        if tts_engine == "styletts":
+            return run_phase4_styletts(file_id, pipeline_json, voice_id, pipeline_mode)
+        return run_phase4_with_conda(phase_dir, file_id, pipeline_json, voice_id, pipeline_mode)
     
     # Standard phases (1, 2, 3, 5) use Poetry
     return run_phase_standard(phase_num, phase_dir, file_path, file_id, pipeline_json)
@@ -427,10 +502,11 @@ def run_phase_standard(
     # Execute
     start_time = time.perf_counter()
     try:
+        env = get_clean_env_for_poetry()
         result = subprocess.run(
             cmd,
             cwd=str(phase_dir),
-            env=get_clean_env_for_poetry(),  # Clean environment for Poetry virtualenv detection
+            env=env,  # Clean environment for Poetry virtualenv detection
             capture_output=True,
             text=True,
             encoding='utf-8',
@@ -456,7 +532,13 @@ def run_phase_standard(
         return False
 
 
-def run_phase4_with_conda(phase_dir: Path, file_id: str, pipeline_json: Path, voice_id: Optional[str] = None) -> bool:
+def run_phase4_with_conda(
+    phase_dir: Path,
+    file_id: str,
+    pipeline_json: Path,
+    voice_id: Optional[str] = None,
+    pipeline_mode: str = "commercial",
+) -> bool:
     """
     Run Phase 4 with Conda environment activation.
     
@@ -468,7 +550,8 @@ def run_phase4_with_conda(phase_dir: Path, file_id: str, pipeline_json: Path, vo
         pipeline_json: Path to pipeline.json
         voice_id: Optional voice ID for TTS (e.g., george_mckayland)
     """
-    conda_env = "phase4_tts"
+    config = get_orchestrator_config()
+    conda_env = config.get("phase4_conda_env", "phase4_tts")
     
     # Check Conda environment
     env_ok, error_msg = check_conda_environment(conda_env)
@@ -480,34 +563,9 @@ def run_phase4_with_conda(phase_dir: Path, file_id: str, pipeline_json: Path, vo
         logger.error("="*60)
         return False
     
-    # Load chunks from pipeline.json
     try:
-        state = PipelineState(pipeline_json, validate_on_read=False)
-        pipeline = state.read()
-        
-        phase3_files = pipeline.get("phase3", {}).get("files", {})
-        
-        # Find matching file_id (exact or fuzzy match)
-        chunks = []
-        actual_file_id = file_id
-        
-        if file_id in phase3_files:
-            chunks = phase3_files[file_id].get("chunk_paths", [])
-        else:
-            for key in phase3_files.keys():
-                if file_id in key or key in file_id:
-                    logger.info(f"Using Phase 3 file_id: '{key}'")
-                    actual_file_id = key
-                    chunks = phase3_files[key].get("chunk_paths", [])
-                    break
-        
-        if not chunks:
-            logger.error(f"No chunks found for file_id: '{file_id}'")
-            logger.error(f"Available in Phase 3: {list(phase3_files.keys())}")
-            return False
-        
+        actual_file_id, chunks = load_phase3_chunks(file_id, pipeline_json)
         logger.info(f"Processing {len(chunks)} chunks")
-        
     except Exception as e:
         logger.error(f"Failed to load chunks: {e}")
         return False
@@ -523,6 +581,8 @@ def run_phase4_with_conda(phase_dir: Path, file_id: str, pipeline_json: Path, vo
     else:
         logger.info("Using auto-selected voice from Phase 3 or default")
     
+    extra_args = [f"--pipeline_mode={pipeline_mode}"]
+
     if RICH_AVAILABLE and console:
         with Progress(
             SpinnerColumn(),
@@ -537,8 +597,15 @@ def run_phase4_with_conda(phase_dir: Path, file_id: str, pipeline_json: Path, vo
             for i in range(len(chunks)):
                 chunk_id = i  # Use 0-based index to match Phase 4's array indexing
                 success = process_single_chunk(
-                    phase_dir, conda_env, main_script, ref_file,
-                    chunk_id, actual_file_id, pipeline_json, voice_id
+                    phase_dir,
+                    conda_env,
+                    main_script,
+                    ref_file,
+                    chunk_id,
+                    actual_file_id,
+                    pipeline_json,
+                    voice_id,
+                    extra_args=extra_args,
                 )
                 
                 if not success:
@@ -551,8 +618,15 @@ def run_phase4_with_conda(phase_dir: Path, file_id: str, pipeline_json: Path, vo
             chunk_id = i  # Use 0-based index to match Phase 4's array indexing
             logger.info(f"Processing chunk {chunk_id}/{len(chunks)}")
             success = process_single_chunk(
-                phase_dir, conda_env, main_script, ref_file,
-                chunk_id, actual_file_id, pipeline_json, voice_id
+                phase_dir,
+                conda_env,
+                main_script,
+                ref_file,
+                chunk_id,
+                actual_file_id,
+                pipeline_json,
+                voice_id,
+                extra_args=extra_args,
             )
             
             if not success:
@@ -578,6 +652,86 @@ def run_phase4_with_conda(phase_dir: Path, file_id: str, pipeline_json: Path, vo
         return False
     
     logger.info("Phase 4 finalization complete")
+    set_phase4_audio_dir(phase_dir / "audio_chunks")
+    return True
+
+
+def run_phase4_styletts(
+    file_id: str,
+    pipeline_json: Path,
+    voice_id: Optional[str] = None,
+    pipeline_mode: str = "commercial",
+) -> bool:
+    """Execute the StyleTTS2-based Phase 4 implementation."""
+    phase_dir = PROJECT_ROOT / "phase4_tts_styletts"
+    if not phase_dir.exists():
+        logger.error("Phase 4 StyleTTS directory not found: %s", phase_dir)
+        return False
+
+    try:
+        actual_file_id, chunks = load_phase3_chunks(file_id, pipeline_json)
+    except Exception as exc:
+        logger.error("Failed to load chunk metadata: %s", exc)
+        return False
+
+    config = get_orchestrator_config()
+    conda_env = config.get("phase4_styletts_conda_env", "phase4_tts_styletts")
+    reference = config.get("styletts_reference", str(PROJECT_ROOT / "Voices/calm_narrator/reference.wav"))
+    reference_path = Path(reference).resolve()
+
+    audio_dir = phase_dir / "audio_chunks"
+    if audio_dir.exists():
+        shutil.rmtree(audio_dir)
+    audio_dir.mkdir(parents=True, exist_ok=True)
+
+    cmd = [
+        "conda",
+        "run",
+        "-n",
+        conda_env,
+        "--no-capture-output",
+        "python",
+        "-m",
+        "phase4_tts_styletts.main",
+        f"--file_id={actual_file_id}",
+        f"--json_path={pipeline_json}",
+        f"--output_dir={audio_dir}",
+        f"--reference={reference_path}",
+        f"--pipeline-mode={pipeline_mode}",
+    ]
+
+    if voice_id:
+        cmd.append(f"--voice_id={voice_id}")
+
+    logger.info("Running StyleTTS2 Phase 4 via Conda env '%s'", conda_env)
+
+    env = os.environ.copy()
+    src_path = phase_dir / "src"
+    existing_py_path = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (f"{src_path}{os.pathsep}{existing_py_path}" if existing_py_path else str(src_path))
+
+    result = subprocess.run(
+        cmd,
+        cwd=str(phase_dir),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+    )
+
+    if result.returncode != 0:
+        logger.error("StyleTTS2 run failed (exit %s)", result.returncode)
+        logger.error("STDOUT: %s", result.stdout[-2000:])
+        logger.error("STDERR: %s", result.stderr[-2000:])
+        return False
+
+    logger.info("StyleTTS2 synthesis complete")
+    set_phase4_audio_dir(audio_dir)
+    if not finalize_phase4(phase_dir, actual_file_id, pipeline_json, len(chunks)):
+        logger.error("Phase 4 finalization failed")
+        return False
+
     return True
 
 
@@ -739,7 +893,9 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
     
     # Phase 5 looks for audio in input_dir (which should point to Phase 4 output)
     # Default is "../phase4_tts/audio_chunks" which should work from phase5_enhancement
-    if 'input_dir' not in config:
+    if PHASE4_AUDIO_DIR:
+        config['input_dir'] = str(PHASE4_AUDIO_DIR)
+    elif 'input_dir' not in config:
         config['input_dir'] = "../phase4_tts/audio_chunks"
     
     # Set quality settings to prevent chunk exclusion
@@ -811,10 +967,19 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
     # Execute
     start_time = time.perf_counter()
     try:
+        env = get_clean_env_for_poetry()
+        src_path = phase_dir / "src"
+        if src_path.exists():
+            existing_py_path = env.get("PYTHONPATH", "")
+            env["PYTHONPATH"] = (
+                f"{src_path}{os.pathsep}{existing_py_path}" if existing_py_path else str(src_path)
+            )
+            logger.info(f"Phase 5 PYTHONPATH override: {env['PYTHONPATH']}")
+
         result = subprocess.run(
             cmd,
             cwd=str(phase_dir),
-            env=get_clean_env_for_poetry(),  # Clean environment for Poetry virtualenv detection
+            env=env,  # Clean environment for Poetry virtualenv detection
             capture_output=True,
             text=True,
             encoding='utf-8',
@@ -1022,7 +1187,8 @@ def process_single_chunk(
     chunk_id: int,
     file_id: str,
     pipeline_json: Path,
-    voice_id: Optional[str] = None
+    voice_id: Optional[str] = None,
+    extra_args: Optional[List[str]] = None,
 ) -> bool:
     """Process a single TTS chunk with optional voice override."""
     cmd = [
@@ -1036,6 +1202,9 @@ def process_single_chunk(
         "--config=config.yaml"  # Phase 4 expects --config, not --enable-splitting
     ]
     
+    if extra_args:
+        cmd.extend(extra_args)
+
     # Add voice override if specified
     if voice_id:
         cmd.append(f"--voice_id={voice_id}")
@@ -1185,6 +1354,9 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    orchestrator_config = get_orchestrator_config()
+    pipeline_mode = orchestrator_config.get("pipeline_mode", "commercial").lower()
     
     # Validate input file (resolve path first)
     file_path = args.file.resolve()
@@ -1207,6 +1379,7 @@ Pipeline JSON: {pipeline_json}
 Phases:        {phase_display}
 Resume:        {'Disabled' if args.no_resume else 'Enabled'}
 Max Retries:   {args.max_retries}
+Pipeline Mode: {pipeline_mode}
 """
     print_panel(header.strip(), "Configuration", "bold cyan")
     
@@ -1243,7 +1416,8 @@ Max Retries:   {args.max_retries}
             file_id,
             pipeline_json,
             max_retries=args.max_retries,
-            voice_id=args.voice
+            voice_id=args.voice,
+            pipeline_mode=pipeline_mode,
         )
         
         if not success:
@@ -1259,8 +1433,16 @@ Max Retries:   {args.max_retries}
         print_status(f"[green]OK {phase_name} completed successfully[/green]")
         completed_phases.append(phase_num)
 
+    auto_subtitles = orchestrator_config.get("auto_subtitles", False)
+    if pipeline_mode == "personal":
+        subtitles_enabled = args.enable_subtitles
+        if auto_subtitles and not subtitles_enabled:
+            logger.info("Personal mode: ignoring auto subtitles. Use --enable-subtitles to run Phase 5.5.")
+    else:
+        subtitles_enabled = args.enable_subtitles or auto_subtitles
+
     # Phase 5.5: Generate subtitles (optional)
-    if 5 in completed_phases and args.enable_subtitles:
+    if 5 in completed_phases and subtitles_enabled:
         print_status(f"\n[bold cyan]> Running Phase 5.5 (Subtitles)...[/bold cyan]")
         phase5_dir = find_phase_dir(5)
         if phase5_dir:

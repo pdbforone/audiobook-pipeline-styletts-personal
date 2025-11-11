@@ -99,7 +99,8 @@ def process_single_chunk_worker(
     ref_path: str,
     selected_voice: str,
     skip_validation: bool,
-    output_dir: str
+    output_dir: str,
+    max_attempts: int = 3,
 ) -> Tuple[str, bool, float, Dict[str, Any]]:
     """
     Worker function to process a single chunk (runs in separate process).
@@ -198,9 +199,9 @@ def process_single_chunk_worker(
         success = False
         split_meta = {}
 
-        for attempt in range(3):
+        for attempt in range(max_attempts):
             if attempt > 0:
-                worker_logger.info(f"Retry attempt {attempt+1}/3 for chunk {chunk_id}")
+                worker_logger.info(f"Retry attempt {attempt+1}/{max_attempts} for chunk {chunk_id}")
                 time.sleep(5.0 * attempt)
 
             success, split_meta = synthesize_chunk(model, text, ref_path, str(output_wav), config, chunk_id)
@@ -397,10 +398,23 @@ def main():
     parser.add_argument("--voice_id", help="Override voice selection (key from configs/voice_references.json)")
     parser.add_argument("--skip_validation", action="store_true", help="Skip validation (not recommended)")
     parser.add_argument("--workers", type=int, default=None, help="Number of parallel workers (auto-detect if not set)")
+    parser.add_argument(
+        "--pipeline_mode",
+        choices=["commercial", "personal"],
+        default="commercial",
+        help="Pipeline mode passed from Phase 6 orchestrator",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
     validation_config = load_validation_config(args.validation_config)
+    personal_mode = args.pipeline_mode == "personal"
+
+    if personal_mode:
+        logger.info("Pipeline mode 'personal' detected - disabling Tier 2 validation and retries.")
+        validation_config.enable_tier2 = False
+        validation_config.whisper_sample_rate = 0.0
+        config.sub_chunk_retries = 1
     
     json_path = Path(args.json_path).resolve()
     output_dir = Path(config.output_dir).resolve()
@@ -482,6 +496,8 @@ def main():
         num_workers = 1
         logger.info("Using serial mode (single/few chunks)")
 
+    chunk_retry_attempts = 1 if personal_mode else 3
+
     logger.info(f"{'='*80}")
     logger.info(f"Starting Phase 4 TTS with Parallel Processing")
     logger.info(f"Total chunks: {total_chunks}")
@@ -528,8 +544,14 @@ def main():
             # Synthesize chunk (with retry logic)
             start_phase = time.perf_counter()
             success, split_meta = retry_chunk_synthesis(
-                model, text, ref_path, str(output_wav), config, chunk_id,
-                max_attempts=3, delay_sec=5.0
+                model,
+                text,
+                ref_path,
+                str(output_wav),
+                config,
+                chunk_id,
+                max_attempts=chunk_retry_attempts,
+                delay_sec=5.0,
             )
             duration_phase = time.perf_counter() - start_phase
 
@@ -639,7 +661,8 @@ def main():
                 ref_path,
                 selected_voice,
                 args.skip_validation,
-                str(output_dir)
+                str(output_dir),
+                chunk_retry_attempts,
             )
             for idx, chunk_path in enumerate(chunks_to_process)
         ]

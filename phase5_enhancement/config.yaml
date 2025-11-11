@@ -1,5 +1,5 @@
-pipeline_json: C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\pipeline.json
-input_dir: meditations_chunks
+pipeline_json: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\pipeline.json
+input_dir: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts_styletts\audio_chunks
 output_dir: processed
 sample_rate: 24000
 lufs_target: -18.0
@@ -23,13 +23,11 @@ log_level: INFO
 log_file: audio_enhancement.log
 resume_on_failure: false
 backup_original: false
-
-# Phrase Cleanup Settings (NEW)
 enable_phrase_cleanup: true
 cleanup_target_phrases:
-  - "You need to add some text for me to talk"
-  - "You need to add some text for me to talk."
-  - "You need to add text for me to talk"
-  - "You need to add text for me to talk."
-cleanup_whisper_model: base  # Options: tiny, base, small, medium, large
-cleanup_save_transcripts: false  # Set to true to save .srt files for debugging
+- You need to add some text for me to talk
+- You need to add some text for me to talk.
+- You need to add text for me to talk
+- You need to add text for me to talk.
+cleanup_whisper_model: base
+cleanup_save_transcripts: false

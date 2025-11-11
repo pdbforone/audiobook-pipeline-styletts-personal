@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "phase4-tts-styletts"
+version = "0.1.0"
+description = "StyleTTS2-based Phase 4 implementation for the audiobook pipeline"
+authors = ["Pipeline AI <noreply@example.com>"]
+packages = [{ include = "phase4_tts_styletts", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+styletts2 = "^0.1.6"
+soundfile = "^0.12.1"
+numpy = "^1.26.4"
+ffmpeg-python = "^0.2.0"
+librosa = "^0.10.2"
+torch = { version = "2.0.1", source = "pytorch-cpu" }
+torchaudio = { version = "2.0.2", source = "pytorch-cpu" }
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.3"
+
+[[tool.poetry.source]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+secondary = true
+
+[build-system]
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"
