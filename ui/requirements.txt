@@ -1,0 +1,17 @@
+# UI Requirements for Personal Audiobook Studio
+
+# Core UI framework
+gradio>=4.0.0
+
+# Audio processing (already in phase5)
+# pedalboard>=0.7.0  # Optional but recommended for pro mastering
+# pyloudnorm>=0.1.0  # Already installed
+# librosa>=0.10.0    # Already installed
+
+# TTS Engines (install separately)
+# F5-TTS: git clone https://github.com/SWivid/F5-TTS && cd F5-TTS && pip install -e .
+# XTTS: pip install TTS
+# Chatterbox: Already installed
+
+# Utilities
+pyyaml>=6.0

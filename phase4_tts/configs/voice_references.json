@@ -5,6 +5,8 @@
       "description": "Bob Neufeld - Philosophy/Analytic (Plato's Republic)",
       "narrator_name": "Bob Neufeld",
       "preferred_profiles": ["philosophy", "academic"],
+      "emotions": ["measured", "analytical", "clear"],
+      "quality_score": 4.6,
       "notes": "LibriVox - Clean, measured delivery for analytical philosophy"
     },
     "de_wittkower": {
@@ -47,7 +49,9 @@
       "description": "Vincent Price - Gothic/Horror (Sample 1)",
       "narrator_name": "Vincent Price",
       "preferred_profiles": ["fiction", "gothic"],
-      "notes": "Dramatic horror narration - iconic voice"
+      "emotions": ["dramatic", "suspenseful", "theatrical", "dark"],
+      "quality_score": 4.9,
+      "notes": "Dramatic horror narration - iconic voice. Perfect for gothic fiction."
     },
     "vincent_price_02": {
       "local_path": "C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/voice_samples/processed/Vincent_Price_02_sample.wav",
@@ -91,7 +95,9 @@
       "trim_start": 26,
       "trim_duration": 30,
       "preferred_profiles": ["philosophy", "memoir", "academic"],
-      "notes": "Custom voice clone for Meditations project. Using 30s clip starting at 0:26."
+      "emotions": ["contemplative", "warm", "measured", "reflective"],
+      "quality_score": 4.8,
+      "notes": "Custom voice clone for Meditations project. Perfect for philosophy. Using 30s clip starting at 0:26."
     },
     "landon_elkind": {
       "source_url": "https://archive.org/download/mysticism_logic_1603_librivox/mysticism_logic_01_russell.mp3",
