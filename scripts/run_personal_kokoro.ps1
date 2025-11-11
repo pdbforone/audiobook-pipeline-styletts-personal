@@ -5,12 +5,8 @@ Param(
 
 $ErrorActionPreference = "Stop"
 
-function Resolve-RepoRoot {
-    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-    return (Split-Path $scriptDir -Parent)
-}
-
-$repoRoot = Resolve-RepoRoot
+# Determine repo root relative to script location
+$repoRoot = Split-Path $PSScriptRoot -Parent
 Write-Host "Repo root:" $repoRoot
 Set-Location $repoRoot
 
@@ -37,7 +33,13 @@ if (-not (Test-Path "phase4_tts")) {
 }
 
 $resolvedInput = (Resolve-Path $InputFile).Path
-$resolvedJson = (Resolve-Path $PipelineJson).Path
+if ([System.IO.Path]::IsPathRooted($PipelineJson)) {
+    $resolvedJson = $PipelineJson
+} elseif (Test-Path $PipelineJson) {
+    $resolvedJson = (Resolve-Path $PipelineJson).Path
+} else {
+    $resolvedJson = Join-Path $repoRoot $PipelineJson
+}
 Write-Host "Input file:" $resolvedInput
 Write-Host "Pipeline JSON:" $resolvedJson
 
