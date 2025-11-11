@@ -9,6 +9,8 @@
 
 # Pipeline data files
 pipeline.json
+.pipeline/
+phase4_tts_styletts/tests/test_output.wav
 pipeline.json.backup
 pipeline_*.json
 */pipeline.json
