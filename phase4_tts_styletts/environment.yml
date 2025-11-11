@@ -1,15 +1,13 @@
 name: phase4_tts_styletts
 channels:
-  - pytorch
   - defaults
 dependencies:
   - python=3.10
   - pip
-  - pytorch=2.0.1=py3.10_cpu_0
-  - torchaudio=2.0.2=py310_cpu
   - pip:
-      - styletts2==0.1.6
-      - soundfile==0.12.1
-      - numpy==1.26.4
-      - ffmpeg-python==0.2.0
-      - librosa==0.10.2.post1
+      - torch==2.0.1 --index-url https://download.pytorch.org/whl/cpu
+      - torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cpu
+      - styletts2
+      - soundfile
+      - numpy
+      - ffmpeg-python

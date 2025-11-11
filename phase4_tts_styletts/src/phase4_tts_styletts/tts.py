@@ -76,7 +76,7 @@ def _load_styletts2(model_name: str):
         logger.info("Loading StyleTTS2 via load_pretrained('%s')", model_name)
         return load_pretrained(model_name)
 
-    if model_name != "vctk_base":
+    if model_name != "libritts_base":
         raise ValueError(f"Model '{model_name}' is not supported by this build")
 
     logger.info("Loading StyleTTS2 default model for '%s'", model_name)
@@ -86,9 +86,9 @@ def _load_styletts2(model_name: str):
 @dataclass
 class StyleControls:
     rate: float = 1.0
-    timbre: float = 0.18
-    prosody_variance: float = 0.14
-    formant_shift: float = 1.015
+    timbre: float = 0.08
+    prosody_variance: float = 0.12
+    formant_shift: float = 1.005
     remove_breaths: bool = True
 
 
@@ -106,7 +106,7 @@ class BritishFormalNarrator:
         reference_audio: Union[str, Path] = Path("Voices/calm_narrator/reference.wav"),
         sample_rate: int = 24000,
         controls: Optional[StyleControls] = None,
-        model_name: str = "vctk_base",
+        model_name: str = "libritts_base",
     ) -> None:
         self.sample_rate = sample_rate
         self.controls = controls or StyleControls()
@@ -117,9 +117,13 @@ class BritishFormalNarrator:
 
     def set_reference_audio(self, reference_audio: Union[str, Path]) -> None:
         """Cache style embedding from the provided reference clip."""
-        reference_path = Path(reference_audio)
-        if not reference_path.exists():
-            raise FileNotFoundError(f"Reference audio not found: {reference_path}")
+        reference_path = Path(reference_audio) if reference_audio else None
+
+        if not reference_path or not reference_path.is_file():
+            self._reference_audio = None
+            self._style_vector = None
+            logger.info("No reference audio supplied; using StyleTTS2 default voice.")
+            return
 
         self._reference_audio = reference_path.resolve()
         logger.info("Loading reference style from %s", self._reference_audio)
@@ -136,7 +140,7 @@ class BritishFormalNarrator:
         logger.debug("Synthesizing chunk to %s", target_path)
         audio = self._model.inference(
             text=text.strip(),
-            target_voice_path=str(self._reference_audio),
+            target_voice_path=str(self._reference_audio) if self._reference_audio else None,
             output_sample_rate=self.sample_rate,
             alpha=self.controls.timbre,
             beta=self.controls.prosody_variance,
