@@ -7,6 +7,7 @@ This version integrates automatic phrase removal before audio enhancement.
 import argparse
 import logging
 import os
+import sys
 import json
 import time
 from pathlib import Path
@@ -28,6 +29,13 @@ import threading
 
 from .models import EnhancementConfig, AudioMetadata
 from .phrase_cleaner import PhraseCleaner, PhraseCleanerConfig
+
+# Ensure repo root is importable so we can access pipeline_common regardless of cwd
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from pipeline_common import PipelineState
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -635,14 +643,16 @@ def get_audio_chunks_from_json(config: EnhancementConfig) -> list[AudioMetadata]
 
 
 def update_pipeline_json(config: EnhancementConfig, phase5_data: dict):
+    """
+    Persist Phase 5 results atomically so later orchestrator writes cannot clobber them.
+    """
     try:
-        with open(config.pipeline_json, "r+") as f:
-            pipeline = json.load(f)
-            pipeline["phase5"] = phase5_data
-            f.seek(0)
-            json.dump(pipeline, f, indent=4)
-            f.truncate()
-        logger.info("Updated pipeline.json with phase5 results")
+        state = PipelineState(config.pipeline_json, validate_on_read=False)
+        with state.transaction() as txn:
+            txn.data["phase5"] = phase5_data
+        logger.info(
+            "Updated pipeline.json with phase5 results at %s", config.pipeline_json
+        )
     except Exception as e:
         logger.error(f"Failed to update pipeline.json: {e}")
 

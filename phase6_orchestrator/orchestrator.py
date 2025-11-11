@@ -13,11 +13,13 @@ import argparse
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
 import time
 import yaml
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -46,6 +48,7 @@ logger = logging.getLogger(__name__)
 console = Console() if RICH_AVAILABLE else None
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+ARCHIVE_ROOT = PROJECT_ROOT / "audiobooks"
 PHASE4_AUDIO_DIR: Optional[Path] = None
 _ORCHESTRATOR_CONFIG: Optional[Dict] = None
 
@@ -100,6 +103,69 @@ def print_panel(content: str, title: str = "", style: str = ""):
             print("="*60)
         print(content)
         print("="*60 + "\n")
+
+
+def humanize_title(file_id: str) -> str:
+    """Convert file_id or filename into a readable title."""
+    name = Path(file_id).stem
+    name = re.sub(r"[_\-]+", " ", name).strip()
+    return name.title() if name else "Audiobook"
+
+
+def resolve_phase5_audiobook_path(file_id: str, pipeline_json: Path, phase5_dir: Path) -> Path:
+    """Locate the final audiobook path recorded in pipeline.json (with fallbacks)."""
+    audiobook_path: Optional[Path] = None
+    try:
+        state = PipelineState(pipeline_json, validate_on_read=False)
+        pipeline_data = state.read()
+    except Exception as exc:
+        logger.warning(f"Failed to read pipeline.json for archive lookup: {exc}")
+        pipeline_data = {}
+
+    phase5_data = pipeline_data.get("phase5", {}) or {}
+    raw_path = phase5_data.get("output_file")
+
+    if not raw_path:
+        phase5_files = phase5_data.get("files", {}) or {}
+        if phase5_files:
+            candidate_key = file_id if file_id in phase5_files else next(iter(phase5_files))
+            entry = phase5_files.get(candidate_key, {})
+            raw_path = entry.get("path") or entry.get("output_file")
+
+    if raw_path:
+        audiobook_path = Path(raw_path)
+        if not audiobook_path.is_absolute():
+            audiobook_path = (phase5_dir / audiobook_path).resolve()
+    else:
+        audiobook_path = (phase5_dir / "processed" / "audiobook.mp3").resolve()
+
+    return audiobook_path
+
+
+def archive_final_audiobook(file_id: str, pipeline_json: Path) -> None:
+    """Save a copy of the final audiobook that survives Phase 5 cleanup."""
+    phase5_dir = find_phase_dir(5)
+    if not phase5_dir:
+        logger.warning("Cannot archive audiobook: Phase 5 directory not found")
+        return
+
+    source_path = resolve_phase5_audiobook_path(file_id, pipeline_json, phase5_dir)
+
+    if not source_path.exists():
+        logger.warning(f"Archive skipped: audiobook not found at {source_path}")
+        return
+
+    title = humanize_title(file_id)
+    archive_dir = ARCHIVE_ROOT / title
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest_path = archive_dir / f"{title}_{timestamp}.mp3"
+
+    try:
+        shutil.copy2(source_path, dest_path)
+        logger.info(f"Archived final audiobook to {dest_path}")
+    except Exception as exc:
+        logger.warning(f"Failed to archive audiobook copy: {exc}")
 
 
 def get_clean_env_for_poetry() -> Dict[str, str]:
@@ -878,7 +944,7 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
         logger.error(f"Poetry install error: {e}")
         return False
     
-    config_path = phase_dir / "config.yaml"
+    config_path = phase_dir / "src" / "phase5_enhancement" / "config.yaml"
     
     # Read existing config
     try:
@@ -946,6 +1012,9 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
     except Exception as e:
         logger.warning(f"Could not clear processed files (non-fatal): {e}")
     
+    # Always refresh audiobook title so metadata matches current input
+    config['audiobook_title'] = humanize_title(file_id)
+
     # Write updated config
     try:
         with open(config_path, 'w') as f:
@@ -1025,35 +1094,10 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
     logger.info("=== Phase 5.5: Subtitle Generation ===")
 
     try:
-        # Load pipeline data to get audiobook path
         state = PipelineState(pipeline_json, validate_on_read=False)
         pipeline_data = state.read()
 
-        # Get audiobook path from Phase 5 output
-        phase5_data = pipeline_data.get('phase5', {})
-        audiobook_path = None
-
-        # First, try to read from phase5["output_file"] (new structure)
-        if 'output_file' in phase5_data and phase5_data['output_file']:
-            audiobook_path = Path(phase5_data['output_file'])
-            logger.info(f"Phase 5.5: Found audiobook path in pipeline.json: {audiobook_path}")
-
-        # Legacy fallback: try phase5["files"][file_id] structure (if it exists)
-        if not audiobook_path:
-            phase5_files = phase5_data.get('files', {}) or {}
-            if phase5_files:
-                phase5_file_id = file_id if file_id in phase5_files else next(iter(phase5_files))
-                phase5_entry = phase5_files.get(phase5_file_id, {})
-                audiobook_path = phase5_entry.get('path') or phase5_entry.get('output_file')
-                if audiobook_path:
-                    audiobook_path = Path(audiobook_path)
-
-        # Final fallback: hardcoded path
-        if not audiobook_path:
-            audiobook_path = phase5_dir / "processed" / "audiobook.mp3"
-            logger.warning(f"Phase 5.5: No audiobook path in pipeline.json, using fallback: {audiobook_path}")
-
-        # Validate that the file exists
+        audiobook_path = resolve_phase5_audiobook_path(file_id, pipeline_json, phase5_dir)
         if not audiobook_path.exists():
             logger.error(f"Phase 5.5: Audiobook not found at {audiobook_path}")
             return False
@@ -1431,6 +1475,9 @@ Pipeline Mode: {pipeline_mode}
             return 1
         
         print_status(f"[green]OK {phase_name} completed successfully[/green]")
+
+        if phase_num == 5:
+            archive_final_audiobook(file_id, pipeline_json)
         completed_phases.append(phase_num)
 
     auto_subtitles = orchestrator_config.get("auto_subtitles", False)

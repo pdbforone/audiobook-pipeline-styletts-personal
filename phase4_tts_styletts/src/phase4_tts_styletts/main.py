@@ -14,6 +14,7 @@ import sys
 import time
 from datetime import datetime, timezone
 import hashlib
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -24,6 +25,72 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("phase4_styletts")
+
+
+WHITESPACE_RE = re.compile(r"\s+")
+NO_SPACE_BEFORE = re.compile(r"\s+([,.;:!?])")
+LETTER_RUN_RE = re.compile(r"\b(?:[A-Za-z](?: [A-Za-z]){1,})\b")
+PARA_BREAK_RE = re.compile(r"(?:\n\s*){2,}")
+
+
+def normalize_chunk_text(raw: str) -> str:
+    """
+    Collapse PDF artifacts (letter-by-letter spacing, stray line breaks, soft hyphens)
+    so Kokoro receives natural prose instead of staccato fragments.
+    """
+    if not raw:
+        return ""
+
+    text = raw.replace("\r\n", "\n").replace("\r", "\n")
+    text = PARA_BREAK_RE.sub(". ", text)
+    text = re.sub(r"(?<=\w)-\s*\n\s*", "", text)  # undo hyphenation inside words
+    text = text.replace("\n", " ")
+    text = re.sub(r"\.\s+\.", ". ", text)
+
+    def collapse_letters(match: re.Match[str]) -> str:
+        return match.group(0).replace(" ", "")
+
+    text = LETTER_RUN_RE.sub(collapse_letters, text)
+    text = WHITESPACE_RE.sub(" ", text).strip()
+
+    tokens = text.split(" ")
+    rebuilt: List[str] = []
+    buffer: List[str] = []
+
+    def flush_buffer() -> None:
+        nonlocal buffer
+        if not buffer:
+            return
+        if len(buffer) == 1:
+            rebuilt.append(buffer[0])
+        else:
+            rebuilt.append("".join(buffer))
+        buffer = []
+
+    for token in tokens:
+        if not token:
+            continue
+        if len(token) == 1 and token.isalpha():
+            buffer.append(token)
+            continue
+        flush_buffer()
+        rebuilt.append(token)
+    flush_buffer()
+
+    collapsed = " ".join(rebuilt)
+    collapsed = NO_SPACE_BEFORE.sub(r"\1", collapsed)
+    collapsed = re.sub(r"\(\s+", "(", collapsed)
+    collapsed = re.sub(r"\s+\)", ")", collapsed)
+    collapsed = collapsed.strip()
+
+    if collapsed:
+        if collapsed[-1] in {"\"", "'"}:
+            if len(collapsed) >= 2 and collapsed[-2] not in ".?!":
+                collapsed = f"{collapsed[:-1]}.{collapsed[-1]}"
+        elif collapsed[-1] not in ".?!":
+            collapsed = f"{collapsed}."
+
+    return collapsed
 
 
 def load_chunk_paths(json_path: Path, file_id: str) -> Tuple[str, List[str]]:
@@ -111,7 +178,7 @@ def main() -> int:
             logger.error("Chunk missing: %s", chunk_file)
             return 1
 
-        text = chunk_file.read_text(encoding="utf-8").strip()
+        text = normalize_chunk_text(chunk_file.read_text(encoding="utf-8"))
         if not text:
             logger.warning("Chunk %s is empty; skipping.", chunk_file.name)
             continue

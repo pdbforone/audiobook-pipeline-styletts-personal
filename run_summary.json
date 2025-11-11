@@ -1,12 +1,12 @@
 {
-  "generated_at": "2025-11-11T05:20:10.569477+00:00",
+  "generated_at": "2025-11-11T06:52:39.691551+00:00",
   "pipeline_json": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\pipeline.json",
   "phase_statuses": {
     "phase1": {
       "status": "pending",
       "metadata": {
         "hashes": [
-          "cd4206e9dfc52aabb655b27e3935da81b18f244209e30f8304b249f9156b96c9"
+          "3506c28630a32dcecf7b69e6f8f1b196a6881a88d6b62660f4251ae5418d6e12"
         ],
         "errors": [],
         "metrics": {}
@@ -28,7 +28,7 @@
           "successful": 1,
           "partial": 0,
           "failed": 0,
-          "total_chunks": 9
+          "total_chunks": 15
         }
       }
     },
@@ -37,12 +37,496 @@
       "metadata": {}
     },
     "phase5": {
-      "status": "pending",
-      "metadata": {}
+      "status": "success",
+      "metadata": {
+        "output_file": "processed\\audiobook.mp3",
+        "metrics": {
+          "successful": 15,
+          "failed": 0,
+          "total_duration": 115.07209260000673,
+          "avg_snr_improvement": -0.384349266688029,
+          "avg_volume_normalization_delta": 0.0013425389925638834,
+          "volume_normalization_applied_count": 15,
+          "phrases_removed_total": 0,
+          "chunks_with_phrases": 0,
+          "cleanup_errors": 0
+        },
+        "artifacts": [
+          "processed\\enhanced_0002.wav",
+          "processed\\enhanced_0001.wav",
+          "processed\\enhanced_0003.wav",
+          "processed\\enhanced_0004.wav",
+          "processed\\enhanced_0005.wav",
+          "processed\\enhanced_0006.wav",
+          "processed\\enhanced_0007.wav",
+          "processed\\enhanced_0008.wav",
+          "processed\\enhanced_0009.wav",
+          "processed\\enhanced_0010.wav",
+          "processed\\enhanced_0011.wav",
+          "processed\\enhanced_0012.wav",
+          "processed\\enhanced_0014.wav",
+          "processed\\enhanced_0013.wav",
+          "processed\\enhanced_0015.wav"
+        ],
+        "errors": [],
+        "timestamps": {
+          "start": 111347.7884126,
+          "end": 111462.8606076,
+          "duration": 115.07209260000673
+        },
+        "chunks": [
+          {
+            "chunk_id": 2,
+            "wav_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_002.wav",
+            "enhanced_path": "processed\\enhanced_0002.wav",
+            "snr_pre": 21.2833833694458,
+            "snr_post": 20.895931720733643,
+            "rms_pre": 0.09255176782608032,
+            "rms_post": 0.08804276585578918,
+            "rms_volume_norm_pre": 0.09102659672498703,
+            "rms_volume_norm_post": 0.09255176782608032,
+            "lufs_pre": -20.680455486011752,
+            "lufs_post": -21.254076368867324,
+            "status": "complete",
+            "error_message": null,
+            "duration": 17.66416339999705,
+            "cleanup_status": "clean",
+            "phrases_removed": 0,
+            "cleanup_processing_time": 12.92625190000399
+          },
+          {
+            "chunk_id": 1,
+            "wav_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_001.wav",
+            "enhanced_path": "processed\\enhanced_0001.wav",
+            "snr_pre": 21.220638751983643,
+            "snr_post": 20.856833457946777,
+            "rms_pre": 0.07663606852293015,
+            "rms_post": 0.0725700706243515,
+            "rms_volume_norm_pre": 0.07537616044282913,
+            "rms_volume_norm_post": 0.07663606852293015,
+            "lufs_pre": -22.295101875302496,
+            "lufs_post": -22.852988909597794,
+            "status": "complete",
+            "error_message": null,
+            "duration": 17.799704499993823,
+            "cleanup_status": "clean",
+            "phrases_removed": 0,
+            "cleanup_processing_time": 13.063266100012697
+          },
+          {
+            "chunk_id": 3,
+            "wav_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_003.wav",
+            "enhanced_path": "processed\\enhanced_0003.wav",
+            "snr_pre": 20.81113576889038,
+            "snr_post": 20.42048931121826,
+            "rms_pre": 0.08888427168130875,
+            "rms_post": 0.08472820371389389,
+            "rms_volume_norm_pre": 0.08742038160562515,
+            "rms_volume_norm_post": 0.08888427168130875,
+            "lufs_pre": -20.995329012430208,
+            "lufs_post": -21.577274825947743,
+            "status": "complete",
+            "error_message": null,
+            "duration": 14.173884600008023,
+            "cleanup_status": "clean",
+            "phrases_removed": 0,
+            "cleanup_processing_time": 12.670291200003703
+          },
+          {
+            "chunk_id": 4,
+            "wav_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_004.wav",
+            "enhanced_path": "processed\\enhanced_0004.wav",
+            "snr_pre": 21.245036125183105,
+            "snr_post": 20.88973045349121,
+            "rms_pre": 0.06764699518680573,
+            "rms_post": 0.06441371887922287,
+            "rms_volume_norm_pre": 0.06653690338134766,
+            "rms_volume_norm_post": 0.06764699518680573,
+            "lufs_pre": -23.348775216858215,
+            "lufs_post": -23.88882010822214,
+            "status": "complete",
+            "error_message": null,
+            "duration": 14.285066199998255,
+            "cleanup_status": "clean",
+            "phrases_removed": 0,
+            "cleanup_processing_time": 12.65970190000371
+          },
+          {
+            "chunk_id": 5,
+            "wav_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_005.wav",
+            "enhanced_path": "processed\\enhanced_0005.wav",
+            "snr_pre": 21.057639122009277,
+            "snr_post": 20.65577745437622,
+            "rms_pre": 0.08495468646287918,
+            "rms_post": 0.08049100637435913,
+            "rms_volume_norm_pre": 0.08355622738599777,
+            "rms_volume_norm_post": 0.08495468646287918,
+            "lufs_pre": -21.44380308839076,
+            "lufs_post": -22.020357424500833,
+            "status": "complete",
+            "error_message": null,
+            "duration": 15.19235359999584,
+            "cleanup_status": "clean",
+            "phrases_removed": 0,
+            "cleanup_processing_time": 13.574048900001799
+          },
+          {
+            "chunk_id": 6,
+            "wav_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_006.wav",
+            "enhanced_path": "processed\\enhanced_0006.wav",
+            "snr_pre": 21.319353580474854,
+            "snr_post": 20.950677394866943,
+            "rms_pre": 0.08850216865539551,
+            "rms_post": 0.08521352708339691,
+            "rms_volume_norm_pre": 0.0870443806052208,
+            "rms_volume_norm_post": 0.08850216865539551,
+            "lufs_pre": -21.02165270430906,
+            "lufs_post": -21.59332052235737,
+            "status": "complete",
+            "error_message": null,
+            "duration": 15.072394499991788,
+            "cleanup_status": "clean",
+            "phrases_removed": 0,
+            "cleanup_processing_time": 13.44578690000344
+          },
+          {
+            "chunk_id": 7,
+            "wav_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_007.wav",
+            "enhanced_path": "processed\\enhanced_0007.wav",
+            "snr_pre": 21.210298538208008,
+            "snr_post": 20.82707166671753,
+            "rms_pre": 0.07146190851926804,
+            "rms_post": 0.06880711764097214,
+            "rms_volume_norm_pre": 0.07028848677873611,
+            "rms_volume_norm_post": 0.07146190851926804,
+            "lufs_pre": -22.911422493501068,
+            "lufs_post": -23.486246029606274,
+            "status": "complete",
+            "error_message": null,
+            "duration": 14.804547800013097,
+            "cleanup_status": "clean",
+            "phrases_removed": 0,
+            "cleanup_processing_time": 13.189912100002402
+          },
+          {
+            "chunk_id": 8,
+            "wav_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_008.wav",
+            "enhanced_path": "processed\\enhanced_0008.wav",
+            "snr_pre": 20.825974941253662,
+            "snr_post": 20.433599948883057,
+            "rms_pre": 0.08980805426836014,
+            "rms_post": 0.08551513403654099,
+            "rms_volume_norm_pre": 0.08832874149084091,
+            "rms_volume_norm_post": 0.08980805426836014,
+            "lufs_pre": -20.93498293789257,
+            "lufs_post": -21.50304423121968,
+            "status": "complete",
+            "error_message": null,
+            "duration": 14.711598400012008,
+            "cleanup_status": "clean",
+            "phrases_removed": 0,
+            "cleanup_processing_time": 13.175178000004962
+          },
+          {
+            "chunk_id": 9,
+            "wav_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_009.wav",
+            "enhanced_path": "processed\\enhanced_0009.wav",
+            "snr_pre": 20.993154048919678,
+            "snr_post": 20.603036880493164,
+            "rms_pre": 0.08085915446281433,
+            "rms_post": 0.07730680704116821,
+            "rms_volume_norm_pre": 0.07952897995710373,
+            "rms_volume_norm_post": 0.08085915446281433,
+            "lufs_pre": -21.85038938354395,
+            "lufs_post": -22.438008143089856,
+            "status": "complete",
+            "error_message": null,
+            "duration": 13.461429999995744,
+            "cleanup_status": "clean",
+            "phrases_removed": 0,
+            "cleanup_processing_time": 11.777572399994824
+          },
+          {
+            "chunk_id": 10,
+            "wav_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_010.wav",
+            "enhanced_path": "processed\\enhanced_0010.wav",
+            "snr_pre": 21.61292791366577,
+            "snr_post": 21.22854232788086,
+            "rms_pre": 0.07399886846542358,
+            "rms_post": 0.07063572853803635,
+            "rms_volume_norm_pre": 0.07278306037187576,
+            "rms_volume_norm_post": 0.07399886846542358,
+            "lufs_pre": -22.607662073861103,
+            "lufs_post": -23.199490359641956,
+            "status": "complete",
+            "error_message": null,
+            "duration": 14.707718100005877,
+            "cleanup_status": "clean",
+            "phrases_removed": 0,
+            "cleanup_processing_time": 13.024734099992202
+          },
+          {
+            "chunk_id": 11,
+            "wav_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_011.wav",
+            "enhanced_path": "processed\\enhanced_0011.wav",
+            "snr_pre": 20.381004810333252,
+            "snr_post": 19.95582103729248,
+            "rms_pre": 0.08048415184020996,
+            "rms_post": 0.0776352733373642,
+            "rms_volume_norm_pre": 0.07916039973497391,
+            "rms_volume_norm_post": 0.08048415184020996,
+            "lufs_pre": -21.859591039342263,
+            "lufs_post": -22.436324909851866,
+            "status": "complete",
+            "error_message": null,
+            "duration": 13.969742000001133,
+            "cleanup_status": "clean",
+            "phrases_removed": 0,
+            "cleanup_processing_time": 12.254449900006875
+          },
+          {
+            "chunk_id": 12,
+            "wav_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_012.wav",
+            "enhanced_path": "processed\\enhanced_0012.wav",
+            "snr_pre": 20.76490879058838,
+            "snr_post": 20.397653579711914,
+            "rms_pre": 0.08930530399084091,
+            "rms_post": 0.08588062971830368,
+            "rms_volume_norm_pre": 0.08783453702926636,
+            "rms_volume_norm_post": 0.08930530399084091,
+            "lufs_pre": -20.955068482165082,
+            "lufs_post": -21.53362291882783,
+            "status": "complete",
+            "error_message": null,
+            "duration": 13.346527000001515,
+            "cleanup_status": "clean",
+            "phrases_removed": 0,
+            "cleanup_processing_time": 11.673515800008317
+          },
+          {
+            "chunk_id": 14,
+            "wav_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_014.wav",
+            "enhanced_path": "processed\\enhanced_0014.wav",
+            "snr_pre": 21.568350791931152,
+            "snr_post": 21.203410625457764,
+            "rms_pre": 0.0820847824215889,
+            "rms_post": 0.07925950735807419,
+            "rms_volume_norm_pre": 0.0807340070605278,
+            "rms_volume_norm_post": 0.0820847824215889,
+            "lufs_pre": -21.73610349297473,
+            "lufs_post": -22.312542705009527,
+            "status": "complete",
+            "error_message": null,
+            "duration": 13.815574100008234,
+            "cleanup_status": "clean",
+            "phrases_removed": 0,
+            "cleanup_processing_time": 12.229865799992695
+          },
+          {
+            "chunk_id": 13,
+            "wav_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_013.wav",
+            "enhanced_path": "processed\\enhanced_0013.wav",
+            "snr_pre": 20.238046646118164,
+            "snr_post": 19.828287363052368,
+            "rms_pre": 0.0749879702925682,
+            "rms_post": 0.070643350481987,
+            "rms_volume_norm_pre": 0.07375575602054596,
+            "rms_volume_norm_post": 0.0749879702925682,
+            "lufs_pre": -22.499936866510406,
+            "lufs_post": -23.068431894189477,
+            "status": "complete",
+            "error_message": null,
+            "duration": 15.747673899997608,
+            "cleanup_status": "clean",
+            "phrases_removed": 0,
+            "cleanup_processing_time": 14.044042599998647
+          },
+          {
+            "chunk_id": 15,
+            "wav_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_015.wav",
+            "enhanced_path": "processed\\enhanced_0015.wav",
+            "snr_pre": 21.041557788848877,
+            "snr_post": 20.661308765411377,
+            "rms_pre": 0.08182969689369202,
+            "rms_post": 0.07857833057641983,
+            "rms_volume_norm_pre": 0.08048314601182938,
+            "rms_volume_norm_post": 0.08182969689369202,
+            "lufs_pre": -21.742433107969063,
+            "lufs_post": -22.308040798440278,
+            "status": "complete",
+            "error_message": null,
+            "duration": 7.743596200001775,
+            "cleanup_status": "clean",
+            "phrases_removed": 0,
+            "cleanup_processing_time": 6.487330599993584
+          }
+        ]
+      }
     }
   },
   "kokoro": {
-    "error": "kokoro_run_meta.json not found"
+    "voice": "af_sky",
+    "chunk_count": 15,
+    "files": [
+      {
+        "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_001.wav",
+        "sha256": "6e2d9b16f12fb56c78de01958dbeaa87c9c396526201fad15eed7b57db9dc5cb",
+        "bytes": 3081644
+      },
+      {
+        "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_002.wav",
+        "sha256": "7eecc4676b446512ba2d14a38f73a3093ffcaf4df0198c523f4b578b4809d74c",
+        "bytes": 2838044
+      },
+      {
+        "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_003.wav",
+        "sha256": "10822f5e4fbf15b27883f90b4e95291efc67a5e2d145e7baa460e02823f1db32",
+        "bytes": 2787644
+      },
+      {
+        "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_004.wav",
+        "sha256": "e76949df7bd0c345d3246475479a4460c9881ed665af021a0ea4d1cca10dd8ac",
+        "bytes": 3037244
+      },
+      {
+        "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_005.wav",
+        "sha256": "3d23f8757861bbc4be5e0196011231d3ed7ea0495c74054009600a236354e5ed",
+        "bytes": 3096044
+      },
+      {
+        "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_006.wav",
+        "sha256": "1787d4e3d15d9ae092c9c0e914e705b9639e16942938e2b8416046c05a72f821",
+        "bytes": 3051644
+      },
+      {
+        "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_007.wav",
+        "sha256": "4b378f6f1f42225eb7b1ac7bb4532e1b7cce6aca12e331d1c1feb3d9c133dede",
+        "bytes": 3166844
+      },
+      {
+        "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_008.wav",
+        "sha256": "15b2ac72cad3c5419974778248768e4fd269dc16c3f9b9bbd36caa0ac9d3639b",
+        "bytes": 3093644
+      },
+      {
+        "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_009.wav",
+        "sha256": "f3b61031b10162608d3f75af72f8eafc25ae59325cf37a6a30fd20babeafbd8b",
+        "bytes": 2898044
+      },
+      {
+        "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_010.wav",
+        "sha256": "01eccc8f62ba16ee496246bdc939b6303ad1d6c6b1dfc3d9670a57dd295b4ccb",
+        "bytes": 2894444
+      },
+      {
+        "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_011.wav",
+        "sha256": "ba26d51eaf3e5f2d3a6f3ae238ad23f5b80a2a56fc2d023da62c125e1983691b",
+        "bytes": 2730044
+      },
+      {
+        "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_012.wav",
+        "sha256": "c0350d07c62d84ca8c76864e6d04e8fd97d9253f2eb3eee64a4bd0ab5ec18638",
+        "bytes": 2817644
+      },
+      {
+        "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_013.wav",
+        "sha256": "82edb1783ac89e58025dd5d82d071812dae401548be09a70d684b80e37d7e6db",
+        "bytes": 2996444
+      },
+      {
+        "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_014.wav",
+        "sha256": "446290f1e4af14447c5ce5bdcf9459ce141939a040848d67ef01f8e6bd24fac7",
+        "bytes": 2670044
+      },
+      {
+        "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_015.wav",
+        "sha256": "4d7f4e5cce8e4073875338fcea7ba4d94cc0a3f152074851d8469d59d6742547",
+        "bytes": 2928044
+      }
+    ],
+    "sample_rate_hz": 24000,
+    "generated_at": "2025-11-11T06:50:23.485048+00:00",
+    "runtime_seconds": 345.1328453000024
   },
-  "audiobook_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase5_enhancement\\processed\\audiobook.mp3"
+  "audiobook_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase5_enhancement\\processed\\audiobook.mp3",
+  "audio_stats": [
+    {
+      "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_001.wav",
+      "rms_db": -22.4553185917856,
+      "peak_db": -0.44569530992138623
+    },
+    {
+      "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_002.wav",
+      "rms_db": -20.81663322564363,
+      "peak_db": -0.44569530992138623
+    },
+    {
+      "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_003.wav",
+      "rms_db": -21.167746247153808,
+      "peak_db": -0.44569530992138623
+    },
+    {
+      "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_004.wav",
+      "rms_db": -23.538748305568973,
+      "peak_db": -0.44569530992138623
+    },
+    {
+      "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_005.wav",
+      "rms_db": -21.560422805445043,
+      "peak_db": -0.44569530992138623
+    },
+    {
+      "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_006.wav",
+      "rms_db": -21.205184159075216,
+      "peak_db": -0.44569530992138623
+    },
+    {
+      "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_007.wav",
+      "rms_db": -23.062316406020102,
+      "peak_db": -0.44569530992138623
+    },
+    {
+      "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_008.wav",
+      "rms_db": -21.077957336415118,
+      "peak_db": -0.44569530992138623
+    },
+    {
+      "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_009.wav",
+      "rms_db": -21.98949111937185,
+      "peak_db": -0.44569530992138623
+    },
+    {
+      "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_010.wav",
+      "rms_db": -22.75939350497655,
+      "peak_db": -0.44569530992138623
+    },
+    {
+      "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_011.wav",
+      "rms_db": -22.029838971526562,
+      "peak_db": -0.44569530992138623
+    },
+    {
+      "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_012.wav",
+      "rms_db": -21.12669313411307,
+      "peak_db": -0.44569530992138623
+    },
+    {
+      "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_013.wav",
+      "rms_db": -22.644081185458298,
+      "peak_db": -0.44569530992138623
+    },
+    {
+      "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_014.wav",
+      "rms_db": -21.858869601770095,
+      "peak_db": -0.44569530992138623
+    },
+    {
+      "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase4_tts_styletts\\audio_chunks\\376953453-The-World-of-Universals_chunk_015.wav",
+      "rms_db": -21.88590211169936,
+      "peak_db": -0.44569530992138623
+    }
+  ],
+  "qa": {
+    "error": "faster_whisper not installed"
+  }
 }
