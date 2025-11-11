@@ -1,5 +1,5 @@
 """
-CLI entry point for the StyleTTS2-based Phase 4 replacement.
+CLI entry point for the Kokoro-based Phase 4 replacement.
 
 This mirrors the basic CLI surface from the legacy Chatterbox runner so
 Phase 6 can call it without additional wiring.
@@ -13,9 +13,9 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
-from .tts import BritishFormalNarrator, StyleControls
+from .tts import VOICE_ALIASES, BritishFormalNarrator, StyleControls
 
 logging.basicConfig(
     level=logging.INFO,
@@ -54,13 +54,13 @@ def select_chunks(chunk_paths: List[str], chunk_id: int | None) -> List[Path]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Phase 4 StyleTTS synthesizer")
+    parser = argparse.ArgumentParser(description="Phase 4 Kokoro synthesizer")
     parser.add_argument("--file_id", required=True, help="Phase 3 file identifier")
     parser.add_argument("--json_path", default="../pipeline.json", help="Pipeline JSON path")
     parser.add_argument("--chunk_id", type=int, help="Optional chunk index to process")
-    parser.add_argument("--reference", default="Voices/calm_narrator/reference.wav", help="Reference audio path")
+    parser.add_argument("--reference", default="", help="Reference audio path (ignored for Kokoro)")
     parser.add_argument("--output_dir", default="audio_chunks", help="Output directory for wav files")
-    parser.add_argument("--voice_id", help="Voice override (logged for parity)")
+    parser.add_argument("--voice_id", help="Voice override (af_sky, am_adam, etc.)")
     parser.add_argument(
         "--pipeline-mode",
         choices=["commercial", "personal"],
@@ -92,9 +92,14 @@ def main() -> int:
         logger.error("Chunk selection failed: %s", exc)
         return 1
 
-    narrator = BritishFormalNarrator(reference_audio=args.reference, controls=StyleControls())
+    voice_id = resolve_voice(args.voice_id)
+    narrator = BritishFormalNarrator(
+        reference_audio=args.reference or None,
+        controls=StyleControls(),
+        voice_id=voice_id,
+    )
     if args.voice_id:
-        logger.info("Voice override requested (%s); StyleTTS2 uses fixed reference audio.", args.voice_id)
+        logger.info("Voice override requested -> %s", voice_id)
 
     overall_start = time.perf_counter()
     for idx, chunk_file in enumerate(paths_to_process, start=1):
@@ -113,10 +118,29 @@ def main() -> int:
         start = time.perf_counter()
         narrator.synth(text, output_path)
         duration = time.perf_counter() - start
-        logger.info("Chunk %s (%d/%d) synthesized in %.2fs -> %s", chunk_id, idx, len(paths_to_process), duration, output_path)
+        logger.info(
+            "Chunk %s (%d/%d) synthesized in %.2fs -> %s",
+            chunk_id,
+            idx,
+            len(paths_to_process),
+            duration,
+            output_path,
+        )
 
-    logger.info("StyleTTS2 synthesis finished in %.2fs", time.perf_counter() - overall_start)
+    logger.info("Kokoro synthesis finished in %.2fs", time.perf_counter() - overall_start)
     return 0
+
+
+def resolve_voice(requested: Optional[str]) -> str:
+    if not requested:
+        return VOICE_ALIASES.get("female_default", VOICE_ALIASES.get("af_sky", "af_sky"))
+
+    key = requested.lower()
+    if key in VOICE_ALIASES:
+        return VOICE_ALIASES[key]
+
+    logger.warning("Unknown voice_id '%s' - using Kokoro default.", requested)
+    return VOICE_ALIASES.get("af_sky", "af_sky")
 
 
 if __name__ == "__main__":
