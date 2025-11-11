@@ -1,0 +1,278 @@
+# Audio Mastering Presets for Personal Audiobook Studio
+# Each preset defines a complete audio processing chain
+
+presets:
+  # ========================================
+  # AUDIOBOOK INTIMATE
+  # ========================================
+  # For: Philosophy, meditation, contemplative works
+  # Style: Warm, present, conversational
+  # Target: Personal listening, focused attention
+  audiobook_intimate:
+    name: "Intimate (Philosophy & Contemplative)"
+    description: "Warm, present voice for deep listening. Preserves natural dynamics."
+
+    # Processing chain (executed in order)
+    chain:
+      - type: noise_gate
+        threshold_db: -40
+        attack_ms: 10
+        release_ms: 100
+
+      - type: eq
+        high_pass_hz: 80  # Remove rumble
+        low_shelf:
+          freq_hz: 200
+          gain_db: -1    # Reduce muddiness
+        presence:
+          freq_hz: 3000
+          gain_db: 2     # Enhance clarity
+          q: 1.5
+        de_esser:
+          freq_hz: 8000
+          threshold_db: -20
+
+      - type: multiband_compressor
+        bands:
+          - freq_range: [20, 200]
+            threshold_db: -20
+            ratio: 3.0
+            attack_ms: 30
+            release_ms: 200
+          - freq_range: [200, 3000]  # Voice fundamentals
+            threshold_db: -18
+            ratio: 2.0    # Light compression preserves emotion
+            attack_ms: 15
+            release_ms: 150
+          - freq_range: [3000, 20000]
+            threshold_db: -15
+            ratio: 4.0
+            attack_ms: 5
+            release_ms: 100
+
+      - type: harmonic_exciter
+        amount: 0.15  # Subtle warmth
+        harmonics: [2, 3]  # Even and odd harmonics
+
+      - type: limiter
+        ceiling_db: -1.0
+        release_ms: 50  # Fast for transparency
+
+      - type: lufs_normalize
+        target_lufs: -23.0  # EBU R128 standard
+        max_true_peak_db: -1.0
+
+    # Quality metrics targets
+    targets:
+      dynamic_range_db: 12  # Preserve natural dynamics
+      snr_db: 35
+
+  # ========================================
+  # AUDIOBOOK DYNAMIC
+  # ========================================
+  # For: Fiction, drama, narrative stories
+  # Style: Engaging, dynamic, expressive
+  # Target: Entertainment, emotional journey
+  audiobook_dynamic:
+    name: "Dynamic (Fiction & Drama)"
+    description: "Expressive with preserved dynamics. Engaging for storytelling."
+
+    chain:
+      - type: noise_gate
+        threshold_db: -45
+        attack_ms: 5
+        release_ms: 150
+
+      - type: eq
+        high_pass_hz: 70
+        presence:
+          freq_hz: 3500
+          gain_db: 2.5
+          q: 2.0
+        brightness:
+          freq_hz: 10000
+          gain_db: 1.5
+          shelf: true
+
+      - type: multiband_compressor
+        bands:
+          - freq_range: [20, 200]
+            threshold_db: -24
+            ratio: 2.0
+            attack_ms: 40
+            release_ms: 250
+          - freq_range: [200, 3000]
+            threshold_db: -20
+            ratio: 1.5    # Very light - preserve emotion
+            attack_ms: 20
+            release_ms: 200
+          - freq_range: [3000, 20000]
+            threshold_db: -18
+            ratio: 2.0
+            attack_ms: 10
+            release_ms: 150
+
+      - type: transient_shaper
+        attack_db: 2.0  # Enhance consonants
+        sustain_db: 0
+
+      - type: stereo_widener
+        width_percent: 10  # Subtle spaciousness
+
+      - type: limiter
+        ceiling_db: -0.5
+        release_ms: 40
+
+      - type: lufs_normalize
+        target_lufs: -18.0  # Louder for drama
+        max_true_peak_db: -0.5
+
+    targets:
+      dynamic_range_db: 15  # Wide dynamic range
+      snr_db: 32
+
+  # ========================================
+  # PODCAST STANDARD
+  # ========================================
+  # For: Spoken word, educational content
+  # Style: Clear, consistent, broadcast-ready
+  # Target: Podcast platforms, mobile listening
+  podcast_standard:
+    name: "Podcast (Clear & Consistent)"
+    description: "Broadcast-standard processing for maximum intelligibility."
+
+    chain:
+      - type: noise_gate
+        threshold_db: -35
+        attack_ms: 5
+        release_ms: 100
+
+      - type: eq
+        high_pass_hz: 100  # Aggressive rumble cut
+        low_shelf:
+          freq_hz: 250
+          gain_db: -2
+        presence:
+          freq_hz: 2500
+          gain_db: 3  # Strong clarity boost
+          q: 2.0
+        de_esser:
+          freq_hz: 7000
+          threshold_db: -18
+
+      - type: compressor
+        threshold_db: -20
+        ratio: 3.0
+        attack_ms: 10
+        release_ms: 100
+        knee_db: 6  # Soft knee for smoothness
+
+      - type: limiter
+        ceiling_db: -0.3
+        release_ms: 30
+
+      - type: lufs_normalize
+        target_lufs: -16.0  # Podcast standard (Spotify, Apple)
+        max_true_peak_db: -0.3
+
+    targets:
+      dynamic_range_db: 8  # Compressed for consistency
+      snr_db: 38
+
+  # ========================================
+  # AUDIOBOOK CLASSIC
+  # ========================================
+  # For: Classic literature, historical texts
+  # Style: Refined, elegant, timeless
+  # Target: Traditional audiobook feel
+  audiobook_classic:
+    name: "Classic (Refined & Elegant)"
+    description: "Traditional audiobook mastering. Balanced and timeless."
+
+    chain:
+      - type: noise_gate
+        threshold_db: -42
+        attack_ms: 15
+        release_ms: 120
+
+      - type: eq
+        high_pass_hz: 85
+        warmth:
+          freq_hz: 150
+          gain_db: 1.5
+          shelf: true
+        presence:
+          freq_hz: 3200
+          gain_db: 2
+          q: 1.8
+
+      - type: compressor
+        threshold_db: -18
+        ratio: 2.5
+        attack_ms: 20
+        release_ms: 150
+
+      - type: harmonic_exciter
+        amount: 0.20  # Analog warmth
+        harmonics: [2]  # Even harmonics only
+
+      - type: limiter
+        ceiling_db: -1.0
+        release_ms: 60
+
+      - type: lufs_normalize
+        target_lufs: -20.0  # Traditional audiobook level
+        max_true_peak_db: -1.0
+
+    targets:
+      dynamic_range_db: 10
+      snr_db: 36
+
+  # ========================================
+  # MINIMAL (Reference)
+  # ========================================
+  # For: Testing, comparison, high-fidelity needs
+  # Style: Clean, transparent, minimal processing
+  # Target: Reference for comparing engines
+  minimal:
+    name: "Minimal (Reference)"
+    description: "Minimal processing. For testing and quality comparison."
+
+    chain:
+      - type: noise_gate
+        threshold_db: -50
+        attack_ms: 5
+        release_ms: 50
+
+      - type: eq
+        high_pass_hz: 60  # Only essential filtering
+
+      - type: limiter
+        ceiling_db: -1.0
+        release_ms: 100
+
+      - type: lufs_normalize
+        target_lufs: -23.0
+        max_true_peak_db: -1.0
+
+    targets:
+      dynamic_range_db: 20  # Maximum dynamics
+      snr_db: 30
+
+
+# Default preset
+default_preset: "audiobook_intimate"
+
+# Preset recommendations by genre
+recommendations:
+  philosophy: "audiobook_intimate"
+  theology: "audiobook_intimate"
+  memoir: "audiobook_intimate"
+  poetry: "audiobook_classic"
+  fiction: "audiobook_dynamic"
+  thriller: "audiobook_dynamic"
+  horror: "audiobook_dynamic"
+  academic: "podcast_standard"
+  technical: "podcast_standard"
+  classic_literature: "audiobook_classic"
+  reference: "minimal"
