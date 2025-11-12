@@ -1348,6 +1348,7 @@ def run_pipeline(
     pipeline_json: Optional[Path] = None,
     enable_subtitles: bool = False,
     max_retries: int = 3,
+    no_resume: bool = False,
     progress_callback=None,
 ) -> Dict:
     """
@@ -1362,6 +1363,7 @@ def run_pipeline(
         pipeline_json: Path to pipeline.json (default: PROJECT_ROOT/pipeline.json)
         enable_subtitles: Whether to generate subtitles (Phase 5.5)
         max_retries: Max retries per phase
+        no_resume: Disable resume from checkpoint (run all phases fresh)
         progress_callback: Optional callback(phase_num, percentage, message)
 
     Returns:
@@ -1395,8 +1397,8 @@ def run_pipeline(
     orchestrator_config = get_orchestrator_config()
     pipeline_mode = orchestrator_config.get("pipeline_mode", "personal").lower()
 
-    # Load pipeline.json
-    pipeline_data = load_pipeline_json(pipeline_json)
+    # Load pipeline.json (skip if no_resume is True)
+    pipeline_data = {} if no_resume else load_pipeline_json(pipeline_json)
 
     # Run phases
     completed_phases = []
