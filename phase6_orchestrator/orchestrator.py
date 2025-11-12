@@ -407,10 +407,11 @@ def run_phase_with_retry(
     max_retries: int = 2,
     voice_id: Optional[str] = None,
     pipeline_mode: str = "commercial",
+    tts_engine: Optional[str] = None,
 ) -> bool:
     """
     Run a phase with retry logic.
-    
+
     Args:
         phase_num: Phase number (1-5)
         file_path: Input file path
@@ -418,7 +419,9 @@ def run_phase_with_retry(
         pipeline_json: Path to pipeline.json
         max_retries: Maximum retry attempts (default 2)
         voice_id: Optional voice ID for Phase 4 TTS
-    
+        pipeline_mode: Pipeline mode (commercial or personal)
+        tts_engine: Optional TTS engine override (f5, xtts, chatterbox, styletts)
+
     Returns:
         True if successful, False otherwise
     """
@@ -434,6 +437,7 @@ def run_phase_with_retry(
             pipeline_json,
             voice_id,
             pipeline_mode,
+            tts_engine,
         )
         
         if success:
@@ -450,30 +454,36 @@ def run_phase(
     pipeline_json: Path,
     voice_id: Optional[str] = None,
     pipeline_mode: str = "commercial",
+    tts_engine: Optional[str] = None,
 ) -> bool:
     """
     Run a single phase.
-    
+
     Args:
         phase_num: Phase number (1-5)
         file_path: Input file path
         file_id: File identifier
         pipeline_json: Path to pipeline.json
         voice_id: Optional voice ID for Phase 4 TTS
-    
+        pipeline_mode: Pipeline mode (commercial or personal)
+        tts_engine: Optional TTS engine override (f5, xtts, chatterbox, styletts)
+
     Returns:
         True if successful, False otherwise
     """
     phase_dir = find_phase_dir(phase_num)
     if not phase_dir:
         return False
-    
+
     logger.info(f"Phase {phase_num} directory: {phase_dir}")
-    
+
     # Special handling for Phase 4 (Conda environment)
     if phase_num == 4:
-        tts_engine = get_tts_engine()
-        if tts_engine == "styletts":
+        # Use provided engine or fall back to config
+        engine = tts_engine if tts_engine else get_tts_engine()
+        logger.info(f"Phase 4: Using TTS engine: {engine}")
+
+        if engine == "styletts":
             return run_phase4_styletts(file_id, pipeline_json, voice_id, pipeline_mode)
         return run_phase4_with_conda(phase_dir, file_id, pipeline_json, voice_id, pipeline_mode)
     
@@ -1428,6 +1438,7 @@ def run_pipeline(
             max_retries=max_retries,
             voice_id=voice_id,
             pipeline_mode=pipeline_mode,
+            tts_engine=tts_engine,
         )
 
         if not success:
