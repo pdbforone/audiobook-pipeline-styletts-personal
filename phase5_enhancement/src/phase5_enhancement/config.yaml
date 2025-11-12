@@ -9,7 +9,7 @@ input_dir: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipelin
 log_file: audio_enhancement.log
 log_level: INFO
 lufs_target: -18.0
-max_workers: 2
+max_workers: 4
 memory_limit_mb: 1024
 mp3_bitrate: 192k
 noise_reduction_factor: 0.1
@@ -23,7 +23,7 @@ sample_rate: 24000
 snr_threshold: 10.0
 temp_dir: temp
 volume_norm_headroom: 0.3
-enable_phrase_cleanup: true
+enable_phrase_cleanup: false
 cleanup_target_phrases:
 - You need to add some text for me to talk
 - You need to add some text for me to talk.
