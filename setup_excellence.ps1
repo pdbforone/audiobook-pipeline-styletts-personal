@@ -1,4 +1,4 @@
-<![CDATA[#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     Personal Audiobook Studio - Excellence Setup Script
@@ -658,4 +658,3 @@ catch {
     Write-Host ""
     exit 1
 }
-]]>
