@@ -117,7 +117,7 @@ class StudioState:
         return [
             "F5-TTS (Expressive)",
             "XTTS v2 (Versatile)",
-            "Chatterbox (Fast)",
+            "Kokoro (CPU-Friendly)",
             "StyleTTS2 (Fastest)"
         ]
 
@@ -351,10 +351,10 @@ def create_audiobook(
         engine_map = {
             "F5-TTS (Expressive)": "f5",
             "XTTS v2 (Versatile)": "xtts",
-            "Chatterbox (Fast)": "chatterbox",
+            "Kokoro (CPU-Friendly)": "kokoro",
             "StyleTTS2 (Fastest)": "styletts"
         }
-        engine = engine_map.get(engine_selection, "chatterbox")
+        engine = engine_map.get(engine_selection, "f5")  # Default to F5-TTS
 
         # Build phases list from checkboxes
         phases = []
@@ -586,7 +586,7 @@ def build_ui():
                             choices=state.engines,
                             value="F5-TTS (Expressive)",
                             label="🤖 TTS Engine",
-                            info="Choose synthesis engine"
+                            info="Choose synthesis engine (F5=quality, Kokoro=speed)"
                         )
 
                     with gr.Row():

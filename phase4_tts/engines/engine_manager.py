@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from . import TTSEngine
-from .chatterbox_engine import ChatterboxEngine
+from .kokoro_engine import KokoroEngine
 from .f5_engine import F5TTSEngine
 from .xtts_engine import XTTSEngine
 
@@ -171,7 +171,8 @@ class EngineManager:
         fallback = [e for e in all_engines if e != failed_engine]
 
         # Prefer stable engines for fallback
-        priority_order = ["chatterbox", "xtts", "f5"]
+        # kokoro is fastest/most reliable, so use it first
+        priority_order = ["kokoro", "xtts", "f5", "styletts"]
 
         # Sort by priority
         fallback.sort(
