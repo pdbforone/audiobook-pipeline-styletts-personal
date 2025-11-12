@@ -477,16 +477,23 @@ def run_phase(
 
     logger.info(f"Phase {phase_num} directory: {phase_dir}")
 
-    # Special handling for Phase 4 (Conda environment)
+    # Special handling for Phase 4 (Multi-Engine TTS)
     if phase_num == 4:
         # Use provided engine or fall back to config
         engine = tts_engine if tts_engine else get_tts_engine()
         logger.info(f"Phase 4: Using TTS engine: {engine}")
 
+        # Route to appropriate Phase 4 implementation
         if engine == "styletts":
+            # Use separate StyleTTS2 conda environment
             return run_phase4_styletts(file_id, pipeline_json, voice_id, pipeline_mode)
-        return run_phase4_with_conda(phase_dir, file_id, pipeline_json, voice_id, pipeline_mode)
-    
+        elif engine in ["f5", "xtts", "kokoro"]:
+            # Use unified multi-engine system
+            return run_phase4_multi_engine(phase_dir, file_id, pipeline_json, voice_id, engine, pipeline_mode)
+        else:
+            logger.error(f"Unknown TTS engine: {engine}")
+            return False
+
     # Standard phases (1, 2, 3, 5) use Poetry
     return run_phase_standard(phase_num, phase_dir, file_path, file_id, pipeline_json)
 
@@ -608,6 +615,114 @@ def run_phase_standard(
         return False
 
 
+def run_phase4_multi_engine(
+    phase_dir: Path,
+    file_id: str,
+    pipeline_json: Path,
+    voice_id: Optional[str] = None,
+    engine: str = "f5",
+    pipeline_mode: str = "commercial",
+) -> bool:
+    """
+    Run Phase 4 with multi-engine support (F5-TTS, XTTS v2, Kokoro).
+
+    Uses the unified main_multi_engine.py with Poetry environment.
+
+    Args:
+        phase_dir: Path to phase4_tts directory
+        file_id: File identifier
+        pipeline_json: Path to pipeline.json
+        voice_id: Optional voice ID for TTS
+        engine: Engine name (f5, xtts, kokoro)
+        pipeline_mode: Pipeline mode (commercial or personal)
+
+    Returns:
+        True if successful, False otherwise
+    """
+    logger.info(f"Running Phase 4 TTS with {engine} engine...")
+    logger.info(f"Phase 4 directory: {phase_dir}")
+
+    # Check for venv and install if needed
+    venv_dir = phase_dir / ".venv"
+    if not venv_dir.exists():
+        logger.info(f"Installing Phase 4 dependencies...")
+        try:
+            # Configure Poetry to use in-project venv
+            subprocess.run(
+                ["poetry", "config", "virtualenvs.in-project", "true", "--local"],
+                cwd=str(phase_dir),
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            # Install dependencies
+            result = subprocess.run(
+                ["poetry", "install", "--no-root"],
+                cwd=str(phase_dir),
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            if result.returncode != 0:
+                logger.error(f"Poetry install failed: {result.stderr}")
+                return False
+            logger.info("Dependencies installed successfully")
+        except Exception as e:
+            logger.error(f"Failed to install dependencies: {e}")
+            return False
+
+    # Build command
+    cmd = [
+        "poetry", "run", "python", "-m", "src.main_multi_engine",
+        f"--file_id={file_id}",
+        f"--engine={engine}",
+        f"--json_path={pipeline_json}",
+        "--config=config.yaml"
+    ]
+
+    if voice_id:
+        cmd.append(f"--voice={voice_id}")
+
+    logger.info(f"Command: {' '.join(cmd)}")
+
+    start_time = time.perf_counter()
+
+    try:
+        env = get_clean_env_for_poetry()
+        result = subprocess.run(
+            cmd,
+            cwd=str(phase_dir),
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            timeout=1800  # 30 minutes timeout
+        )
+
+        duration = time.perf_counter() - start_time
+
+        # Always show output for debugging
+        if result.stdout:
+            logger.info(f"Phase 4 output:\n{result.stdout[-1000:]}")  # Last 1000 chars
+
+        if result.returncode != 0:
+            logger.error(f"Phase 4 FAILED (exit {result.returncode}) in {duration:.1f}s")
+            logger.error(f"Error: {result.stderr[-500:]}")  # Last 500 chars
+            return False
+
+        logger.info(f"Phase 4 SUCCESS with {engine} in {duration:.1f}s")
+        return True
+
+    except subprocess.TimeoutExpired:
+        logger.error(f"Phase 4 TIMEOUT (1800s)")
+        return False
+    except Exception as e:
+        logger.error(f"Phase 4 ERROR: {e}")
+        return False
+
+
 def run_phase4_with_conda(
     phase_dir: Path,
     file_id: str,
@@ -616,10 +731,10 @@ def run_phase4_with_conda(
     pipeline_mode: str = "commercial",
 ) -> bool:
     """
-    Run Phase 4 with Conda environment activation.
-    
-    Special handling for TTS synthesis with Chatterbox.
-    
+    DEPRECATED: Legacy Chatterbox/Conda approach.
+
+    Use run_phase4_multi_engine() instead.
+
     Args:
         phase_dir: Path to phase4_tts directory
         file_id: File identifier
