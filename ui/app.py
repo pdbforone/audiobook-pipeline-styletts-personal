@@ -115,10 +115,10 @@ class StudioState:
     def _load_engines(self) -> List[str]:
         """Get available TTS engines"""
         return [
-            "StyleTTS2 (Fast & Quality)",
-            # "F5-TTS (Expressive)" - Coming soon
-            # "XTTS v2 (Versatile)" - Coming soon
-            # "Kokoro (CPU-friendly)" - Coming soon
+            "F5-TTS (Expressive)",
+            "XTTS v2 (Versatile)",
+            "Kokoro (CPU-Friendly)",
+            "StyleTTS2 (Fastest)"
         ]
 
     def _load_presets(self) -> List[str]:
@@ -349,13 +349,12 @@ def create_audiobook(
 
         # Map engine selection to engine name
         engine_map = {
-            "StyleTTS2 (Fast & Quality)": "styletts",
-            # Future engines:
-            # "F5-TTS (Expressive)": "f5",
-            # "XTTS v2 (Versatile)": "xtts",
-            # "Kokoro (CPU-friendly)": "kokoro",
+            "F5-TTS (Expressive)": "f5",
+            "XTTS v2 (Versatile)": "xtts",
+            "Kokoro (CPU-Friendly)": "kokoro",
+            "StyleTTS2 (Fastest)": "styletts"
         }
-        engine = engine_map.get(engine_selection, "styletts")  # Default to StyleTTS2
+        engine = engine_map.get(engine_selection, "f5")  # Default to F5-TTS
 
         # Build phases list from checkboxes
         phases = []
@@ -585,9 +584,9 @@ def build_ui():
 
                         engine_dropdown = gr.Dropdown(
                             choices=state.engines,
-                            value="StyleTTS2 (Fast & Quality)",
+                            value="F5-TTS (Expressive)",
                             label="🤖 TTS Engine",
-                            info="Fast, high-quality synthesis"
+                            info="Choose synthesis engine (F5=quality, Kokoro=speed)"
                         )
 
                     with gr.Row():
