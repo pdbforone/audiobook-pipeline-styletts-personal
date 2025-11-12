@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "phase4-tts-multi-engine"
+version = "0.1.0"
+description = "Multi-engine TTS system (F5-TTS, XTTS v2, Kokoro)"
+authors = ["Audiobook Pipeline"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+torch = "^2.0.0"
+numpy = "^1.24.0"
+soundfile = "^0.12.0"
+pyyaml = "^6.0"
+# TTS engines (optional - install as needed)
+# f5-tts = {version = "^0.1.0", optional = true}
+# TTS = {version = "^0.22.0", optional = true}
+# kokoro-onnx = {version = "^0.1.0", optional = true}
+
+[tool.poetry.extras]
+f5 = ["f5-tts"]
+xtts = ["TTS"]
+kokoro = ["kokoro-onnx"]
+all = ["f5-tts", "TTS", "kokoro-onnx"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
