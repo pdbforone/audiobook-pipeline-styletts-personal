@@ -10,6 +10,8 @@ import gradio as gr
 import sys
 import json
 import logging
+import signal
+import atexit
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict
 import yaml
@@ -877,19 +879,57 @@ def _generate_voice_gallery_html(voices: Dict) -> str:
 # MAIN ENTRY POINT
 # ============================================================================
 
+# Global reference to the app for cleanup
+_app_instance = None
+
+def cleanup_handler():
+    """Clean up resources on exit"""
+    global _app_instance
+    if _app_instance is not None:
+        try:
+            logger.info("Shutting down studio...")
+            _app_instance.close()
+            logger.info("Studio shutdown complete")
+        except Exception as e:
+            logger.error(f"Error during shutdown: {e}")
+
+def signal_handler(signum, frame):
+    """Handle Ctrl+C and other signals"""
+    logger.info("\nReceived shutdown signal, cleaning up...")
+    cleanup_handler()
+    sys.exit(0)
+
 def main():
     """Launch the studio"""
+    global _app_instance
+
+    # Register cleanup handlers
+    atexit.register(cleanup_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
     logger.info("🎙️ Starting Personal Audiobook Studio...")
+    logger.info("Press Ctrl+C to stop the server")
 
     app = build_ui()
+    _app_instance = app
 
-    app.launch(
-        server_name="0.0.0.0",  # Allow network access
-        server_port=7860,
-        share=False,  # Set to True for public sharing
-        show_error=True,
-        quiet=False
-    )
+    try:
+        app.launch(
+            server_name="0.0.0.0",  # Allow network access
+            server_port=7860,
+            share=False,  # Set to True for public sharing
+            show_error=True,
+            quiet=False,
+            inbrowser=False  # Don't auto-open browser (launcher does this)
+        )
+    except KeyboardInterrupt:
+        logger.info("\nShutting down gracefully...")
+    except Exception as e:
+        logger.error(f"Error running studio: {e}")
+        raise
+    finally:
+        cleanup_handler()
 
 
 if __name__ == "__main__":

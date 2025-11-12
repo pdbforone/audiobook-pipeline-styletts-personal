@@ -5,11 +5,14 @@
 
 .DESCRIPTION
     Double-click launcher for the Audiobook Studio UI.
-    Alternative to the .bat launcher with better error handling.
+    Checks for port conflicts and provides better error handling.
 #>
 
+# Set error action
+$ErrorActionPreference = "Stop"
+
 # Set window title
-$Host.UI.RawUI.WindowTitle = "🎙️ Personal Audiobook Studio"
+$Host.UI.RawUI.WindowTitle = "Personal Audiobook Studio"
 
 # Set colors
 $HeaderColor = "Cyan"
@@ -17,35 +20,13 @@ $SuccessColor = "Green"
 $ErrorColor = "Red"
 $InfoColor = "Yellow"
 
-function Write-Header {
-    param([string]$Text)
-    Write-Host ""
-    Write-Host "========================================================================" -ForegroundColor $HeaderColor
-    Write-Host "  $Text" -ForegroundColor $HeaderColor
-    Write-Host "========================================================================" -ForegroundColor $HeaderColor
-    Write-Host ""
-}
-
-function Write-Success {
-    param([string]$Text)
-    Write-Host "✓ $Text" -ForegroundColor $SuccessColor
-}
-
-function Write-ErrorMsg {
-    param([string]$Text)
-    Write-Host "❌ $Text" -ForegroundColor $ErrorColor
-}
-
-function Write-Info {
-    param([string]$Text)
-    Write-Host "📝 $Text" -ForegroundColor $InfoColor
-}
-
-# Clear screen
 Clear-Host
 
-Write-Header "🎙️ Personal Audiobook Studio"
-
+Write-Host ""
+Write-Host "========================================================================" -ForegroundColor $HeaderColor
+Write-Host "  Personal Audiobook Studio" -ForegroundColor $HeaderColor
+Write-Host "========================================================================" -ForegroundColor $HeaderColor
+Write-Host ""
 Write-Host "Starting the studio... This may take a moment."
 Write-Host ""
 
@@ -55,88 +36,104 @@ $UIDir = Join-Path $ScriptDir "ui"
 
 # Check if UI directory exists
 if (-not (Test-Path $UIDir)) {
-    Write-ErrorMsg "UI directory not found: $UIDir"
+    Write-Host "[ERROR] UI directory not found: $UIDir" -ForegroundColor $ErrorColor
     Write-Host ""
     Write-Host "Please ensure you're running this from the project root."
     Write-Host ""
-    pause
+    Read-Host "Press Enter to exit"
     exit 1
 }
 
 # Check Python
 try {
     $pythonVersion = python --version 2>&1
-    Write-Success "Python found: $pythonVersion"
+    Write-Host "[OK] Python found: $pythonVersion" -ForegroundColor $SuccessColor
 } catch {
-    Write-ErrorMsg "Python not found in PATH"
+    Write-Host "[ERROR] Python not found in PATH" -ForegroundColor $ErrorColor
     Write-Host ""
     Write-Host "Please install Python 3.8+ or ensure it's in your PATH."
     Write-Host ""
-    pause
+    Read-Host "Press Enter to exit"
+    exit 1
+}
+
+# Check if port 7860 is in use
+$portInUse = Get-NetTCPConnection -LocalPort 7860 -ErrorAction SilentlyContinue
+if ($portInUse) {
+    Write-Host ""
+    Write-Host "========================================================================" -ForegroundColor $InfoColor
+    Write-Host "  WARNING: Port 7860 is already in use!" -ForegroundColor $InfoColor
+    Write-Host "========================================================================" -ForegroundColor $InfoColor
+    Write-Host ""
+    Write-Host "The studio might already be running in another window."
+    Write-Host ""
+    Write-Host "Options:"
+    Write-Host "  1. Check for other terminal windows running the studio"
+    Write-Host "  2. Close them and try again"
+    Write-Host "  3. Or open http://localhost:7860 in your browser"
+    Write-Host ""
+    Read-Host "Press Enter to exit"
     exit 1
 }
 
 # Check if app.py exists
 $AppPath = Join-Path $UIDir "app.py"
 if (-not (Test-Path $AppPath)) {
-    Write-ErrorMsg "app.py not found: $AppPath"
+    Write-Host "[ERROR] app.py not found: $AppPath" -ForegroundColor $ErrorColor
     Write-Host ""
-    pause
+    Read-Host "Press Enter to exit"
     exit 1
 }
 
-Write-Success "Found UI application"
+Write-Host "[OK] Found UI application" -ForegroundColor $SuccessColor
 Write-Host ""
 
-Write-Header "✅ Launching Studio"
-
-Write-Info "The UI will open at: http://localhost:7860"
-Write-Info "Opening browser in 3 seconds..."
+Write-Host ""
+Write-Host "========================================================================" -ForegroundColor $HeaderColor
+Write-Host "  Launching Studio" -ForegroundColor $HeaderColor
+Write-Host "========================================================================" -ForegroundColor $HeaderColor
 Write-Host ""
 
-# Start the UI server
+Write-Host "[INFO] The UI will open at: http://localhost:7860" -ForegroundColor $InfoColor
+Write-Host "[INFO] Opening browser in 3 seconds..." -ForegroundColor $InfoColor
+Write-Host ""
+
+# Change to UI directory
 Set-Location $UIDir
 
-# Launch Python in background
-$job = Start-Job -ScriptBlock {
-    param($AppPath)
-    python $AppPath
-} -ArgumentList $AppPath
-
-# Wait for server to start
+# Wait and open browser
 Start-Sleep -Seconds 3
-
-# Open browser
 try {
     Start-Process "http://localhost:7860"
-    Write-Success "Browser opened!"
+    Write-Host "[OK] Browser opened!" -ForegroundColor $SuccessColor
 } catch {
-    Write-Info "Please manually open: http://localhost:7860"
+    Write-Host "[INFO] Please manually open: http://localhost:7860" -ForegroundColor $InfoColor
 }
 
 Write-Host ""
-Write-Header "✅ Studio is Running!"
-
+Write-Host "========================================================================" -ForegroundColor $HeaderColor
+Write-Host "  Studio is Running!" -ForegroundColor $HeaderColor
+Write-Host "========================================================================" -ForegroundColor $HeaderColor
 Write-Host ""
-Write-Host "  URL: http://localhost:7860" -ForegroundColor White -BackgroundColor DarkBlue
+Write-Host "  URL: http://localhost:7860" -ForegroundColor White
 Write-Host ""
-Write-Info "Keep this window open while using the studio"
-Write-Info "Press Ctrl+C to stop the server"
+Write-Host "[!] Keep this window open while using the studio" -ForegroundColor $InfoColor
+Write-Host "[!] Press Ctrl+C to stop the server" -ForegroundColor $InfoColor
 Write-Host ""
 Write-Host "========================================================================" -ForegroundColor $HeaderColor
 Write-Host ""
 
-# Wait for job and show output
+# Start Python server (this will block until server stops)
 try {
-    Receive-Job -Job $job -Wait -ErrorAction Stop
+    python app.py
 } catch {
-    Write-ErrorMsg "Server stopped unexpectedly"
+    Write-Host ""
+    Write-Host "[ERROR] Server stopped unexpectedly" -ForegroundColor $ErrorColor
 }
 
-# Cleanup
-Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
-
 Write-Host ""
-Write-Header "Studio has stopped"
+Write-Host "========================================================================" -ForegroundColor $HeaderColor
+Write-Host "  Studio has stopped" -ForegroundColor $HeaderColor
+Write-Host "========================================================================" -ForegroundColor $HeaderColor
 Write-Host ""
-pause
+Read-Host "Press Enter to exit"
