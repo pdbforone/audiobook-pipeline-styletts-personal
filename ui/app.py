@@ -264,24 +264,48 @@ def create_audiobook(
                 desc=f"Phase {phase}: {phase_name} - {message}"
             )
 
-        # Run pipeline (this is where we'd integrate orchestrator)
-        # For now, return success message
+        # Run the actual pipeline
+        result = run_pipeline(
+            file_path=Path(book_file.name),
+            voice_id=voice_id,
+            tts_engine=engine,
+            mastering_preset=mastering_preset,
+            phases=[1, 2, 3, 4, 5],
+            pipeline_json=state.pipeline_json,
+            enable_subtitles=False,
+            max_retries=3,
+            progress_callback=update_progress
+        )
+
+        if not result["success"]:
+            return None, f"❌ Error: {result.get('error', 'Unknown error')}"
+
         progress(1.0, desc="✅ Complete!")
 
+        # Build success message
+        audiobook_path = result.get("audiobook_path", "phase5_enhancement/processed/")
+        metadata = result.get("metadata", {})
+
         return None, f"""
-        ✅ Audiobook generated successfully!
+✅ Audiobook generated successfully!
 
-        **Configuration:**
-        - Voice: {voice_id}
-        - Engine: {engine_selection}
-        - Mastering: {mastering_preset}
+**Configuration:**
+- Voice: {voice_id}
+- Engine: {engine_selection}
+- Mastering: {mastering_preset}
 
-        **Next Steps:**
-        1. Check the output in `phase5_enhancement/processed/`
-        2. Listen to the preview
-        3. Upload to your platform
+**Output:**
+- Path: `{audiobook_path}`
 
-        🎉 Enjoy your audiobook!
+**Pipeline Status:**
+- Phases completed: {', '.join(map(str, metadata.get('phases_completed', [])))}
+
+**Next Steps:**
+1. Listen to your audiobook in `phase5_enhancement/processed/`
+2. Check quality and adjust settings if needed
+3. Create more audiobooks!
+
+🎉 Enjoy your audiobook!
         """
 
     except Exception as e:
