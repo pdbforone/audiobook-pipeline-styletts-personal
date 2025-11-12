@@ -41,6 +41,63 @@ class StudioState:
         self.engines = self._load_engines()
         self.presets = self._load_presets()
         self.pipeline_json = PROJECT_ROOT / "pipeline.json"
+        self.cancel_flag = False  # Flag for stopping generation
+
+    def cancel_generation(self):
+        """Request cancellation of current generation"""
+        self.cancel_flag = True
+        logger.info("⚠️ User requested cancellation")
+
+    def reset_cancel_flag(self):
+        """Reset cancellation flag before starting new generation"""
+        self.cancel_flag = False
+
+    def is_cancelled(self) -> bool:
+        """Check if generation should be cancelled"""
+        return self.cancel_flag
+
+    def check_incomplete_generation(self) -> Optional[Dict]:
+        """Check if there's an incomplete generation that can be resumed"""
+        try:
+            if not self.pipeline_json.exists():
+                return None
+
+            with open(self.pipeline_json, 'r') as f:
+                data = json.load(f)
+
+            # Check for any incomplete books
+            for file_id, book_data in data.items():
+                if file_id == "metadata":
+                    continue
+
+                # Check phase completion
+                phases_complete = []
+                phases_incomplete = []
+
+                for phase in [1, 2, 3, 4, 5]:
+                    phase_key = f"phase{phase}"
+                    if phase_key in book_data:
+                        status = book_data[phase_key].get('status', 'unknown')
+                        if status == 'success':
+                            phases_complete.append(phase)
+                        else:
+                            phases_incomplete.append(phase)
+                    else:
+                        phases_incomplete.append(phase)
+
+                # If some phases complete but not all, offer resume
+                if phases_complete and phases_incomplete:
+                    return {
+                        'file_id': file_id,
+                        'phases_complete': phases_complete,
+                        'phases_incomplete': phases_incomplete,
+                        'last_phase': max(phases_complete) if phases_complete else 0
+                    }
+
+            return None
+        except Exception as e:
+            logger.error(f"Error checking for incomplete generation: {e}")
+            return None
 
     def _load_voices(self) -> Dict:
         """Load voice library"""
@@ -206,6 +263,42 @@ CUSTOM_CSS = """
 
 
 # ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def check_for_incomplete_work() -> Tuple[bool, str]:
+    """Check for incomplete generation and return status message"""
+    incomplete = state.check_incomplete_generation()
+
+    if incomplete:
+        file_id = incomplete['file_id']
+        complete = ', '.join(map(str, incomplete['phases_complete']))
+        pending = ', '.join(map(str, incomplete['phases_incomplete']))
+
+        message = f"""
+## 🔄 Incomplete Generation Found
+
+**Book:** `{file_id}`
+
+**Completed phases:** {complete}
+**Pending phases:** {pending}
+
+You can:
+1. **Resume** by enabling "Resume from checkpoint" and running pending phases
+2. **Start fresh** by disabling resume and running all phases
+        """
+        return True, message
+
+    return False, ""
+
+
+def cancel_generation_fn() -> str:
+    """Handle stop button click"""
+    state.cancel_generation()
+    return "⚠️ **Cancellation requested.** Generation will stop after current phase completes."
+
+
+# ============================================================================
 # CORE FUNCTIONS
 # ============================================================================
 
@@ -244,6 +337,9 @@ def create_audiobook(
     if book_file is None:
         return None, "❌ Please upload a book file"
 
+    # Reset cancellation flag at start of new generation
+    state.reset_cancel_flag()
+
     try:
         # Extract voice ID from selection
         voice_id = voice_selection.split(":")[0].strip()
@@ -277,8 +373,12 @@ def create_audiobook(
         logger.info(f"Options: Resume={enable_resume}, Retries={max_retries}, Subtitles={generate_subtitles}")
         logger.info(f"Phases: {phases}")
 
-        # Progress callback
+        # Progress callback with cancellation check
         def update_progress(phase: int, percentage: float, message: str):
+            # Check for cancellation
+            if state.is_cancelled():
+                raise KeyboardInterrupt("Generation cancelled by user")
+
             phase_names = [
                 "Validation",
                 "Text Extraction",
@@ -355,8 +455,29 @@ def create_audiobook(
 🎉 Enjoy your audiobook!
         """
 
+    except KeyboardInterrupt:
+        logger.warning("Generation cancelled by user")
+        state.reset_cancel_flag()
+        return None, """
+⚠️ **Generation Cancelled**
+
+The audiobook generation was stopped by user request.
+
+**What happened:**
+- Processing stopped after the current phase completed
+- Partial progress has been saved to pipeline.json
+
+**Next steps:**
+1. **Resume:** Enable "Resume from checkpoint" and click Generate again
+2. **Start fresh:** Disable resume and regenerate from scratch
+3. **Adjust settings:** Change voice, engine, or mastering preset before resuming
+
+Your progress is saved - you can continue anytime! 🔄
+        """
+
     except Exception as e:
         logger.error(f"Audiobook generation failed: {e}")
+        state.reset_cancel_flag()
         return None, f"❌ Error: {str(e)}"
 
 
@@ -435,6 +556,13 @@ def build_ui():
         with gr.Tab("📖 Single Book"):
             gr.Markdown("## Create a Single Audiobook")
 
+            # Resume detection section
+            incomplete_detected, incomplete_msg = check_for_incomplete_work()
+            if incomplete_detected:
+                with gr.Accordion("🔄 Resume Previous Generation", open=True):
+                    gr.Markdown(incomplete_msg)
+                    gr.Markdown("**Tip:** Enable 'Resume from checkpoint' in Advanced Options below")
+
             with gr.Row():
                 with gr.Column(scale=2):
                     book_input = gr.File(
@@ -500,11 +628,21 @@ def build_ui():
                             phase4_check = gr.Checkbox(label="Phase 4: TTS", value=True)
                             phase5_check = gr.Checkbox(label="Phase 5: Enhancement", value=True)
 
-                    generate_btn = gr.Button(
-                        "🎬 Generate Audiobook",
-                        variant="primary",
-                        size="lg"
-                    )
+                    with gr.Row():
+                        generate_btn = gr.Button(
+                            "🎬 Generate Audiobook",
+                            variant="primary",
+                            size="lg",
+                            scale=2
+                        )
+
+                        stop_btn = gr.Button(
+                            "🛑 Stop",
+                            variant="stop",
+                            size="lg",
+                            visible=False,
+                            scale=1
+                        )
 
                 with gr.Column(scale=1):
                     voice_details = gr.Markdown(
@@ -517,8 +655,11 @@ def build_ui():
                 audio_output = gr.Audio(label="🎧 Generated Audiobook")
                 status_output = gr.Markdown(label="Status")
 
+            # Stop button output
+            stop_status = gr.Markdown(visible=False)
+
             # Event handlers
-            generate_btn.click(
+            generate_click = generate_btn.click(
                 fn=create_audiobook,
                 inputs=[
                     book_input,
@@ -535,6 +676,35 @@ def build_ui():
                     phase5_check
                 ],
                 outputs=[audio_output, status_output]
+            )
+
+            # Show stop button when generation starts
+            generate_btn.click(
+                fn=lambda: gr.update(visible=True),
+                inputs=None,
+                outputs=[stop_btn]
+            )
+
+            # Hide stop button and show status when generation completes
+            generate_click.then(
+                fn=lambda: gr.update(visible=False),
+                inputs=None,
+                outputs=[stop_btn]
+            )
+
+            # Stop button handler
+            stop_btn.click(
+                fn=cancel_generation_fn,
+                inputs=None,
+                outputs=[stop_status],
+                cancels=[generate_click]
+            )
+
+            # Show stop status
+            stop_btn.click(
+                fn=lambda: gr.update(visible=True),
+                inputs=None,
+                outputs=[stop_status]
             )
 
             voice_dropdown.change(
