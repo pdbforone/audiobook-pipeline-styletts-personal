@@ -117,7 +117,8 @@ class StudioState:
         return [
             "F5-TTS (Expressive)",
             "XTTS v2 (Versatile)",
-            "Chatterbox (Fast)"
+            "Chatterbox (Fast)",
+            "StyleTTS2 (Fastest)"
         ]
 
     def _load_presets(self) -> List[str]:
@@ -350,7 +351,8 @@ def create_audiobook(
         engine_map = {
             "F5-TTS (Expressive)": "f5",
             "XTTS v2 (Versatile)": "xtts",
-            "Chatterbox (Fast)": "chatterbox"
+            "Chatterbox (Fast)": "chatterbox",
+            "StyleTTS2 (Fastest)": "styletts"
         }
         engine = engine_map.get(engine_selection, "chatterbox")
 
