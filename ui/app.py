@@ -214,6 +214,14 @@ def create_audiobook(
     voice_selection: str,
     engine_selection: str,
     mastering_preset: str,
+    enable_resume: bool,
+    max_retries: int,
+    generate_subtitles: bool,
+    phase1: bool,
+    phase2: bool,
+    phase3: bool,
+    phase4: bool,
+    phase5: bool,
     progress=gr.Progress()
 ) -> Tuple[Optional[str], str]:
     """
@@ -224,6 +232,10 @@ def create_audiobook(
         voice_selection: Selected voice from dropdown
         engine_selection: TTS engine choice
         mastering_preset: Audio mastering preset
+        enable_resume: Enable resume from checkpoint
+        max_retries: Maximum retry attempts per phase
+        generate_subtitles: Generate subtitle files
+        phase1-5: Which phases to run
         progress: Gradio progress tracker
 
     Returns:
@@ -244,8 +256,26 @@ def create_audiobook(
         }
         engine = engine_map.get(engine_selection, "chatterbox")
 
+        # Build phases list from checkboxes
+        phases = []
+        if phase1:
+            phases.append(1)
+        if phase2:
+            phases.append(2)
+        if phase3:
+            phases.append(3)
+        if phase4:
+            phases.append(4)
+        if phase5:
+            phases.append(5)
+
+        if not phases:
+            return None, "❌ Please select at least one phase to run"
+
         logger.info(f"Starting audiobook generation: {book_file.name}")
         logger.info(f"Voice: {voice_id}, Engine: {engine}, Preset: {mastering_preset}")
+        logger.info(f"Options: Resume={enable_resume}, Retries={max_retries}, Subtitles={generate_subtitles}")
+        logger.info(f"Phases: {phases}")
 
         # Progress callback
         def update_progress(phase: int, percentage: float, message: str):
@@ -270,10 +300,11 @@ def create_audiobook(
             voice_id=voice_id,
             tts_engine=engine,
             mastering_preset=mastering_preset,
-            phases=[1, 2, 3, 4, 5],
+            phases=phases,
             pipeline_json=state.pipeline_json,
-            enable_subtitles=False,
-            max_retries=3,
+            enable_subtitles=generate_subtitles,
+            max_retries=int(max_retries),
+            no_resume=not enable_resume,
             progress_callback=update_progress
         )
 
@@ -286,6 +317,19 @@ def create_audiobook(
         audiobook_path = result.get("audiobook_path", "phase5_enhancement/processed/")
         metadata = result.get("metadata", {})
 
+        # Build options summary
+        options_list = []
+        if not enable_resume:
+            options_list.append("Fresh run (no resume)")
+        if max_retries != 2:
+            options_list.append(f"Max retries: {int(max_retries)}")
+        if generate_subtitles:
+            options_list.append("Subtitles generated")
+        if phases != [1, 2, 3, 4, 5]:
+            options_list.append(f"Phases: {', '.join(map(str, phases))}")
+
+        options_text = "\n- ".join(options_list) if options_list else "Default settings"
+
         return None, f"""
 ✅ Audiobook generated successfully!
 
@@ -293,6 +337,9 @@ def create_audiobook(
 - Voice: {voice_id}
 - Engine: {engine_selection}
 - Mastering: {mastering_preset}
+
+**Options:**
+- {options_text}
 
 **Output:**
 - Path: `{audiobook_path}`
@@ -418,6 +465,41 @@ def build_ui():
                             info="Audio processing style"
                         )
 
+                    # Advanced Options
+                    with gr.Accordion("⚙️ Advanced Options", open=False):
+                        with gr.Row():
+                            enable_resume = gr.Checkbox(
+                                label="Enable Resume",
+                                value=True,
+                                info="Resume from checkpoint if interrupted"
+                            )
+
+                            max_retries = gr.Slider(
+                                minimum=0,
+                                maximum=5,
+                                value=2,
+                                step=1,
+                                label="Max Retries",
+                                info="Retry attempts per phase"
+                            )
+
+                        with gr.Row():
+                            generate_subtitles = gr.Checkbox(
+                                label="Generate Subtitles",
+                                value=False,
+                                info="Create .srt and .vtt subtitle files"
+                            )
+
+                        gr.Markdown("**Phases to Run:**")
+                        with gr.Row():
+                            phase1_check = gr.Checkbox(label="Phase 1: Validation", value=True)
+                            phase2_check = gr.Checkbox(label="Phase 2: Extraction", value=True)
+                            phase3_check = gr.Checkbox(label="Phase 3: Chunking", value=True)
+
+                        with gr.Row():
+                            phase4_check = gr.Checkbox(label="Phase 4: TTS", value=True)
+                            phase5_check = gr.Checkbox(label="Phase 5: Enhancement", value=True)
+
                     generate_btn = gr.Button(
                         "🎬 Generate Audiobook",
                         variant="primary",
@@ -442,7 +524,15 @@ def build_ui():
                     book_input,
                     voice_dropdown,
                     engine_dropdown,
-                    preset_dropdown
+                    preset_dropdown,
+                    enable_resume,
+                    max_retries,
+                    generate_subtitles,
+                    phase1_check,
+                    phase2_check,
+                    phase3_check,
+                    phase4_check,
+                    phase5_check
                 ],
                 outputs=[audio_output, status_output]
             )
