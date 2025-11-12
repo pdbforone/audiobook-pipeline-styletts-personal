@@ -1339,6 +1339,152 @@ def summarize_results(pipeline_json: Path):
     console.print(table)
 
 
+def run_pipeline(
+    file_path: Path,
+    voice_id: Optional[str] = None,
+    tts_engine: str = "chatterbox",
+    mastering_preset: Optional[str] = None,
+    phases: List[int] = None,
+    pipeline_json: Optional[Path] = None,
+    enable_subtitles: bool = False,
+    max_retries: int = 3,
+    progress_callback=None,
+) -> Dict:
+    """
+    Programmatic interface to run the audiobook pipeline.
+
+    Args:
+        file_path: Path to input book file (EPUB, PDF, etc.)
+        voice_id: Voice ID to use for TTS
+        tts_engine: TTS engine to use ("chatterbox", "f5", "xtts")
+        mastering_preset: Audio mastering preset name
+        phases: List of phases to run (default: [1,2,3,4,5])
+        pipeline_json: Path to pipeline.json (default: PROJECT_ROOT/pipeline.json)
+        enable_subtitles: Whether to generate subtitles (Phase 5.5)
+        max_retries: Max retries per phase
+        progress_callback: Optional callback(phase_num, percentage, message)
+
+    Returns:
+        Dict with:
+            - success: bool
+            - audiobook_path: Path to final audiobook
+            - metadata: Dict of pipeline metadata
+            - error: Optional error message
+    """
+    # Resolve paths
+    file_path = Path(file_path).resolve()
+    if not file_path.exists():
+        return {
+            "success": False,
+            "error": f"File not found: {file_path}",
+            "audiobook_path": None,
+            "metadata": {}
+        }
+
+    file_id = file_path.stem
+
+    if pipeline_json is None:
+        pipeline_json = PROJECT_ROOT / "pipeline.json"
+    else:
+        pipeline_json = Path(pipeline_json).resolve()
+
+    if phases is None:
+        phases = [1, 2, 3, 4, 5]
+
+    # Load orchestrator config and update if needed
+    orchestrator_config = get_orchestrator_config()
+    pipeline_mode = orchestrator_config.get("pipeline_mode", "personal").lower()
+
+    # Load pipeline.json
+    pipeline_data = load_pipeline_json(pipeline_json)
+
+    # Run phases
+    completed_phases = []
+
+    for phase_num in phases:
+        # Call progress callback if provided
+        if progress_callback:
+            progress_callback(phase_num, 0.0, f"Starting Phase {phase_num}...")
+
+        # Check resume status
+        status = check_phase_status(pipeline_data, phase_num, file_id)
+        if status == "success":
+            logger.info(f"Skipping Phase {phase_num} (already completed)")
+            completed_phases.append(phase_num)
+            if progress_callback:
+                progress_callback(phase_num, 100.0, "Already completed")
+            continue
+
+        # Run phase with retries
+        logger.info(f"Running Phase {phase_num}...")
+
+        success = run_phase_with_retry(
+            phase_num,
+            file_path,
+            file_id,
+            pipeline_json,
+            max_retries=max_retries,
+            voice_id=voice_id,
+            pipeline_mode=pipeline_mode,
+        )
+
+        if not success:
+            return {
+                "success": False,
+                "error": f"Pipeline failed at Phase {phase_num}",
+                "audiobook_path": None,
+                "metadata": {}
+            }
+
+        logger.info(f"Phase {phase_num} completed successfully")
+
+        if progress_callback:
+            progress_callback(phase_num, 100.0, "Complete")
+
+        # Archive after Phase 5
+        if phase_num == 5:
+            archive_final_audiobook(file_id, pipeline_json)
+
+        completed_phases.append(phase_num)
+
+    # Phase 5.5: Subtitles (optional)
+    if 5 in completed_phases and enable_subtitles:
+        logger.info("Running Phase 5.5 (Subtitles)...")
+        phase5_dir = find_phase_dir(5)
+        if phase5_dir:
+            success = run_phase5_5_subtitles(
+                phase5_dir,
+                file_id,
+                pipeline_json,
+                enable_subtitles=True
+            )
+            if not success:
+                logger.warning("Phase 5.5 (Subtitles) failed - continuing anyway")
+
+    # Find final audiobook path
+    audiobook_path = None
+    phase5_dir = find_phase_dir(5)
+    if phase5_dir:
+        audiobook_path = resolve_phase5_audiobook_path(file_id, pipeline_json, phase5_dir)
+
+    # Reload pipeline data for metadata
+    pipeline_data = load_pipeline_json(pipeline_json)
+
+    return {
+        "success": True,
+        "audiobook_path": str(audiobook_path) if audiobook_path else None,
+        "metadata": {
+            "file_id": file_id,
+            "phases_completed": completed_phases,
+            "voice_id": voice_id,
+            "tts_engine": tts_engine,
+            "mastering_preset": mastering_preset,
+            "pipeline_data": pipeline_data.get(file_id, {})
+        },
+        "error": None
+    }
+
+
 def main():
     """Main orchestrator entry point."""
     parser = argparse.ArgumentParser(
