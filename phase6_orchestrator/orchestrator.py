@@ -644,8 +644,25 @@ def run_phase4_multi_engine(
 
     # Check for venv and install if needed
     venv_dir = phase_dir / ".venv"
-    if not venv_dir.exists():
-        logger.info(f"Installing Phase 4 dependencies...")
+    python_exe = venv_dir / "Scripts" / "python.exe" if venv_dir.exists() else None
+
+    # Check if venv has dependencies installed (test for yaml module)
+    venv_ready = False
+    if python_exe and python_exe.exists():
+        try:
+            result = subprocess.run(
+                [str(python_exe), "-c", "import yaml"],
+                capture_output=True,
+                timeout=5
+            )
+            venv_ready = (result.returncode == 0)
+            if venv_ready:
+                logger.info("Phase 4 venv already configured with dependencies")
+        except:
+            pass
+
+    if not venv_ready:
+        logger.info(f"Installing Phase 4 dependencies with Poetry...")
         try:
             # Configure Poetry to use in-project venv
             subprocess.run(
@@ -666,20 +683,31 @@ def run_phase4_multi_engine(
             )
             if result.returncode != 0:
                 logger.error(f"Poetry install failed: {result.stderr}")
+                logger.info("Try running: phase4_tts\\setup_windows.bat")
                 return False
             logger.info("Dependencies installed successfully")
         except Exception as e:
             logger.error(f"Failed to install dependencies: {e}")
+            logger.info("Alternative: Run phase4_tts\\setup_windows.bat manually")
             return False
 
-    # Build command
-    cmd = [
-        "poetry", "run", "python", "-m", "src.main_multi_engine",
-        f"--file_id={file_id}",
-        f"--engine={engine}",
-        f"--json_path={pipeline_json}",
-        "--config=config.yaml"
-    ]
+    # Build command - use venv python directly if available, otherwise Poetry
+    if python_exe and python_exe.exists():
+        cmd = [
+            str(python_exe), "-m", "src.main_multi_engine",
+            f"--file_id={file_id}",
+            f"--engine={engine}",
+            f"--json_path={pipeline_json}",
+            "--config=config.yaml"
+        ]
+    else:
+        cmd = [
+            "poetry", "run", "python", "-m", "src.main_multi_engine",
+            f"--file_id={file_id}",
+            f"--engine={engine}",
+            f"--json_path={pipeline_json}",
+            "--config=config.yaml"
+        ]
 
     if voice_id:
         cmd.append(f"--voice={voice_id}")
