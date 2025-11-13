@@ -23,7 +23,7 @@ def build_command(
     file_id: str = "TEST_SIMPLE",
     chunk_id: int = 0,
     pipeline_json: Path = DEFAULT_PIPELINE,
-    ref_file: str = "greenman_ref.wav",
+    engine: str = "kokoro",
 ) -> list[str]:
     """Construct the legacy Phase 4 test command."""
     cmd = [
@@ -33,13 +33,12 @@ def build_command(
         "phase4_tts",
         "--no-capture-output",
         "python",
-        "src/phase4_tts/main.py",
+        "src/main_multi_engine.py",
         f"--chunk_id={chunk_id}",
         f"--file_id={file_id}",
         f"--json_path={pipeline_json}",
+        f"--engine={engine}",
     ]
-    if ref_file:
-        cmd.append(f"--ref_file={ref_file}")
     return cmd
 
 
@@ -54,9 +53,10 @@ def main() -> int:
         help="Path to pipeline.json (defaults to repo root).",
     )
     parser.add_argument(
-        "--ref-file",
-        default="greenman_ref.wav",
-        help="Reference audio relative to phase4_tts/. Leave blank to skip.",
+        "--engine",
+        default="kokoro",
+        choices=["f5", "xtts", "kokoro"],
+        help="Engine to request (multi-engine CLI will auto-fallback).",
     )
     parser.add_argument(
         "--run",
@@ -65,7 +65,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    cmd = build_command(args.file_id, args.chunk_id, args.pipeline_json.resolve(), args.ref_file)
+    cmd = build_command(
+        file_id=args.file_id,
+        chunk_id=args.chunk_id,
+        pipeline_json=args.pipeline_json.resolve(),
+        engine=args.engine,
+    )
 
     print("Phase 4 test command:\n")
     print(" \\\n".join(f"  {part}" for part in cmd))

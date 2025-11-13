@@ -140,7 +140,11 @@ def derive_chunk_id(path: Path, index: int) -> str:
     return f"chunk_{index:04d}"
 
 
-def collect_chunks(pipeline_data: Dict[str, Any], file_id: str) -> Tuple[str, List[ChunkPayload]]:
+def collect_chunks(
+    pipeline_data: Dict[str, Any],
+    file_id: str,
+    chunk_index: Optional[int] = None,
+) -> Tuple[str, List[ChunkPayload]]:
     """Load chunk paths from phase3 section and sanitize text for synthesis."""
     resolved_key, phase3_entry = resolve_pipeline_file(pipeline_data, "phase3", file_id)
     if not phase3_entry:
@@ -164,6 +168,13 @@ def collect_chunks(pipeline_data: Dict[str, Any], file_id: str) -> Tuple[str, Li
         chunk_id = derive_chunk_id(chunk_path, index)
         sanitized = sanitize_text_for_tts(text)
         chunk_payloads.append(ChunkPayload(chunk_id, sanitized, chunk_path))
+
+    if chunk_index is not None:
+        if chunk_index < 0 or chunk_index >= len(chunk_payloads):
+            raise ValueError(
+                f"Chunk index {chunk_index} out of range (0-{len(chunk_payloads) - 1})"
+            )
+        chunk_payloads = [chunk_payloads[chunk_index]]
 
     if not chunk_payloads:
         raise ValueError(f"All chunk files for '{file_id}' were empty or missing.")
@@ -337,6 +348,7 @@ def main() -> int:
     parser.add_argument("--device", default="cpu", help="Device (cpu/cuda)")
     parser.add_argument("--workers", type=int, default=2, help="Parallel workers for chunk synthesis")
     parser.add_argument("--language", help="Override language (defaults to config value)")
+    parser.add_argument("--chunk_id", type=int, help="Optional chunk index to synthesize (legacy compatibility)")
 
     args = parser.parse_args()
 
@@ -347,7 +359,11 @@ def main() -> int:
     config = load_config(config_path)
     pipeline_data = load_pipeline_json(json_path)
 
-    resolved_file_id, chunks = collect_chunks(pipeline_data, args.file_id)
+    resolved_file_id, chunks = collect_chunks(
+        pipeline_data,
+        args.file_id,
+        chunk_index=args.chunk_id,
+    )
     if not chunks:
         logger.error("No chunks discovered for %s", args.file_id)
         return 1

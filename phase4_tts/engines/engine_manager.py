@@ -9,29 +9,11 @@ from pathlib import Path
 import numpy as np
 
 from . import TTSEngine
-from .kokoro_engine import KokoroEngine
-from .f5_engine import F5TTSEngine
-from .xtts_engine import XTTSEngine
-
 logger = logging.getLogger(__name__)
 
 
 class EngineManager:
-    """
-    Manages multiple TTS engines and provides selection/fallback logic
-
-    Usage:
-        manager = EngineManager(device="cpu")
-        manager.register_engine("f5", F5TTSEngine)
-        manager.register_engine("xtts", XTTSEngine)
-        manager.register_engine("chatterbox", ChatterboxEngine)
-
-        audio = manager.synthesize(
-            engine="f5",
-            text="Hello world",
-            reference_audio=Path("ref.wav")
-        )
-    """
+    """Manages multiple TTS engines and provides selection/fallback logic."""
 
     def __init__(self, device: str = "cpu"):
         self.device = device
@@ -44,7 +26,7 @@ class EngineManager:
         Register an engine class
 
         Args:
-            name: Engine identifier (e.g., "f5", "xtts", "chatterbox")
+            name: Engine identifier (e.g., "f5", "xtts")
             engine_class: Engine class (not instance)
         """
         self.engines[name] = engine_class
@@ -177,9 +159,8 @@ class EngineManager:
         # Remove failed engine
         fallback = [e for e in all_engines if e != failed_engine]
 
-        # Prefer stable engines for fallback
-        # kokoro is fastest/most reliable, so use it first
-        priority_order = ["kokoro", "xtts", "f5", "styletts"]
+        # Prefer stable engines for fallback (kokoro, then xtts, then f5)
+        priority_order = ["kokoro", "xtts", "f5"]
 
         # Sort by priority
         fallback.sort(
