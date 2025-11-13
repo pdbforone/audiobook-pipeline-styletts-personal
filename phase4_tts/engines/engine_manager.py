@@ -4,7 +4,7 @@ Coordinates multiple TTS engines and provides unified interface
 """
 
 import logging
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple, Union
 from pathlib import Path
 import numpy as np
 
@@ -96,8 +96,9 @@ class EngineManager:
         engine: Optional[str] = None,
         language: str = "en",
         fallback: bool = True,
+        return_engine: bool = False,
         **kwargs
-    ) -> np.ndarray:
+    ) -> Union[np.ndarray, Tuple[np.ndarray, str]]:
         """
         Synthesize speech using specified engine with fallback
 
@@ -107,10 +108,12 @@ class EngineManager:
             engine: Engine name (or None for default)
             language: Language code
             fallback: Whether to fallback to other engines on failure
+            return_engine: When True, return (audio, engine_name) so callers
+                can record which engine produced the clip
             **kwargs: Engine-specific parameters
 
         Returns:
-            Audio array (float32, mono)
+            Audio array (float32, mono) or tuple (audio, engine_name)
         """
         # Use default if not specified
         if engine is None:
@@ -125,6 +128,8 @@ class EngineManager:
                 language=language,
                 **kwargs
             )
+            if return_engine:
+                return audio, engine
             return audio
 
         except Exception as e:
@@ -148,6 +153,8 @@ class EngineManager:
                         **kwargs
                     )
                     logger.info(f"Fallback successful: {fallback_engine}")
+                    if return_engine:
+                        return audio, fallback_engine
                     return audio
 
                 except Exception as fallback_error:
@@ -156,8 +163,8 @@ class EngineManager:
                     )
                     continue
 
-            # All engines failed
-            raise RuntimeError(
+        # All engines failed
+        raise RuntimeError(
                 f"All engines failed to synthesize. Primary: {engine}, "
                 f"Fallbacks: {fallback_order}"
             )

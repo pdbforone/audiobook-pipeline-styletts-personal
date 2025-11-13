@@ -332,8 +332,16 @@ def sanitize_text_for_tts(text: str) -> str:
     text = unicodedata.normalize('NFKC', text)
     
     # Replace smart quotes with straight quotes
-    text = text.replace('"', '"').replace('"', '"')
-    text = text.replace(''', "'").replace(''', "'")
+    smart_quotes = {
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u2039": "'",
+        "\u203a": "'",
+    }
+    for smart, ascii_quote in smart_quotes.items():
+        text = text.replace(smart, ascii_quote)
     
     # Fix double spaces
     text = re.sub(r'\s+', ' ', text)

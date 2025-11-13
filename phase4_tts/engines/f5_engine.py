@@ -25,11 +25,22 @@ class F5TTSEngine(TTSEngine):
     - Fast inference with diffusion
     """
 
-    def __init__(self, device: str = "cpu", model_variant: str = "F5-TTS"):
+    def __init__(
+        self,
+        device: str = "cpu",
+        model_variant: str = "F5TTS_v1_Base"
+    ):
         super().__init__(device)
-        self.model_variant = model_variant  # F5-TTS or E2-TTS
+        self.model_variant = model_variant  # F5TTS_v1_Base or E2TTS_Base
         self.sample_rate_val = 24000
         self.vocoder = None
+        self.default_params = {
+            "cfg_strength": 2.0,
+            "nfe_step": 32,
+            "sway_sampling_coef": -1,
+            "target_rms": 0.1,
+            "cross_fade_duration": 0.15,
+        }
 
     @property
     def name(self) -> str:
@@ -51,15 +62,15 @@ class F5TTSEngine(TTSEngine):
             # Import F5-TTS (lazy import to avoid loading if not needed)
             from f5_tts.api import F5TTS
 
-            logger.info(f"Loading {self.model_variant} model...")
+            logger.info(f"Loading F5-TTS model '{self.model_variant}'...")
 
             # Initialize model
             self.model = F5TTS(
-                model_type=self.model_variant,
+                model=self.model_variant,
                 device=self.device
             )
 
-            logger.info(f"{self.model_variant} model loaded successfully")
+            logger.info(f"F5-TTS model '{self.model_variant}' loaded successfully")
 
         except ImportError as e:
             raise ImportError(
@@ -96,9 +107,19 @@ class F5TTSEngine(TTSEngine):
             self.load_model()
 
         # Extract parameters
-        emotion = kwargs.get("emotion", "neutral")
         speed = kwargs.get("speed", 1.0)
         seed = kwargs.get("seed", None)
+        cfg_strength = kwargs.get("cfg_strength", self.default_params["cfg_strength"])
+        nfe_step = kwargs.get("nfe_step", self.default_params["nfe_step"])
+        sway_sampling_coef = kwargs.get(
+            "sway_sampling_coef",
+            self.default_params["sway_sampling_coef"]
+        )
+        target_rms = kwargs.get("target_rms", self.default_params["target_rms"])
+        cross_fade_duration = kwargs.get(
+            "cross_fade_duration",
+            self.default_params["cross_fade_duration"]
+        )
 
         # Set seed for reproducibility
         if seed is not None:
@@ -111,19 +132,26 @@ class F5TTSEngine(TTSEngine):
 
         try:
             # Generate audio
-            audio, sample_rate = self.model.infer(
+            wav, sample_rate, _ = self.model.infer(
                 ref_file=str(reference_audio),
                 ref_text="",  # F5-TTS can work without ref text
                 gen_text=text,
                 speed=speed,
-                device=self.device
+                cfg_strength=cfg_strength,
+                nfe_step=nfe_step,
+                sway_sampling_coef=sway_sampling_coef,
+                target_rms=target_rms,
+                cross_fade_duration=cross_fade_duration,
+                seed=seed,
             )
 
             # Ensure correct format
-            if torch.is_tensor(audio):
-                audio = audio.cpu().numpy()
+            if torch.is_tensor(wav):
+                audio = wav.detach().cpu().numpy()
+            else:
+                audio = np.asarray(wav)
 
-            audio = audio.astype(np.float32)
+            audio = audio.astype(np.float32, copy=False)
 
             # Ensure mono
             if audio.ndim > 1:
