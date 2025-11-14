@@ -31,8 +31,6 @@ PROJECT_ROOT = MODULE_ROOT.parent.parent
 sys.path.insert(0, str(MODULE_ROOT.parent))
 
 from engines.engine_manager import EngineManager
-from engines.kokoro_engine import KokoroEngine
-from engines.xtts_engine import XTTSEngine
 
 try:  # Import as package when executed via `python -m`
     from .utils import (
@@ -191,26 +189,82 @@ def select_voice(
     voice_override: Optional[str],
     prepared_refs: Dict[str, str],
     voices_config_path: Path
-) -> Tuple[str, Path, Dict[str, Any]]:
-    """Determine voice to use and return (voice_id, reference_path, engine_params)."""
-    if not prepared_refs:
-        raise RuntimeError(
-            "No voice references prepared. Run prepare_voice_references or add local_path entries."
-        )
+) -> Tuple[str, Optional[Path], Dict[str, Any]]:
+    """Determine voice to use and return (voice_id, reference_path, engine_params).
 
+    Returns:
+        Tuple of (voice_id, reference_path, engine_params)
+        - For built-in voices: reference_path is None, voice name is in engine_params
+        - For custom clones: reference_path points to audio file
+    """
     with open(voices_config_path, "r", encoding="utf-8") as f:
         voices_config = json.load(f)
 
     voice_entries = voices_config.get("voice_references", {})
+    built_in_voices = voices_config.get("built_in_voices", {})
     default_voice = voices_config.get("default_voice")
 
+    # Determine which voice to use
     selected_voice = voice_override or get_selected_voice_from_phase3(str(pipeline_json), file_id)
 
     if not selected_voice:
-        selected_voice = default_voice or next(iter(prepared_refs.keys()))
-        logger.info("No voice selection from phase3. Using default '%s'.", selected_voice)
+        # Default to first built-in Kokoro voice or first prepared ref
+        if built_in_voices.get("kokoro"):
+            selected_voice = next(iter(built_in_voices["kokoro"].keys()))
+            logger.info("No voice selection. Using default built-in: '%s'", selected_voice)
+        elif prepared_refs:
+            selected_voice = default_voice or next(iter(prepared_refs.keys()))
+            logger.info("No voice selection. Using default custom: '%s'", selected_voice)
+        else:
+            raise RuntimeError("No voices available (neither built-in nor custom)")
+
+    # Check if this is a built-in voice (across all engines)
+    is_built_in = False
+    built_in_engine = None
+    built_in_data = None
+
+    for engine_name, engine_voices in built_in_voices.items():
+        if selected_voice in engine_voices:
+            is_built_in = True
+            built_in_engine = engine_name
+            built_in_data = engine_voices[selected_voice]
+            break
+
+    if is_built_in:
+        # Built-in voice - no reference audio needed
+        logger.info("Using built-in voice '%s' from %s engine", selected_voice, built_in_engine)
+        engine_params = {}
+
+        # Set appropriate voice parameter based on engine
+        if built_in_engine == "xtts":
+            engine_params["speaker"] = selected_voice
+        elif built_in_engine == "kokoro":
+            engine_params["voice"] = selected_voice
+
+        # Add any additional params from voice config
+        if built_in_data:
+            tts_params = built_in_data.get("tts_engine_params", {})
+            engine_params.update(tts_params)
+
+        return selected_voice, None, engine_params
+
+    # Custom voice clone - needs reference audio
+    if not prepared_refs:
+        raise RuntimeError(
+            f"Voice '{selected_voice}' is not a built-in voice and no custom references are prepared."
+        )
 
     if selected_voice not in prepared_refs:
+        # Try to fall back to a built-in voice first
+        if built_in_voices.get("kokoro"):
+            fallback_voice = next(iter(built_in_voices["kokoro"].keys()))
+            logger.warning(
+                "Custom voice '%s' not found. Falling back to built-in: '%s'",
+                selected_voice, fallback_voice
+            )
+            return select_voice(pipeline_json, file_id, fallback_voice, prepared_refs, voices_config_path)
+
+        # Otherwise fall back to custom voice
         fallback_voice = None
         if "neutral_narrator" in prepared_refs:
             fallback_voice = "neutral_narrator"
@@ -225,6 +279,7 @@ def select_voice(
         )
         selected_voice = fallback_voice
 
+    logger.info("Using custom voice clone '%s' with reference audio", selected_voice)
     reference_path = Path(prepared_refs[selected_voice]).resolve()
     engine_params = voice_entries.get(selected_voice, {}).get("tts_engine_params", {})
 
@@ -325,10 +380,22 @@ def update_phase4_summary(
         json.dump(data, f, indent=2)
 
 
-def build_engine_manager(device: str) -> EngineManager:
+def build_engine_manager(device: str, engines: Optional[List[str]] = None) -> EngineManager:
+    """Build engine manager with lazy imports for isolation."""
     manager = EngineManager(device=device)
-    manager.register_engine("xtts", XTTSEngine)
-    manager.register_engine("kokoro", KokoroEngine)
+
+    # Lazy import only requested engines to avoid dep conflicts
+    if engines is None:
+        engines = ["xtts", "kokoro"]
+
+    for engine_name in engines:
+        if engine_name == "xtts":
+            from engines.xtts_engine import XTTSEngine
+            manager.register_engine("xtts", XTTSEngine)
+        elif engine_name == "kokoro":
+            from engines.kokoro_engine import KokoroEngine
+            manager.register_engine("kokoro", KokoroEngine)
+
     return manager
 
 
@@ -383,7 +450,9 @@ def main() -> int:
     output_dir = Path(config.get("audio_chunks_dir", "audio_chunks")).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    manager = build_engine_manager(args.device)
+    # Lazy-load only needed engines for isolation
+    engines_to_load = [args.engine] if args.disable_fallback else None
+    manager = build_engine_manager(args.device, engines=engines_to_load)
     manager.set_default_engine(args.engine)
 
     language = args.language or config.get("language", "en")
@@ -414,7 +483,7 @@ def main() -> int:
                 output_dir,
                 language,
                 allow_fallback=not args.disable_fallback,
-                engine_params,
+                engine_kwargs=engine_params,
             ): chunk.chunk_id
             for chunk in chunks
         }

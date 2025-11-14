@@ -7,8 +7,6 @@ import os
 import json
 import time
 import logging
-import torch
-import torchaudio as ta
 import librosa
 import requests
 import nltk
@@ -16,6 +14,7 @@ from nltk.tokenize import sent_tokenize
 from pathlib import Path, PureWindowsPath
 from typing import Tuple, Optional, Dict, List
 import numpy as np
+import soundfile as sf
 import re
 import unicodedata
 import difflib
@@ -216,7 +215,7 @@ def prepare_voice_references(
                     if sr != target_sr:
                         y_resampled = librosa.resample(y, orig_sr=sr, target_sr=target_sr)
                         # Save resampled version to cache
-                        ta.save(str(output_path), torch.tensor(y_resampled).unsqueeze(0), target_sr)
+                        sf.write(str(output_path), y_resampled, target_sr)
                         prepared_refs[voice_id] = str(output_path)
                         logger.info(
                             f"✅ Loaded local reference {voice_id}: {duration:.1f}s (resampled {sr}→{target_sr}Hz)"
@@ -291,9 +290,9 @@ def prepare_voice_references(
                 y_resampled = librosa.resample(y_norm, orig_sr=sr, target_sr=target_sr)
             else:
                 y_resampled = y_norm
-            
+
             # Save
-            ta.save(str(output_path), torch.tensor(y_resampled).unsqueeze(0), target_sr)
+            sf.write(str(output_path), y_resampled, target_sr)
             
             # Clean up temp file
             mp3_path.unlink()
@@ -340,7 +339,7 @@ def prepare_reference_audio(config: TTSConfig, output_path: str = "ref_trimmed.w
         y_trim = y_trim[:config.sample_rate * 20]  # Cap at 20s
     y_norm = librosa.util.normalize(y_trim)
     y_resampled = librosa.resample(y_norm, orig_sr=sr, target_sr=config.sample_rate)
-    ta.save(output_path, torch.tensor(y_resampled).unsqueeze(0), config.sample_rate)
+    sf.write(output_path, y_resampled, config.sample_rate)
     os.remove(mp3_path)
     return output_path
 
@@ -438,83 +437,11 @@ def synthesize_chunk(model, text: str, ref_path: str, output_path: str, config: 
     else:
         sub_chunks = [text]
 
-    full_audio = torch.zeros(1, 0, dtype=torch.float32)  # Initialize as 2D empty [channels=1, samples=0]
-    for i, sub_text in enumerate(sub_chunks):
-        try:
-            # Generate with cloning
-            wav = model.generate(
-                sub_text,
-                language_id=config.language,
-                audio_prompt_path=ref_path,
-                exaggeration=config.exaggeration,
-                cfg_weight=config.cfg_weight,
-                temperature=config.temperature
-            )
-            # Ensure wav is 2D (channels, samples)
-            if wav.dim() == 1:
-                wav = wav.unsqueeze(0)  # Add channel dimension
-            # Log shapes before concat (for debugging)
-            logger.info(f"Before concat: full_audio={full_audio.shape}, wav={wav.shape}")
-            full_audio = torch.cat([full_audio, wav], dim=1)
-        except Exception as e:
-            logger.error(f"Sub-chunk {i} generation failed: {e}")
-            split_metadata["failed_sub_chunks"].append(i)
-            # Insert silence fallback
-            silence_samples = int(config.silence_duration * config.sample_rate)
-            silence = torch.zeros(1, silence_samples, dtype=torch.float32)
-            # Log shapes before concat
-            logger.info(f"Before concat silence: full_audio shape={full_audio.shape}, silence shape={silence.shape}")
-            full_audio = torch.cat([full_audio, silence], dim=1) if full_audio.numel() > 0 else silence
-            for _ in range(config.sub_chunk_retries - 1):  # Retries
-                try:
-                    wav = model.generate(sub_text, language_id=config.language, audio_prompt_path=ref_path)
-                    # Ensure wav is 2D
-                    if wav.dim() == 1:
-                        wav = wav.unsqueeze(0)
-                    logger.info(f"Retry success: replacing silence with wav={wav.shape}")
-                    full_audio = torch.cat([full_audio[:, :-silence_samples], wav], dim=1)  # Replace silence (slice time dim)
-                    break
-                except Exception as retry_e:
-                    logger.warning(f"Retry failed for sub-chunk {i}: {retry_e}")
-
-    if full_audio.numel() == 0:
-        return False, split_metadata
-
-    # Save audio with proper error handling
-    try:
-        # Normalize path for Windows
-        output_path_normalized = str(Path(output_path).resolve())
-
-        # Remove existing file if present (may be locked or corrupted from previous run)
-        if os.path.exists(output_path_normalized):
-            try:
-                os.remove(output_path_normalized)
-                logger.debug(f"Removed existing file: {output_path_normalized}")
-            except Exception as rm_e:
-                logger.warning(f"Could not remove existing file: {rm_e}")
-
-        # Ensure audio is on CPU and contiguous for saving
-        full_audio_cpu = full_audio.cpu().contiguous()
-
-        # Save with explicit format
-        ta.save(output_path_normalized, full_audio_cpu, config.sample_rate, format="wav")
-        logger.info(f"Successfully saved audio to: {output_path_normalized}")
-
-    except Exception as save_error:
-        logger.error(f"Failed to save audio file: {save_error}")
-        logger.error(f"Output path: {output_path_normalized}")
-        logger.error(f"Audio shape: {full_audio.shape}, dtype: {full_audio.dtype}")
-        logger.error(f"Sample rate: {config.sample_rate}")
-
-        # Try to provide more diagnostic information
-        output_dir = Path(output_path_normalized).parent
-        logger.error(f"Output directory exists: {output_dir.exists()}")
-        logger.error(f"Output directory writable: {os.access(output_dir, os.W_OK)}")
-
-        return False, split_metadata
-
-    duration = time.perf_counter() - start
-    return True, split_metadata
+    # LEGACY: This function is no longer used by XTTS/Kokoro engines
+    # Engines now handle synthesis directly and return numpy arrays
+    # Removed torch-dependent code to support isolated Kokoro environment
+    logger.error("synthesize_and_stitch_chunk() is legacy StyleTTS code - use engine.synthesize() instead")
+    return False, split_metadata
 
 def evaluate_mos_proxy(audio_path: str, sr: int) -> float:
     """Simple MOS proxy (e.g., spectral centroid for clarity). Why: Basic quality metric; real MOS needs models."""

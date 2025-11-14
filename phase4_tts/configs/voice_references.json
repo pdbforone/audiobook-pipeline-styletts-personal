@@ -226,6 +226,312 @@
       "notes": "Fallback clear, professional voice for general content."
     }
   },
+  "built_in_voices": {
+    "xtts": {
+      "Claribel Dervla": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS Default - Female British accent, clear and warm",
+        "preferred_profiles": ["fiction", "memoir", "general"],
+        "gender": "female",
+        "accent": "British"
+      },
+      "Daisy Studious": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Female American accent, youthful and energetic",
+        "preferred_profiles": ["fiction", "young adult"],
+        "gender": "female",
+        "accent": "American"
+      },
+      "Gracie Wise": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Female American accent, mature and authoritative",
+        "preferred_profiles": ["academic", "philosophy", "theology"],
+        "gender": "female",
+        "accent": "American"
+      },
+      "Tammie Ema": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Female American accent, conversational and friendly",
+        "preferred_profiles": ["fiction", "memoir"],
+        "gender": "female",
+        "accent": "American"
+      },
+      "Alison Dietlinde": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Female British accent, refined and elegant",
+        "preferred_profiles": ["fiction", "classic literature"],
+        "gender": "female",
+        "accent": "British"
+      },
+      "Ana Florence": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Female American accent, warm and expressive",
+        "preferred_profiles": ["fiction", "drama"],
+        "gender": "female",
+        "accent": "American"
+      },
+      "Annmarie Nele": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Female American accent, clear and professional",
+        "preferred_profiles": ["academic", "technical"],
+        "gender": "female",
+        "accent": "American"
+      },
+      "Asya Anara": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Female accent with slight European influence",
+        "preferred_profiles": ["fiction", "international"],
+        "gender": "female",
+        "accent": "European"
+      },
+      "Brenda Stern": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Female American accent, authoritative and strong",
+        "preferred_profiles": ["academic", "leadership"],
+        "gender": "female",
+        "accent": "American"
+      },
+      "Gitta Nikolina": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Female accent with European influence",
+        "preferred_profiles": ["fiction", "international"],
+        "gender": "female",
+        "accent": "European"
+      },
+      "Henriette": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Female French accent, sophisticated",
+        "preferred_profiles": ["fiction", "classic literature"],
+        "gender": "female",
+        "accent": "French"
+      },
+      "Sofia Hellen": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Female accent, gentle and soothing",
+        "preferred_profiles": ["meditation", "relaxation"],
+        "gender": "female",
+        "accent": "neutral"
+      },
+      "Tammy Grit": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Female American accent, determined and strong",
+        "preferred_profiles": ["thriller", "action"],
+        "gender": "female",
+        "accent": "American"
+      },
+      "Tanja Adelina": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Female accent with European influence",
+        "preferred_profiles": ["fiction", "international"],
+        "gender": "female",
+        "accent": "European"
+      },
+      "Vjollca Johnnie": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Female accent with Eastern European influence",
+        "preferred_profiles": ["fiction", "international"],
+        "gender": "female",
+        "accent": "Eastern European"
+      },
+      "Andrew Chipper": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male British accent, cheerful and upbeat",
+        "preferred_profiles": ["fiction", "humor"],
+        "gender": "male",
+        "accent": "British"
+      },
+      "Badr Odhiambo": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male accent, deep and resonant",
+        "preferred_profiles": ["philosophy", "theology"],
+        "gender": "male",
+        "accent": "neutral"
+      },
+      "Dionisio Schuyler": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male accent with Spanish influence",
+        "preferred_profiles": ["fiction", "international"],
+        "gender": "male",
+        "accent": "Spanish"
+      },
+      "Royston Min": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male British accent, refined and authoritative",
+        "preferred_profiles": ["academic", "philosophy"],
+        "gender": "male",
+        "accent": "British"
+      },
+      "Viktor Eka": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male accent with European influence",
+        "preferred_profiles": ["fiction", "thriller"],
+        "gender": "male",
+        "accent": "European"
+      },
+      "Abrahan Mack": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male American accent, warm and friendly",
+        "preferred_profiles": ["fiction", "memoir"],
+        "gender": "male",
+        "accent": "American"
+      },
+      "Adde Michal": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male accent with Scandinavian influence",
+        "preferred_profiles": ["fiction", "international"],
+        "gender": "male",
+        "accent": "Scandinavian"
+      },
+      "Baldur Sanjin": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male accent, strong and commanding",
+        "preferred_profiles": ["philosophy", "epic"],
+        "gender": "male",
+        "accent": "neutral"
+      },
+      "Craig Gutsy": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male American accent, energetic and bold",
+        "preferred_profiles": ["action", "thriller"],
+        "gender": "male",
+        "accent": "American"
+      },
+      "Damien Black": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male accent, deep and mysterious",
+        "preferred_profiles": ["gothic", "horror"],
+        "gender": "male",
+        "accent": "neutral"
+      },
+      "Gilberto Mathias": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male accent with Portuguese influence",
+        "preferred_profiles": ["fiction", "international"],
+        "gender": "male",
+        "accent": "Portuguese"
+      },
+      "Ilkin Urbano": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male accent with Turkish influence",
+        "preferred_profiles": ["fiction", "international"],
+        "gender": "male",
+        "accent": "Turkish"
+      },
+      "Kazuhiko Atallah": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male accent with Japanese influence",
+        "preferred_profiles": ["fiction", "international"],
+        "gender": "male",
+        "accent": "Japanese"
+      },
+      "Ludvig Milivoj": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male accent with Slavic influence",
+        "preferred_profiles": ["fiction", "international"],
+        "gender": "male",
+        "accent": "Slavic"
+      },
+      "Suad Qasim": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male accent with Arabic influence",
+        "preferred_profiles": ["fiction", "international"],
+        "gender": "male",
+        "accent": "Arabic"
+      },
+      "Torcull Diarmuid": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male Scottish accent, rugged and warm",
+        "preferred_profiles": ["fiction", "adventure"],
+        "gender": "male",
+        "accent": "Scottish"
+      },
+      "Wulf Carlevaro": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male accent with Italian influence",
+        "preferred_profiles": ["fiction", "international"],
+        "gender": "male",
+        "accent": "Italian"
+      },
+      "Ervin Hank": {
+        "engine": "xtts",
+        "built_in": true,
+        "description": "XTTS - Male American accent, casual and relatable",
+        "preferred_profiles": ["fiction", "memoir"],
+        "gender": "male",
+        "accent": "American"
+      }
+    },
+    "kokoro": {
+      "af_bella": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Female, warm and expressive",
+        "preferred_profiles": ["fiction", "memoir", "general"],
+        "gender": "female",
+        "accent": "American",
+        "quality_score": 4.5
+      },
+      "af_sarah": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Female, clear and professional",
+        "preferred_profiles": ["academic", "philosophy", "technical"],
+        "gender": "female",
+        "accent": "American",
+        "quality_score": 4.6
+      },
+      "am_adam": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Male, deep and authoritative",
+        "preferred_profiles": ["philosophy", "theology", "academic"],
+        "gender": "male",
+        "accent": "American",
+        "quality_score": 4.5
+      },
+      "am_michael": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Male, neutral and measured",
+        "preferred_profiles": ["academic", "technical", "general"],
+        "gender": "male",
+        "accent": "American",
+        "quality_score": 4.4
+      }
+    }
+  },
   "preparation_settings": {
     "sample_rate": 24000,
     "target_duration_min": 10,

@@ -348,26 +348,35 @@ def check_phase_status(pipeline_data: Dict, phase_num: int, file_id: str) -> str
     return "pending"
 
 
-def find_phase_dir(phase_num: int) -> Optional[Path]:
-    """Find directory for a phase number."""
+def find_phase_dir(phase_num: int, variant: Optional[str] = None) -> Optional[Path]:
+    """Find directory for a phase number.
+
+    Args:
+        phase_num: Phase number (1-5)
+        variant: Optional variant (e.g., 'xtts' for phase3b-xtts-chunking)
+    """
     project_root = PROJECT_ROOT
 
-    mapping = {
-        1: "phase1-validation",
-        2: "phase2-extraction",
-        3: "phase3-chunking",
-        4: "phase4_tts",
-        5: "phase5_enhancement"
-    }
-    
-    phase_name = mapping.get(phase_num)
+    # Handle Phase 3 variants (Phase 3b for XTTS)
+    if phase_num == 3 and variant == "xtts":
+        phase_name = "phase3b-xtts-chunking"
+    else:
+        mapping = {
+            1: "phase1-validation",
+            2: "phase2-extraction",
+            3: "phase3-chunking",
+            4: "phase4_tts",
+            5: "phase5_enhancement"
+        }
+        phase_name = mapping.get(phase_num)
+
     if not phase_name:
         return None
-    
+
     phase_dir = project_root / phase_name
     if phase_dir.exists():
         return phase_dir
-    
+
     logger.error(f"Phase {phase_num} directory not found: {phase_dir}")
     return None
 
@@ -471,6 +480,20 @@ def run_phase(
     Returns:
         True if successful, False otherwise
     """
+    # Determine engine early (needed for Phase 3 routing)
+    engine = tts_engine if tts_engine else get_tts_engine()
+
+    # Special handling for Phase 3 (route to Phase 3b for XTTS)
+    if phase_num == 3:
+        variant = "xtts" if engine == "xtts" else None
+        phase_dir = find_phase_dir(phase_num, variant=variant)
+        if not phase_dir:
+            return False
+
+        logger.info(f"Phase 3: Using chunking variant for {engine}: {phase_dir}")
+        return run_phase_standard(phase_num, phase_dir, file_path, file_id, pipeline_json)
+
+    # Standard phase directory lookup
     phase_dir = find_phase_dir(phase_num)
     if not phase_dir:
         return False
@@ -479,8 +502,6 @@ def run_phase(
 
     # Special handling for Phase 4 (Multi-Engine TTS)
     if phase_num == 4:
-        # Use provided engine or fall back to config
-        engine = tts_engine if tts_engine else get_tts_engine()
         logger.info(f"Phase 4: Using TTS engine: {engine}")
 
         # Route to appropriate Phase 4 implementation
@@ -491,7 +512,7 @@ def run_phase(
         # Use unified multi-engine system
         return run_phase4_multi_engine(phase_dir, file_id, pipeline_json, voice_id, engine, pipeline_mode)
 
-    # Standard phases (1, 2, 3, 5) use Poetry
+    # Standard phases (1, 2, 5) use Poetry
     return run_phase_standard(phase_num, phase_dir, file_path, file_id, pipeline_json)
 
 
@@ -544,29 +565,39 @@ def run_phase_standard(
         return run_phase5_with_config_update(phase_dir, file_id, pipeline_json)
     
     # Build command with direct script path
-    module_names = {
-        1: "phase1_validation",
-        2: "phase2_extraction",
-        3: "phase3_chunking"
-    }
-    
-    module_name = module_names.get(phase_num)
-    
-    script_names = {
-        1: "validation.py",
-        2: "extraction.py",
-        3: "main.py"
-    }
-    script_name = script_names.get(phase_num, "main.py")
-    main_script = phase_dir / "src" / module_name / script_name
-    
-    if not main_script.exists():
-        logger.error(f"Script not found: {main_script}")
-        return False
+    # Special handling for Phase 3b (lightweight script)
+    if phase_dir.name == "phase3b-xtts-chunking":
+        main_script = phase_dir / "sentence_splitter.py"
+        if not main_script.exists():
+            logger.error(f"Script not found: {main_script}")
+            return False
+        # Phase 3b is standalone Python (no Poetry)
+        cmd = [sys.executable, str(main_script)]
+    else:
+        # Standard phases use Poetry
+        module_names = {
+            1: "phase1_validation",
+            2: "phase2_extraction",
+            3: "phase3_chunking"
+        }
 
-    # Use relative path from phase directory (critical for Poetry venv resolution)
-    script_relative = main_script.relative_to(phase_dir)
-    cmd = ["poetry", "run", "python", str(script_relative)]
+        module_name = module_names.get(phase_num)
+
+        script_names = {
+            1: "validation.py",
+            2: "extraction.py",
+            3: "main.py"
+        }
+        script_name = script_names.get(phase_num, "main.py")
+        main_script = phase_dir / "src" / module_name / script_name
+
+        if not main_script.exists():
+            logger.error(f"Script not found: {main_script}")
+            return False
+
+        # Use relative path from phase directory (critical for Poetry venv resolution)
+        script_relative = main_script.relative_to(phase_dir)
+        cmd = ["poetry", "run", "python", str(script_relative)]
     
     # Add phase-specific arguments
     if phase_num == 1:

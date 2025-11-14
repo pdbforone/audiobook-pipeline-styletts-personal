@@ -72,7 +72,7 @@ class XTTSEngine(TTSEngine):
     def synthesize(
         self,
         text: str,
-        reference_audio: Path,
+        reference_audio: Optional[Path] = None,
         language: str = "en",
         **kwargs
     ) -> np.ndarray:
@@ -80,13 +80,15 @@ class XTTSEngine(TTSEngine):
         Synthesize speech using XTTS v2
 
         Args:
-            text: Text to synthesize
-            reference_audio: Path to reference audio for voice cloning
+            text: Text to synthesize (max 250 characters)
+            reference_audio: Optional path to reference audio for voice cloning
+                           If None, uses default XTTS voice
             language: Language code
             **kwargs: Additional parameters
                 - emotion: str (controlled via reference audio tone)
                 - speed: float (0.5-2.0, default 1.0)
                 - temperature: float (0.1-1.0, creativity)
+                - speaker: str (default voice name if no reference_audio)
 
         Returns:
             Audio array (float32, mono, 24kHz)
@@ -97,6 +99,7 @@ class XTTSEngine(TTSEngine):
         # Extract parameters
         speed = kwargs.get("speed", 1.0)
         temperature = kwargs.get("temperature", 0.7)
+        speaker = kwargs.get("speaker", "Claribel Dervla")  # Default XTTS voice
 
         # Validate language
         if language not in self.get_supported_languages():
@@ -106,14 +109,30 @@ class XTTSEngine(TTSEngine):
             language = "en"
 
         try:
-            # Generate audio using XTTS
-            wav = self.model.tts(
-                text=text,
-                speaker_wav=str(reference_audio),
-                language=language,
-                speed=speed,
-                temperature=temperature
-            )
+            # Voice cloning vs default voice
+            if reference_audio and reference_audio.exists():
+                logger.info(f"Using voice cloning with reference: {reference_audio}")
+                # Generate audio using XTTS with voice cloning
+                wav = self.model.tts(
+                    text=text,
+                    speaker_wav=str(reference_audio),
+                    language=language,
+                    speed=speed,
+                    temperature=temperature
+                )
+            else:
+                if reference_audio:
+                    logger.warning(f"Reference audio not found: {reference_audio}, using default voice")
+                else:
+                    logger.info(f"Using default XTTS voice: {speaker}")
+                # Generate audio using XTTS default voice
+                wav = self.model.tts(
+                    text=text,
+                    speaker=speaker,
+                    language=language,
+                    speed=speed,
+                    temperature=temperature
+                )
 
             # Convert to numpy array
             if isinstance(wav, list):
@@ -137,8 +156,8 @@ class XTTSEngine(TTSEngine):
             raise
 
     def get_max_text_length(self) -> Optional[int]:
-        """XTTS can handle reasonably long text"""
-        return 5000  # Characters
+        """XTTS v2 has a hard 250 character limit"""
+        return 250  # Characters - XTTS v2 hard limit
 
     def supports_fine_tuning(self) -> bool:
         """XTTS supports fine-tuning for better voice adaptation"""

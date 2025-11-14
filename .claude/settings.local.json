@@ -1,16 +1,19 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git fetch:*)",
-      "Bash(git stash:*)",
-      "Bash(git checkout:*)",
-      "Bash(git pull:*)",
-      "Bash(git merge:*)",
-      "Bash(python3.11:*)",
-      "Bash(apt list:*)",
-      "Bash(echo:*)",
-      "Bash(\"/c/Program Files/Python311/python\" --version)",
-      "Bash(\"/c/Program Files/Python311/python\" phase4_tts/engine_runner.py --engine kokoro --file_id \"Psalm_53\" --json_path pipeline.json --disable_fallback --device cpu --workers 1)"
+      "Bash(\"/c/Program Files/Python311/python\" phase4_tts/engine_runner.py --engine kokoro --file_id \"test_simple\" --json_path test_kokoro.json --disable_fallback --device cpu --workers 1)",
+      "Bash(test_chunks/chunk_001.txt)",
+      "Bash(test_chunks/chunk_002.txt)",
+      "Bash(\"/c/Program Files/Python311/python\" phase4_tts/engine_runner.py --engine kokoro --file_id \"test_simple\" --json_path \"../test_kokoro.json\" --disable_fallback --device cpu --workers 1)",
+      "Bash(phase4_tts/.engine_envs/kokoro/Scripts/python:*)",
+      "Bash(\"/c/Program Files/Python311/python\" -c \"import json; data = json.load(open(''test_kokoro.json'')); p4 = data.get(''phase4'', {}).get(''files'', {}).get(''test_simple'', {}); print(''Status:'', p4.get(''status'')); print(''Completed:'', p4.get(''chunks_completed'')); print(''Failed:'', p4.get(''chunks_failed'')); ch1 = p4.get(''chunk_0001'', {}); print(''Chunk 1 status:'', ch1.get(''status'')); print(''Chunk 1 errors:'', ch1.get(''errors''))\")",
+      "Bash(cat:*)",
+      "Bash(unzip:*)",
+      "Bash(curl:*)",
+      "Bash(\"/c/Program Files/Python311/python\" -c \"import json; data = json.load(open(''test_kokoro.json'')); p4 = data.get(''phase4'', {}).get(''files'', {}).get(''test_simple'', {}); print(''Status:'', p4.get(''status'')); print(''Completed:'', p4.get(''chunks_completed''), ''/'', p4.get(''total_chunks'')); print(''Failed:'', p4.get(''chunks_failed'')); print(''Duration:'', p4.get(''duration_seconds''), ''s''); ch1 = p4.get(''chunk_0001'', {}); print(''\\nChunk 1:''); print(''  Status:'', ch1.get(''status'')); print(''  Engine:'', ch1.get(''engine_used'')); print(''  Audio:'', ch1.get(''audio_path''))\")",
+      "Bash(python:*)",
+      "Bash(timeout 10 du:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

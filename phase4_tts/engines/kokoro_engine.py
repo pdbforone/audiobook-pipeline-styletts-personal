@@ -46,15 +46,25 @@ class KokoroEngine(TTSEngine):
         """Load Kokoro ONNX model"""
         try:
             # Import kokoro-onnx
-            import kokoro
+            import kokoro_onnx as kokoro
 
             logger.info("Loading Kokoro-82M ONNX model...")
 
-            # Initialize Kokoro
-            self.model = kokoro.Kokoro(
-                lang="en-us",  # US English
-                speed=1.0
-            )
+            # Model files are in phase4_tts/models/kokoro/
+            model_dir = Path(__file__).parent.parent / "models" / "kokoro"
+            model_path = model_dir / "kokoro-v1.0.onnx"
+            voices_path = model_dir / "voices.json"
+
+            if not model_path.exists() or not voices_path.exists():
+                raise FileNotFoundError(
+                    f"Kokoro model files not found. Please download:\n"
+                    f"  wget https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx\n"
+                    f"  wget https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin\n"
+                    f"and place them in {model_dir}"
+                )
+
+            # Initialize Kokoro with model paths
+            self.model = kokoro.Kokoro(str(model_path), str(voices_path))
 
             logger.info("Kokoro-82M model loaded successfully")
 
@@ -81,7 +91,7 @@ class KokoroEngine(TTSEngine):
             language: Language code (only 'en' supported)
             **kwargs: Additional parameters
                 - speed: float (0.5-2.0, default 1.0)
-                - voice: str (voice ID, default "af_bella")
+                - voice: str (voice ID, default "af_sarah")
 
         Returns:
             Audio array (float32, mono, 24kHz)
@@ -91,27 +101,30 @@ class KokoroEngine(TTSEngine):
 
         # Extract parameters
         speed = kwargs.get("speed", 1.0)
-        voice = kwargs.get("voice", "af_bella")  # Default female voice
+        voice = kwargs.get("voice", "af_sarah")  # Default female voice
 
-        # Set voice
-        self.model.set_voice(voice)
-
-        # Set speed
-        self.model.set_speed(speed)
+        # Map language code to kokoro format
+        lang_map = {
+            "en": "en-us",
+            "en-us": "en-us",
+            "en-gb": "en-gb",
+        }
+        kokoro_lang = lang_map.get(language, "en-us")
 
         try:
-            # Generate audio samples
-            # Kokoro returns iterator of audio chunks
-            audio_chunks = []
-            for chunk in self.model.create(text):
-                audio_chunks.append(chunk)
+            # Generate audio using create() method
+            # Returns (samples, sample_rate) tuple
+            audio, sample_rate = self.model.create(
+                text,
+                voice=voice,
+                speed=speed,
+                lang=kokoro_lang
+            )
 
-            # Concatenate chunks
-            if audio_chunks:
-                audio = np.concatenate(audio_chunks)
-            else:
-                # Return silence if no audio generated
-                audio = np.zeros(int(0.1 * self.sample_rate_val), dtype=np.float32)
+            # Ensure correct sample rate
+            if sample_rate != self.sample_rate_val:
+                logger.warning(f"Sample rate mismatch: got {sample_rate}, expected {self.sample_rate_val}")
+                self.sample_rate_val = sample_rate
 
             # Ensure float32 and mono
             audio = audio.astype(np.float32)
