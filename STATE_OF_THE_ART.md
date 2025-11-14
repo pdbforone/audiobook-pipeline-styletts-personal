@@ -7,6 +7,9 @@ Your pipeline is already excellent. Here's how to make it **legendary**.
 
 ---
 
+> **Update (Nov 2025):** F5-TTS has been retired from the live pipeline.  
+> Use XTTS v2 (primary) with Kokoro-onnx as the CPU fallback wherever this guide references F5.
+
 ## 🎯 Philosophy
 
 We're not adding features for features' sake.

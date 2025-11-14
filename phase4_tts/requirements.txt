@@ -10,6 +10,5 @@ pyyaml>=6.0
 # Optional TTS engines (install only what you need)
 # Uncomment the engines you want to use:
 
-# f5-tts>=0.1.0        # F5-TTS (Expressive)
 # TTS>=0.22.0          # XTTS v2 (Versatile)
 # kokoro-onnx>=0.1.0   # Kokoro (CPU-Friendly)

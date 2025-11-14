@@ -31,7 +31,6 @@ PROJECT_ROOT = MODULE_ROOT.parent.parent
 sys.path.insert(0, str(MODULE_ROOT.parent))
 
 from engines.engine_manager import EngineManager
-from engines.f5_engine import F5TTSEngine
 from engines.kokoro_engine import KokoroEngine
 from engines.xtts_engine import XTTSEngine
 
@@ -327,7 +326,6 @@ def update_phase4_summary(
 
 def build_engine_manager(device: str) -> EngineManager:
     manager = EngineManager(device=device)
-    manager.register_engine("f5", F5TTSEngine)
     manager.register_engine("xtts", XTTSEngine)
     manager.register_engine("kokoro", KokoroEngine)
     return manager
@@ -338,8 +336,8 @@ def main() -> int:
     parser.add_argument("--file_id", required=True, help="File identifier (matches phase3 entry)")
     parser.add_argument(
         "--engine",
-        default="kokoro",
-        choices=["f5", "xtts", "kokoro"],
+        default="xtts",
+        choices=["xtts", "kokoro"],
         help="Preferred engine. Fallback order is managed automatically.",
     )
     parser.add_argument("--json_path", required=True, help="Path to pipeline.json")

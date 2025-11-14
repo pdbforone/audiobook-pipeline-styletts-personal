@@ -2,7 +2,6 @@
 *.mp3
 *.mp4
 *.wav
-!phase4_tts_styletts/tests/data/*.wav
 *.m4a
 *.flac
 *.avi
@@ -11,7 +10,6 @@
 # Pipeline data files
 pipeline.json
 .pipeline/
-phase4_tts_styletts/tests/test_output.wav
 pipeline.json.backup
 pipeline_*.json
 */pipeline.json
@@ -84,7 +82,6 @@ temp_*.txt
 # Generated chunks/audio
 phase3-chunking/chunks/
 phase4_tts/audio_chunks/
-phase4_tts_styletts/audio_chunks/
 phase5_enhancement/processed/
 phase5_enhancement/subtitles/
 pipeline.json

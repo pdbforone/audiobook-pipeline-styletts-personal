@@ -102,18 +102,17 @@ echo ========================================================================
 echo.
 echo Which engines would you like to install?
 echo.
-echo 1. None (just core - use StyleTTS2 separately)
-echo 2. Kokoro (CPU-friendly, RECOMMENDED for testing)
-echo 3. F5-TTS (Expressive, best quality, large download)
-echo 4. XTTS v2 (Versatile, multi-language, large download)
-echo 5. All engines (very large download)
+echo 1. XTTS v2 (Expressive, recommended)
+echo 2. Kokoro-onnx (CPU-friendly backup)
+echo 3. Install both XTTS + Kokoro
+echo 4. Skip (install later)
 echo.
 
-set /p choice="Enter choice (1-5): "
+set /p choice="Enter choice (1-4): "
 
 if "%choice%"=="1" (
-    echo [INFO] Skipping engine installation
-    goto done
+    echo [INFO] Installing XTTS v2 (this may take a while)...
+    pip install TTS
 )
 
 if "%choice%"=="2" (
@@ -122,18 +121,13 @@ if "%choice%"=="2" (
 )
 
 if "%choice%"=="3" (
-    echo [INFO] Installing F5-TTS (this may take a while)...
-    pip install f5-tts
+    echo [INFO] Installing XTTS v2 + Kokoro...
+    pip install TTS kokoro-onnx
 )
 
 if "%choice%"=="4" (
-    echo [INFO] Installing XTTS v2 (this may take a while)...
-    pip install TTS
-)
-
-if "%choice%"=="5" (
-    echo [INFO] Installing all engines (this will take a while)...
-    pip install kokoro-onnx f5-tts TTS
+    echo [INFO] Skipping engine installation
+    goto done
 )
 
 :done

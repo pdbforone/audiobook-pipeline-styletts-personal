@@ -3,25 +3,26 @@
 
 Get up and running in 10 minutes.
 
+> **Update (Nov 2025):** F5-TTS has been removed to keep the workstation lean.  
+> XTTS v2 is now the expressive default, with Kokoro-onnx as a fast CPU backup.
+
 ---
 
 ## Installation
 
 ### 1. Install TTS Engines
 
-Choose at least one (F5-TTS recommended):
+Install both for the best quality + fallback combo:
 
 ```bash
-# F5-TTS (Best quality, recommended)
-cd /tmp
-git clone https://github.com/SWivid/F5-TTS
-cd F5-TTS
-pip install -e .
-
-# XTTS v2 (Alternative, great multilingual support)
+# XTTS v2 (primary expressive engine)
 pip install TTS
 
-# Chatterbox (Already installed in your system)
+# Kokoro-onnx (fast CPU backup)
+pip install kokoro-onnx soundfile
+
+# Better phonemes (optional but nice)
+sudo apt-get install espeak-ng
 ```
 
 ### 2. Install Professional Audio Processing
@@ -60,7 +61,7 @@ Opens at `http://localhost:7860`
 1. Click "📖 Single Book" tab
 2. Upload your book (.epub, .pdf, .txt)
 3. Select voice: **george_mckayland** (for philosophy)
-4. Choose engine: **F5-TTS (Expressive)**
+4. Choose engine: **XTTS (Expressive)**
 5. Pick preset: **audiobook_intimate**
 6. Click **🎬 Generate Audiobook**
 
@@ -116,20 +117,17 @@ print(f'LUFS: {result.metrics[\"lufs\"]}')
 
 ## Engine Comparison Test
 
-Generate the same text with all 3 engines:
+Generate the same text with both engines:
 
 ```bash
 # Test text
 TEXT="Philosophy is the art of living well."
 
-# F5-TTS (best quality)
-python test_engine.py --engine f5 --text "$TEXT"
-
-# XTTS (versatile)
+# XTTS (expressive)
 python test_engine.py --engine xtts --text "$TEXT"
 
-# Chatterbox (fast)
-python test_engine.py --engine chatterbox --text "$TEXT"
+# Kokoro (fast)
+python test_engine.py --engine kokoro --text "$TEXT"
 
 # Listen and compare quality!
 ```
@@ -142,7 +140,7 @@ python test_engine.py --engine chatterbox --text "$TEXT"
 ```
 Book: Marcus Aurelius - Meditations
 Voice: george_mckayland
-Engine: F5-TTS (Expressive)
+Engine: XTTS (Expressive)
 Preset: audiobook_intimate
 Time: ~4-5 hours
 Quality: Insanely great
@@ -152,7 +150,7 @@ Quality: Insanely great
 ```
 Book: Edgar Allan Poe - The Raven
 Voice: vincent_price_01
-Engine: F5-TTS (Expressive)
+Engine: XTTS (Expressive)
 Preset: audiobook_dynamic
 Time: ~30 minutes
 Quality: Chilling
@@ -162,7 +160,7 @@ Quality: Chilling
 ```
 Book: Any short story (5-10 pages)
 Voice: Any
-Engine: Chatterbox (fast)
+Engine: Kokoro (fast)
 Preset: minimal
 Time: ~10 minutes
 Quality: Good for testing
@@ -185,15 +183,14 @@ lsof -i :7860
 python ui/app.py --server-port 8080
 ```
 
-### F5-TTS Import Error
+### XTTS Import Error
 
 ```bash
 # Verify installation
-python -c "from f5_tts.api import F5TTS; print('OK')"
+python -c "from TTS.api import TTS; print('OK')"
 
 # If fails, reinstall:
-cd /tmp/F5-TTS
-pip install -e . --force-reinstall
+pip install --upgrade --force-reinstall TTS
 ```
 
 ### Audio Quality Issues
@@ -220,7 +217,7 @@ Update paths to match your system.
 ## Next Steps
 
 1. ✅ Generate your first audiobook
-2. 📊 Compare engines (F5 vs XTTS vs Chatterbox)
+2. 📊 Compare engines (XTTS vs Kokoro)
 3. 🎚️ Try different mastering presets
 4. 🎤 Add your own voice to library
 5. 📦 Queue a batch of books overnight

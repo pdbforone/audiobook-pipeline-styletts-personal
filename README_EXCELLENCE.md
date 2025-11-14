@@ -9,6 +9,9 @@
 
 A **personal audiobook creation system** that transforms your ebook library into professional-grade audiobooks with state-of-the-art TTS, professional audio mastering, and a beautiful UI.
 
+> **Update (Nov 2025):** To keep the environment lean, F5-TTS has been removed.  
+> XTTS v2 now handles expressive narration, with Kokoro-onnx providing a fast CPU fallback.
+
 **Not for business. For craft.**
 
 ---
@@ -25,7 +28,7 @@ We transformed your production pipeline into an **artisan creative tool**:
 - ❌ Good enough
 
 ### **After:**
-- ✅ 3 world-class TTS engines (F5-TTS, XTTS, Chatterbox)
+- ✅ 2 world-class TTS engines (XTTS v2 + Kokoro fallback)
 - ✅ Professional mastering (5 genre-specific presets)
 - ✅ Beautiful Gradio UI
 - ✅ Voice library management
@@ -79,9 +82,8 @@ Start here based on what you want:
 
 **Multi-Engine TTS:**
 - `phase4_tts/engines/` - Engine abstraction layer
-  - `f5_engine.py` - F5-TTS (cutting-edge prosody)
   - `xtts_engine.py` - XTTS v2 (17 languages)
-  - `chatterbox_engine.py` - Kokoro wrapper
+  - `kokoro_engine.py` - Kokoro-onnx (fast CPU)
   - `engine_manager.py` - Unified interface with fallback
 
 **Professional Mastering:**
@@ -108,11 +110,11 @@ Start here based on what you want:
 
 ### **Step 1: Install (15 min)**
 ```bash
-# F5-TTS (recommended)
-cd /tmp
-git clone https://github.com/SWivid/F5-TTS
-cd F5-TTS
-pip install -e .
+# XTTS v2 (expressive default)
+pip install TTS
+
+# Kokoro-onnx (fast CPU backup)
+pip install kokoro-onnx soundfile
 
 # Professional audio processing
 pip install pedalboard
@@ -131,7 +133,7 @@ python ui/app.py
 ### **Step 3: Create (30 min)**
 1. Upload book (EPUB/PDF)
 2. Select voice (george_mckayland for philosophy)
-3. Choose engine (F5-TTS)
+3. Choose engine (XTTS)
 4. Pick preset (audiobook_intimate)
 5. Click "Generate"
 6. **Listen and smile**
@@ -210,7 +212,7 @@ Feel: Transparent, unprocessed
 ```
 Book: Marcus Aurelius - Meditations
 Voice: george_mckayland (contemplative emotion)
-Engine: F5-TTS (superior prosody)
+Engine: XTTS (superior prosody)
 Preset: audiobook_intimate (-23 LUFS, 12dB DR)
 Result: Natural, thoughtful, perfect for deep listening
 ```
@@ -250,9 +252,8 @@ Result: Refined, sophisticated, timeless
                ├──→ Phase 4: TTS ✨ NEW
                │     ┌──────────────────┐
                │     │ Engine Manager   │
-               │     │ • F5-TTS         │
                │     │ • XTTS v2        │
-               │     │ • Chatterbox     │
+               │     │ • Kokoro-onnx    │
                │     │ + Auto Fallback  │
                │     └──────────────────┘
                │
@@ -291,9 +292,9 @@ See **[STATE_OF_THE_ART.md](STATE_OF_THE_ART.md)** for details.
 ## 📈 Performance
 
 ### **Processing Time** (100k-word book)
-- Chatterbox: 2 hours (fast)
-- F5-TTS: 4.5 hours (excellent)
-- XTTS: 6.5 hours (versatile)
+- Kokoro: 2 hours (fast)
+- XTTS: 4.5 hours (excellent)
+- XTTS + Mastering: 5.0 hours (insanely great)
 - **Quality:** Worth every second
 
 ### **Cost**
@@ -336,10 +337,9 @@ pip install --upgrade gradio
 python ui/app.py --server-port 8080
 ```
 
-### **F5-TTS import error?**
+### **XTTS import error?**
 ```bash
-cd /tmp/F5-TTS
-pip install -e . --force-reinstall
+pip install --upgrade --force-reinstall TTS
 ```
 
 ### **Audio quality issues?**
@@ -368,8 +368,8 @@ Check the logs in:
 - `phase6_orchestrator/orchestrator.log`
 
 ### **Resources:**
-- F5-TTS: https://github.com/SWivid/F5-TTS
 - XTTS: https://github.com/coqui-ai/TTS
+- Kokoro: https://github.com/hexgrad/kokoro-onnx
 - Gradio: https://gradio.app/
 
 ---

@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "phase4-tts-multi-engine"
 version = "0.1.0"
-description = "Multi-engine TTS system (F5-TTS, XTTS v2, Kokoro)"
+description = "Multi-engine TTS system (XTTS v2 + Kokoro fallback)"
 authors = ["Audiobook Pipeline"]
 
 [tool.poetry.dependencies]

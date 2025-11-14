@@ -112,34 +112,32 @@ Write-Host "====================================================================
 Write-Host ""
 Write-Host "Which engines would you like to install?"
 Write-Host ""
-Write-Host "1. None (just core - use StyleTTS2 separately)"
-Write-Host "2. Kokoro (CPU-friendly, RECOMMENDED for testing)" -ForegroundColor Green
-Write-Host "3. F5-TTS (Expressive, best quality, large download)"
-Write-Host "4. XTTS v2 (Versatile, multi-language, large download)"
-Write-Host "5. All engines (very large download)"
+Write-Host "1. XTTS v2 (Expressive, recommended)" -ForegroundColor Green
+Write-Host "2. Kokoro-onnx (CPU-friendly backup)"
+Write-Host "3. Both XTTS + Kokoro"
+Write-Host "4. Skip (install later)"
 Write-Host ""
 
-$choice = Read-Host "Enter choice (1-5)"
+$choice = Read-Host "Enter choice (1-4)"
 
 switch ($choice) {
     "1" {
-        Write-Host "[INFO] Skipping engine installation" -ForegroundColor Yellow
+        Write-Host "[INFO] Installing XTTS v2..." -ForegroundColor Cyan
+        pip install TTS
     }
     "2" {
         Write-Host "[INFO] Installing Kokoro..." -ForegroundColor Cyan
         pip install kokoro-onnx
     }
     "3" {
-        Write-Host "[INFO] Installing F5-TTS (this may take a while)..." -ForegroundColor Cyan
-        pip install f5-tts
+        Write-Host "[INFO] Installing XTTS v2 + Kokoro..." -ForegroundColor Cyan
+        pip install TTS kokoro-onnx
     }
     "4" {
-        Write-Host "[INFO] Installing XTTS v2 (this may take a while)..." -ForegroundColor Cyan
-        pip install TTS
+        Write-Host "[INFO] Skipping engine installation" -ForegroundColor Yellow
     }
-    "5" {
-        Write-Host "[INFO] Installing all engines (this will take a while)..." -ForegroundColor Cyan
-        pip install kokoro-onnx f5-tts TTS
+    default {
+        Write-Host "[WARN] Unknown choice. Skipping engine installation." -ForegroundColor Yellow
     }
 }
 

@@ -14,42 +14,37 @@ You asked for "Do it all." Here's what we created:
 
 **Location:** `phase4_tts/engines/`
 
-Three world-class TTS engines, unified under one elegant API:
+Two world-class TTS engines, unified under one elegant API:
 
-1. **F5-TTS (Expressive)** - Cutting-edge 2024 model
-   - Superior prosody and naturalness
-   - Zero-shot voice cloning
-   - Emotion control via reference audio
-   - MIT License (personal use OK)
-
-2. **XTTS v2 (Versatile)** - Production-proven
+1. **XTTS v2 (Expressive)** - Production-proven and now the default
    - 17 language support
    - Excellent voice cloning (6-30s)
    - Mature, stable, tested
    - Coqui Public Model License (non-commercial)
 
-3. **Chatterbox/Kokoro (Fast)** - Your current engine
+2. **Kokoro-82M (Fast)** - CPU-optimized backup
    - 3-5x faster than others
    - CPU-optimized
    - Already integrated
 
-**Key Innovation:** Engine Manager with automatic fallback. If F5-TTS fails, it seamlessly falls back to XTTS, then Chatterbox. Zero-downtime synthesis.
+**Key Innovation:** Engine Manager with automatic fallback. XTTS handles primary synthesis; if anything goes wrong, Kokoro automatically takes over. Zero-downtime synthesis.
 
 ```python
 # Usage Example
 from phase4_tts.engines import EngineManager
+from phase4_tts.engines.kokoro_engine import KokoroEngine
+from phase4_tts.engines.xtts_engine import XTTSEngine
 
 manager = EngineManager(device="cpu")
-manager.register_engine("f5", F5TTSEngine)
 manager.register_engine("xtts", XTTSEngine)
-manager.register_engine("chatterbox", ChatterboxEngine)
+manager.register_engine("kokoro", KokoroEngine)
 
-# Synthesize with fallback
+# Synthesize with fallback (XTTS → Kokoro)
 audio = manager.synthesize(
     text="Philosophy is the art of thinking.",
     reference_audio=Path("voice.wav"),
-    engine="f5",  # Tries F5, falls back if needed
-    fallback=True
+    engine="xtts",
+    fallback=True,
 )
 ```
 
@@ -129,7 +124,7 @@ A Gradio interface that feels like using Logic Pro:
 #### **Tab 1: Single Book**
 - Drag-and-drop book upload
 - Voice selector with live previews
-- Engine chooser (F5/XTTS/Chatterbox)
+- Engine chooser (XTTS/Kokoro)
 - Mastering preset dropdown
 - Real-time progress tracking
 - Voice details sidebar
@@ -175,7 +170,7 @@ python app.py
 
 ### Audio Quality
 
-| Metric | Before (Kokoro + Simple Processing) | After (F5-TTS + Pro Mastering) |
+| Metric | Before (Kokoro + Simple Processing) | After (XTTS + Pro Mastering) |
 |--------|-------------------------------------|--------------------------------|
 | **MOS Score** | 3.8 (good) | **4.7 (excellent)** |
 | **Prosody** | Robotic, flat | **Natural, expressive** |
@@ -204,7 +199,7 @@ python app.py
 ### **For Philosophy Books** (Your Focus)
 ```
 Voice: George Mckayland (contemplative, measured)
-Engine: F5-TTS (superior prosody for complex ideas)
+Engine: XTTS v2 (superior prosody for complex ideas)
 Preset: Audiobook Intimate (warm, preserves natural dynamics)
 
 Result: Marcus Aurelius sounds like he's in the room with you,
@@ -224,8 +219,8 @@ Result: Gothic horror that actually sends chills.
 ### **For Batch Processing**
 ```
 Queue 10 philosophy books before bed:
-- Meditations (George Mckayland, F5-TTS, Intimate)
-- Republic (Bob Neufeld, F5-TTS, Intimate)
+- Meditations (George Mckayland, XTTS, Intimate)
+- Republic (Bob Neufeld, XTTS, Intimate)
 - Confessions (MaryAnn Spiegel, XTTS, Classic)
 - ...
 
@@ -239,17 +234,14 @@ Wake up to 10 finished, professional audiobooks.
 ### **Step 1: Install TTS Engines**
 
 ```bash
-# F5-TTS (Recommended for quality)
-cd /tmp
-git clone https://github.com/SWivid/F5-TTS
-cd F5-TTS
-pip install -e .
-
-# XTTS v2 (Alternative)
+# XTTS v2 (primary expressive engine)
 pip install TTS
 
-# Chatterbox (Already installed)
-# No action needed
+# Kokoro-onnx (fast CPU backup)
+pip install kokoro-onnx soundfile
+
+# Optional: install espeak-ng for better phonemes
+sudo apt-get install espeak-ng
 ```
 
 ### **Step 2: Install Audio Processing**
@@ -292,7 +284,7 @@ python ui/app.py
 1. Open UI: `http://localhost:7860`
 2. Upload: `Meditations_Marcus_Aurelius.epub`
 3. Select Voice: `george_mckayland: George Mckayland (philosophy, memoir)`
-4. Choose Engine: `F5-TTS (Expressive)`
+4. Choose Engine: `XTTS (Expressive)`
 5. Pick Preset: `audiobook_intimate`
 6. Click: `🎬 Generate Audiobook`
 7. Wait: Real-time progress shows each phase
@@ -300,18 +292,11 @@ python ui/app.py
 
 ### **Example 2: Compare Engines**
 
-Generate same chapter with all 3 engines:
+Generate same chapter with both engines:
 
 ```bash
 # Use minimal preset for fair comparison
 cd phase4_tts
-
-# F5-TTS
-python src/main.py \
-  --text "Chapter 1 text here..." \
-  --voice george_mckayland \
-  --engine f5 \
-  --preset minimal
 
 # XTTS
 python src/main.py \
@@ -320,11 +305,11 @@ python src/main.py \
   --engine xtts \
   --preset minimal
 
-# Chatterbox
+# Kokoro
 python src/main.py \
   --text "Chapter 1 text here..." \
   --voice george_mckayland \
-  --engine chatterbox \
+  --engine kokoro \
   --preset minimal
 
 # Listen and compare!
@@ -368,17 +353,18 @@ High frequencies (3kHz+): Moderate (4:1)
 
 Result: **Dynamic, alive, natural speech**
 
-### **Why F5-TTS Changes Everything**
+### **Why XTTS + Kokoro Cover Every Use Case**
 
-Traditional TTS (including Kokoro):
-- Autoregressive (predicts one token at a time)
-- Struggles with long-range prosody
-- Can't capture emotional arc of sentence
+Lightweight engines (like Kokoro) excel at speed:
+- Autoregressive pipeline
+- Handles long texts reliably
+- CPU-friendly for overnight queues
+- Great for drafts, proofing, and fast iterations
 
-F5-TTS:
-- Flow-matching (sees whole sequence)
+XTTS v2 brings the nuance:
+- Transformer-based with global context
 - **Understands sentence structure before speaking**
-- Natural rhythm, emphasis, emotion
+- Natural rhythm, emphasis, and emotion
 - Zero-shot voice cloning that actually works
 
 Example:
@@ -388,7 +374,7 @@ Text: "To be, or not to be—that is the question."
 Kokoro: "To be or not to be that is the question"
         (flat, monotone, no dramatic pause)
 
-F5-TTS: "To BE, or not to BE—[pause]—that...is the question."
+XTTS:   "To BE, or not to BE—[pause]—that...is the question."
         (emphasis on "be", dramatic pause, contemplative delivery)
 ```
 
@@ -409,9 +395,8 @@ F5-TTS: "To BE, or not to BE—[pause]—that...is the question."
                │     ┌──────────────────┐
                │     │ Engine Manager   │
                │     ├──────────────────┤
-               │     │ • F5-TTS Engine  │
                │     │ • XTTS Engine    │
-               │     │ • Chatterbox     │
+               │     │ • Kokoro Engine  │
                │     │ + Auto Fallback  │
                │     └──────────────────┘
                ├──→ Phase 5: Enhancement ✨ UPGRADED
@@ -437,16 +422,16 @@ F5-TTS: "To BE, or not to BE—[pause]—that...is the question."
 | Configuration | Time | Quality |
 |--------------|------|---------|
 | **Kokoro + Basic** | 2.0 hours | Good |
-| **F5-TTS + Basic** | 4.5 hours | Excellent |
-| **F5-TTS + Pro Mastering** | 5.0 hours | **Insanely Great** |
-| **XTTS + Pro Mastering** | 6.5 hours | Excellent |
+| **XTTS + Basic** | 4.5 hours | Excellent |
+| **XTTS + Pro Mastering** | 5.0 hours | **Insanely Great** |
+| **Kokoro + Pro Mastering** | 5.5 hours | Great |
 
 ### **Cost** (Personal Use)
 
 | Item | Cost |
 |------|------|
-| F5-TTS | **$0** (MIT License) |
 | XTTS v2 | **$0** (Non-commercial OK) |
+| Kokoro-onnx | **$0** (Apache-2.0) |
 | Pedalboard | **$0** (GPL-2.0) |
 | Gradio | **$0** (Apache-2.0) |
 | Your Time | **Priceless** |
@@ -464,11 +449,10 @@ F5-TTS: "To BE, or not to BE—[pause]—that...is the question."
    ```
    Open browser, explore the interface
 
-2. **Install F5-TTS:**
+2. **Install XTTS + Kokoro (if not already done):**
    ```bash
-   git clone https://github.com/SWivid/F5-TTS
-   cd F5-TTS
-   pip install -e .
+   pip install TTS kokoro-onnx soundfile
+   sudo apt-get install espeak-ng
    ```
 
 3. **Generate Test Audio:**
@@ -500,7 +484,7 @@ F5-TTS: "To BE, or not to BE—[pause]—that...is the question."
    - Queue overnight batches
    - Refine workflow
 
-2. **Fine-Tune F5-TTS:**
+2. **Fine-Tune XTTS (optional):**
    - Train on your favorite narrator
    - Create truly custom voice
    - Achieve signature sound
@@ -516,10 +500,11 @@ F5-TTS: "To BE, or not to BE—[pause]—that...is the question."
 
 ### **Voice Selection**
 
-- **Philosophy/Contemplative:** George Mckayland + F5-TTS + Intimate
+- **Philosophy/Contemplative:** George Mckayland + XTTS + Intimate
 - **Classic Literature:** Ruth Golding + XTTS + Classic
-- **Gothic/Horror:** Vincent Price + F5-TTS + Dynamic
-- **Academic:** Bob Neufeld + Chatterbox + Podcast
+- **Fast Proofing:** Any narrator + Kokoro + Minimal
+- **Gothic/Horror:** Vincent Price + XTTS + Dynamic
+- **Academic:** Bob Neufeld + Kokoro + Podcast
 
 ### **Mastering Presets by Listening Environment**
 
@@ -530,9 +515,9 @@ F5-TTS: "To BE, or not to BE—[pause]—that...is the question."
 
 ### **Engine Selection Strategy**
 
-1. **Start with F5-TTS** (best quality)
-2. **Fallback to XTTS** (if F5 has issues)
-3. **Use Chatterbox** (for speed testing/drafts)
+1. **Start with XTTS** (best quality + voice cloning)
+2. **Fallback to Kokoro** (if XTTS hits an edge case)
+3. **Use Kokoro first** only for rapid drafts or timing tests
 
 ### **Quality Over Speed**
 
@@ -544,7 +529,7 @@ The difference between 2 hours and 5 hours is negligible when you'll listen to t
 
 You now have:
 
-- ✅ **Three world-class TTS engines** with automatic fallback
+- ✅ **Two world-class TTS engines** with automatic fallback
 - ✅ **Professional audio mastering** (Abbey Road-grade)
 - ✅ **Beautiful UI** that's joyful to use
 - ✅ **Complete automation** (queue & forget)

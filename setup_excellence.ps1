@@ -312,55 +312,11 @@ function Install-Gradio {
 }
 
 function Install-F5TTS {
-    Write-Step "Installing F5-TTS (Cutting-Edge Prosody)"
-
-    Write-Info "Package: F5-TTS (from GitHub)"
-    Write-Info "Size: ~1.5 GB (models)"
-    Write-Info "Impact: 🔥🔥🔥🔥🔥 Superior quality"
-    Write-Info "License: MIT"
-
-    $tempDir = Join-Path $env:TEMP "F5-TTS"
-
-    try {
-        Write-Info "Cloning F5-TTS repository..."
-        if (Test-Path $tempDir) {
-            Remove-Item $tempDir -Recurse -Force
-        }
-
-        git clone https://github.com/SWivid/F5-TTS $tempDir 2>&1 | Out-Null
-
-        if (-not (Test-Path $tempDir)) {
-            throw "Failed to clone F5-TTS repository"
-        }
-
-        Write-Info "Installing F5-TTS..."
-        Push-Location $tempDir
-
-        try {
-            pip install -e . 2>&1 | Out-Null
-            Write-Success "F5-TTS installed"
-
-            # Test
-            Write-Info "Testing F5-TTS..."
-            $testResult = python -c "from f5_tts.api import F5TTS; print('OK')" 2>&1
-            if ($testResult -eq "OK") {
-                Write-Success "F5-TTS ready!"
-                $Script:InstallLog += @{Package="F5-TTS"; Status="Success"; Error=$null}
-                return $true
-            } else {
-                throw "F5-TTS import test failed"
-            }
-        }
-        finally {
-            Pop-Location
-        }
-    }
-    catch {
-        Write-Error "F5-TTS installation failed: $_"
-        $Script:InstallLog += @{Package="F5-TTS"; Status="Failed"; Error=$_.Exception.Message}
-        return $false
-    }
+    Write-Step "Skipping F5-TTS (retired from this pipeline)"
+    Write-Info "XTTS v2 now handles expressive narration with Kokoro as fallback."
+    $Script:InstallLog += @{Package="F5-TTS"; Status="Skipped"; Error="Deprecated"}
 }
+
 
 function Install-XTTS {
     Write-Step "Installing XTTS v2 (Versatile Multilingual)"
@@ -436,7 +392,6 @@ function Test-Installation {
     if ($FullStack) {
         $tests += @(
             @{Name="OpenVoice"; Test={python -c "from openvoice import se_extractor; print('OK')" 2>&1; $? -and $LASTEXITCODE -eq 0}},
-            @{Name="F5-TTS"; Test={python -c "from f5_tts.api import F5TTS; print('OK')" 2>&1; $? -and $LASTEXITCODE -eq 0}},
             @{Name="XTTS"; Test={python -c "from TTS.api import TTS; print('OK')" 2>&1; $? -and $LASTEXITCODE -eq 0}},
             @{Name="Bark"; Test={python -c "from bark import generate_audio; print('OK')" 2>&1; $? -and $LASTEXITCODE -eq 0}}
         )
@@ -522,7 +477,7 @@ function Show-NextSteps {
     Write-Host "4️⃣  Create Your First Audiobook:" -ForegroundColor Yellow
     Write-Host "   - Upload book in UI"
     Write-Host "   - Select george_mckayland voice"
-    Write-Host "   - Choose F5-TTS engine"
+    Write-Host "   - Choose XTTS engine"
     Write-Host "   - Pick audiobook_intimate preset"
     Write-Host "   - Click Generate!"
     Write-Host ""
@@ -574,7 +529,6 @@ function Start-FullStackInstallation {
     Install-Gradio
 
     # Advanced engines
-    Install-F5TTS
     Install-XTTS
     Install-Bark
 
@@ -608,7 +562,7 @@ try {
         Write-Host "   - Perfect for getting started"
         Write-Host ""
         Write-Host "2) Full Stack (Advanced)" -ForegroundColor Cyan
-        Write-Host "   - Everything including F5-TTS, XTTS, Bark"
+        Write-Host "   - Everything including XTTS, Kokoro backup, Bark"
         Write-Host "   - ~45 minutes, legendary quality"
         Write-Host "   - For maximum creative freedom"
         Write-Host ""

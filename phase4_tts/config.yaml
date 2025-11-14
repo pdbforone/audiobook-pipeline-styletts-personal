@@ -23,4 +23,5 @@ temperature: 0.7    # Creativity/randomness (lower for consistent cloning)
 sub_chunk_retries: 3  # Retries for failed sub-chunks to avoid artifacts
 silence_duration: 0.5  # Seconds of silence for failed parts
 enable_splitting: true  # NLTK-based splitting for long text (prevents truncation)
+split_char_limit: 1200  # Only split when text exceeds this many characters
 output_dir: "audio_chunks"  # Relative to phase4_tts; absolute in code

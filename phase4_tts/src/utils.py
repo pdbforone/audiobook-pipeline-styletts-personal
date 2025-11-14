@@ -13,7 +13,7 @@ import librosa
 import requests
 import nltk
 from nltk.tokenize import sent_tokenize
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Tuple, Optional, Dict, List
 import numpy as np
 import re
@@ -41,6 +41,35 @@ def _slugify(value: Optional[str]) -> str:
     normalized = normalized.lower()
     normalized = re.sub(r"[^a-z0-9]+", "_", normalized)
     return normalized.strip("_")
+
+def _resolve_filesystem_path(path_str: str) -> Path:
+    """
+    Resolve paths that might be stored in Windows format when running under WSL.
+
+    When Phase 3 runs on Windows it records absolute chunk/voice paths using
+    ``C:\\`` style prefixes. Those paths are not directly readable inside WSL,
+    so we convert them to ``/mnt/c/...`` when needed.
+    """
+    if not path_str:
+        return Path(path_str)
+
+    candidate = Path(path_str)
+    if candidate.exists():
+        return candidate
+
+    normalized = path_str.strip().strip('"')
+
+    # Translate Windows drive prefix (e.g. C:\foo) to /mnt/c/foo
+    if os.name != "nt" and re.match(r"^[A-Za-z]:[\\/]", normalized):
+        win_path = PureWindowsPath(normalized)
+        drive = win_path.drive.rstrip(":").lower()
+        relative_parts = win_path.parts[1:]
+        if drive:
+            wsl_path = Path("/mnt") / drive / Path(*relative_parts)
+            if wsl_path.exists():
+                return wsl_path
+
+    return candidate
 
 
 def resolve_pipeline_file(data: Dict[str, dict], phase: str, file_id: str) -> Tuple[Optional[str], Optional[dict]]:
@@ -176,7 +205,7 @@ def prepare_voice_references(
         # Check for local_path first (NEW: support for pre-processed local samples)
         local_path = voice_data.get("local_path")
         if local_path:
-            local_file = Path(local_path)
+            local_file = _resolve_filesystem_path(local_path)
             if local_file.exists():
                 try:
                     # Load and validate local file
@@ -189,10 +218,12 @@ def prepare_voice_references(
                         # Save resampled version to cache
                         ta.save(str(output_path), torch.tensor(y_resampled).unsqueeze(0), target_sr)
                         prepared_refs[voice_id] = str(output_path)
-                        logger.info(f"✅ Loaded local reference {voice_id}: {duration:.1f}s (resampled {sr}→{target_sr}Hz)")
+                        logger.info(
+                            f"✅ Loaded local reference {voice_id}: {duration:.1f}s (resampled {sr}→{target_sr}Hz)"
+                        )
                     else:
                         # Use original file directly
-                        prepared_refs[voice_id] = str(local_file)
+                        prepared_refs[voice_id] = str(local_file.resolve())
                         logger.info(f"✅ Using local reference {voice_id}: {duration:.1f}s")
                     continue
                 except Exception as e:
@@ -390,7 +421,8 @@ def synthesize_chunk(model, text: str, ref_path: str, output_path: str, config: 
     
     split_metadata = {"split_applied": False, "num_sub_chunks": 1, "failed_sub_chunks": []}
 
-    if config.enable_splitting and len(text) > 300:  # Threshold for splitting (adjust per model limits)
+    split_threshold = getattr(config, "split_char_limit", 300)
+    if config.enable_splitting and len(text) > split_threshold:
         sentences = sent_tokenize(text)
         sub_chunks = []
         current = ""

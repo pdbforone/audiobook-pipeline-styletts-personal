@@ -15,6 +15,7 @@ class TTSConfig(BaseModel):
     sub_chunk_retries: int = 3
     silence_duration: float = 0.5
     enable_splitting: bool = True
+    split_char_limit: int = 1200
     output_dir: str = "audio_chunks"
 
     @field_validator("ref_url")

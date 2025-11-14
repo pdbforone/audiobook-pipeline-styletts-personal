@@ -206,34 +206,6 @@ def test_gradio() -> bool:
         return False
 
 
-def test_f5_tts() -> bool:
-    """Test F5-TTS installation (optional)"""
-    print_header("🚀 Testing F5-TTS (Optional)")
-
-    print_info("Checking F5-TTS import...")
-
-    try:
-        from f5_tts.api import F5TTS
-
-        print_success("F5-TTS imported successfully!")
-        print_info("  Features: Superior prosody, natural rhythm")
-        print_info("  Quality: State-of-the-art (2024)")
-        print_info("  Speed: ~4.5 hours per 100k-word book")
-        print_info("  Impact: 🔥🔥🔥🔥🔥 Excellent quality")
-        print_info("  License: MIT")
-        return True
-
-    except ImportError:
-        print_warning("F5-TTS not installed (optional)")
-        print_info("Install:")
-        print_info("  git clone https://github.com/SWivid/F5-TTS")
-        print_info("  cd F5-TTS && pip install -e .")
-        return False
-    except Exception as e:
-        print_error(f"Unexpected error: {e}")
-        return False
-
-
 def test_xtts() -> bool:
     """Test XTTS v2 installation (optional)"""
     print_header("🌍 Testing XTTS v2 (Optional)")
@@ -272,7 +244,7 @@ def test_bark() -> bool:
         print_success("Bark imported successfully!")
         print_info("  Features: Laughter, sighs, emotion, music")
         print_info("  Expressiveness: Ultra-high (non-verbal cues)")
-        print_info("  Speed: Slower (~3-5x vs F5-TTS)")
+        print_info("  Speed: Slower (~3-5x vs XTTS)")
         print_info("  Impact: 🔥🔥🔥🔥🔥 Dramatic moments")
         print_info("  License: MIT")
         return True
@@ -309,7 +281,6 @@ def run_all_tests() -> Dict[str, bool]:
 
     # Optional advanced components
     print_info("\nTesting optional advanced components...")
-    results['F5-TTS'] = test_f5_tts()
     results['XTTS v2'] = test_xtts()
     results['Bark'] = test_bark()
 
@@ -322,7 +293,7 @@ def print_summary(results: Dict[str, bool]):
 
     # Categorize results
     quick_wins = ['Silero VAD', 'DeepFilterNet', 'OpenVoice v2', 'Pedalboard', 'Gradio UI']
-    optional = ['F5-TTS', 'XTTS v2', 'Bark']
+    optional = ['XTTS v2', 'Bark']
 
     print(f"{Colors.BOLD}Quick Win Components:{Colors.ENDC}")
     for component in quick_wins:

@@ -159,8 +159,8 @@ class EngineManager:
         # Remove failed engine
         fallback = [e for e in all_engines if e != failed_engine]
 
-        # Prefer stable engines for fallback (kokoro, then xtts, then f5)
-        priority_order = ["kokoro", "xtts", "f5"]
+        # Prefer stable engines for fallback (XTTS primary -> Kokoro backup)
+        priority_order = ["xtts", "kokoro"]
 
         # Sort by priority
         fallback.sort(

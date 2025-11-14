@@ -7,10 +7,5 @@ log_level: "INFO"
 log_file: "orchestrator.log"
 
 # Runtime switches
-pipeline_mode: "personal"  # or "personal"
-tts_engine: "styletts"     # chatterbox | styletts
-
-# Phase 4 Conda environments
-phase4_conda_env: "phase4_tts"
-phase4_styletts_conda_env: "phase4_tts_styletts"
-styletts_reference: ""
+pipeline_mode: "personal"
+tts_engine: "xtts"     # xtts | kokoro

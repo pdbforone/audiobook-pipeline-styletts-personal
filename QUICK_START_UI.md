@@ -41,7 +41,7 @@ If the launcher fails, ensure:
 
 1. **Upload a book** (PDF, EPUB, TXT, MOBI)
 2. **Choose a voice** from your library
-3. **Select TTS engine** (F5-TTS recommended for quality)
+3. **Select TTS engine** (XTTS recommended for quality; Kokoro is the fast fallback)
 4. **Pick mastering preset** (audiobook_intimate for philosophy)
 5. **Click "Generate Audiobook"**
 6. Wait for processing (3-30 minutes depending on book length)
@@ -71,7 +71,7 @@ Click "⚙️ Advanced Options" to:
 
 ## 🎨 Tips for Best Results
 
-1. **Use F5-TTS engine** for expressive, natural speech
+1. **Use XTTS engine** for expressive, natural speech
 2. **Match voice to content:**
    - Philosophy → george_mckayland (contemplative, measured)
    - Fiction → landon_elkind (versatile, engaging)

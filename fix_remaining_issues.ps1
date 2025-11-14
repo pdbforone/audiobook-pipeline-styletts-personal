@@ -166,7 +166,7 @@ if ($LASTEXITCODE -eq 0) {
     Write-Success "OpenVoice working! $result"
 } else {
     Write-Warning "OpenVoice still has issues: $result"
-    Write-Info "You can still create audiobooks with F5-TTS"
+    Write-Info "You can still create audiobooks with XTTS + Kokoro"
     Write-Info "OpenVoice adds emotion control (optional)"
 }
 
@@ -191,7 +191,7 @@ if (Test-Path "test_quick_wins.py") {
 Write-Header "✨ Setup Complete!"
 
 Write-Success "Core system ready:"
-Write-Info "  • F5-TTS (superior quality)"
+Write-Info "  • XTTS + Kokoro (expressive + fast)"
 Write-Info "  • Pedalboard (pro mastering)"
 Write-Info "  • Gradio UI (beautiful interface)"
 Write-Info "  • Silero VAD (surgical crossfades)"
