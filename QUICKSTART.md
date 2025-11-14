@@ -81,12 +81,12 @@ phase5_enhancement/processed/
 ```bash
 cd phase4_tts
 
-# Quick test with Chatterbox (fast)
-poetry run python src/main.py \
-  --file_id "test" \
-  --text "To be or not to be, that is the question." \
-  --voice george_mckayland \
-  --engine chatterbox
+# Quick XTTS test (env auto-created on first run)
+python engine_runner.py \
+  --engine xtts \
+  --file_id "sample_book" \
+  --json_path ../pipeline.json \
+  --disable_fallback
 ```
 
 ### Apply Professional Mastering

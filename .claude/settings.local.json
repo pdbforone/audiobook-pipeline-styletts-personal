@@ -5,7 +5,12 @@
       "Bash(git stash:*)",
       "Bash(git checkout:*)",
       "Bash(git pull:*)",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "Bash(python3.11:*)",
+      "Bash(apt list:*)",
+      "Bash(echo:*)",
+      "Bash(\"/c/Program Files/Python311/python\" --version)",
+      "Bash(\"/c/Program Files/Python311/python\" phase4_tts/engine_runner.py --engine kokoro --file_id \"Psalm_53\" --json_path pipeline.json --disable_fallback --device cpu --workers 1)"
     ],
     "deny": [],
     "ask": []

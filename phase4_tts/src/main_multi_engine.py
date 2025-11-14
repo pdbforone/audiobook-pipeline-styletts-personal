@@ -238,6 +238,7 @@ def synthesize_chunk_with_engine(
     engine_name: str,
     output_dir: Path,
     language: str,
+    allow_fallback: bool,
     engine_kwargs: Optional[Dict[str, Any]] = None,
 ) -> ChunkResult:
     """Synthesize text for a single chunk using requested engine with fallback."""
@@ -249,7 +250,7 @@ def synthesize_chunk_with_engine(
             reference_audio=reference_audio,
             engine=engine_name,
             language=language,
-            fallback=True,
+            fallback=allow_fallback,
             return_engine=True,
             **chunk_kwargs,
         )
@@ -347,6 +348,11 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=2, help="Parallel workers for chunk synthesis")
     parser.add_argument("--language", help="Override language (defaults to config value)")
     parser.add_argument("--chunk_id", type=int, help="Optional chunk index to synthesize (legacy compatibility)")
+    parser.add_argument(
+        "--disable_fallback",
+        action="store_true",
+        help="Disables cascading to other engines on failure (per-process fallback).",
+    )
 
     args = parser.parse_args()
 
@@ -407,6 +413,7 @@ def main() -> int:
                 args.engine,
                 output_dir,
                 language,
+                allow_fallback=not args.disable_fallback,
                 engine_params,
             ): chunk.chunk_id
             for chunk in chunks

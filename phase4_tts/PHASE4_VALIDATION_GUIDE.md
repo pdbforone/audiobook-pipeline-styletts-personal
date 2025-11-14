@@ -126,18 +126,35 @@ validation:
 
 ## Usage
 
-### Basic Usage (With Validation)
+### Basic Usage (With Per-Engine Environments)
+
+Each engine now runs inside its own virtualenv. The helper script creates the
+environment on first use, installs the dependencies listed under `envs/`, and
+then runs `src/main_multi_engine.py`.
 
 ```bash
 cd phase4_tts
 
-# Process all chunks with validation
-poetry run python src/main.py \
+# Run XTTS (primary) in its isolated environment
+python engine_runner.py \
+  --engine xtts \
   --file_id "The_Meditations" \
-  --json_path "../pipeline.json"
+  --json_path ../pipeline.json \
+  --disable_fallback
 ```
 
-**This runs**:
+If XTTS fails, simply rerun with `--engine kokoro` to fall back to the lightweight
+Kokoro environment:
+
+```bash
+python engine_runner.py \
+  --engine kokoro \
+  --file_id "The_Meditations" \
+  --json_path ../pipeline.json \
+  --disable_fallback
+```
+
+**Each run performs**:
 - Tier 1 validation on ALL chunks
 - Tier 2 validation on SAMPLED chunks (first 10, last 10, random 5%)
 

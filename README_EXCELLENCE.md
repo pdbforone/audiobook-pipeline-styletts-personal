@@ -85,6 +85,8 @@ Start here based on what you want:
   - `xtts_engine.py` - XTTS v2 (17 languages)
   - `kokoro_engine.py` - Kokoro-onnx (fast CPU)
   - `engine_manager.py` - Unified interface with fallback
+- `phase4_tts/engine_runner.py` - creates per-engine virtualenvs and launches synthesis
+- `phase4_tts/envs/requirements_*.txt` - pinned dependency sets for each engine
 
 **Professional Mastering:**
 - `phase5_enhancement/presets/mastering_presets.yaml` - 5 presets

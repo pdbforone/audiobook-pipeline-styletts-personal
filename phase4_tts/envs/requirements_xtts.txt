@@ -1,0 +1,6 @@
+TTS==0.21.3
+soundfile>=0.13
+numpy<2.0
+torch==2.2.2
+torchaudio==2.2.2
+numba>=0.57,<0.60

@@ -636,116 +636,55 @@ def run_phase4_multi_engine(
     Returns:
         True if successful, False otherwise
     """
-    logger.info(f"Running Phase 4 TTS with {engine} engine...")
     logger.info(f"Phase 4 directory: {phase_dir}")
 
-    # Check for venv and install if needed
-    venv_dir = phase_dir / ".venv"
-    python_exe = venv_dir / "Scripts" / "python.exe" if venv_dir.exists() else None
+    engines_to_try = [engine]
+    if engine == "xtts":
+        engines_to_try.append("kokoro")
 
-    # Check if venv has dependencies installed (test for yaml module)
-    venv_ready = False
-    if python_exe and python_exe.exists():
-        try:
-            result = subprocess.run(
-                [str(python_exe), "-c", "import yaml"],
-                capture_output=True,
-                timeout=5
-            )
-            venv_ready = (result.returncode == 0)
-            if venv_ready:
-                logger.info("Phase 4 venv already configured with dependencies")
-        except:
-            pass
+    for index, engine_name in enumerate(engines_to_try):
+        logger.info("Running Phase 4 via %s (attempt %d/%d)", engine_name, index + 1, len(engines_to_try))
 
-    if not venv_ready:
-        logger.info(f"Installing Phase 4 dependencies with Poetry...")
-        try:
-            # Configure Poetry to use in-project venv
-            subprocess.run(
-                ["poetry", "config", "virtualenvs.in-project", "true", "--local"],
-                cwd=str(phase_dir),
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-
-            # Install dependencies
-            result = subprocess.run(
-                ["poetry", "install", "--no-root"],
-                cwd=str(phase_dir),
-                capture_output=True,
-                text=True,
-                timeout=300
-            )
-            if result.returncode != 0:
-                logger.error(f"Poetry install failed: {result.stderr}")
-                logger.info("Try running: phase4_tts\\setup_windows.bat")
-                return False
-            logger.info("Dependencies installed successfully")
-        except Exception as e:
-            logger.error(f"Failed to install dependencies: {e}")
-            logger.info("Alternative: Run phase4_tts\\setup_windows.bat manually")
-            return False
-
-    # Build command - use venv python directly if available, otherwise Poetry
-    if python_exe and python_exe.exists():
         cmd = [
-            str(python_exe), "-m", "src.main_multi_engine",
+            sys.executable,
+            str(phase_dir / "engine_runner.py"),
+            f"--engine={engine_name}",
             f"--file_id={file_id}",
-            f"--engine={engine}",
             f"--json_path={pipeline_json}",
-            "--config=config.yaml"
-        ]
-    else:
-        cmd = [
-            "poetry", "run", "python", "-m", "src.main_multi_engine",
-            f"--file_id={file_id}",
-            f"--engine={engine}",
-            f"--json_path={pipeline_json}",
-            "--config=config.yaml"
         ]
 
-    if voice_id:
-        cmd.append(f"--voice={voice_id}")
+        if voice_id:
+            cmd.append(f"--voice={voice_id}")
+        cmd.append("--config=config.yaml")
 
-    logger.info(f"Command: {' '.join(cmd)}")
+        disable_fallback = len(engines_to_try) > 1 and engine_name != engines_to_try[-1]
+        if disable_fallback:
+            cmd.append("--disable_fallback")
 
-    start_time = time.perf_counter()
-
-    try:
-        env = get_clean_env_for_poetry()
+        start_time = time.perf_counter()
         result = subprocess.run(
             cmd,
             cwd=str(phase_dir),
-            env=env,
             capture_output=True,
             text=True,
-            encoding='utf-8',
-            errors='replace',
-            timeout=1800  # 30 minutes timeout
+            encoding="utf-8",
+            errors="replace",
+            timeout=1800,
         )
-
         duration = time.perf_counter() - start_time
 
-        # Always show output for debugging
         if result.stdout:
-            logger.info(f"Phase 4 output:\n{result.stdout[-1000:]}")  # Last 1000 chars
+            logger.info("Phase 4 output (%s):\n%s", engine_name, result.stdout[-1000:])
 
-        if result.returncode != 0:
-            logger.error(f"Phase 4 FAILED (exit {result.returncode}) in {duration:.1f}s")
-            logger.error(f"Error: {result.stderr[-500:]}")  # Last 500 chars
-            return False
+        if result.returncode == 0:
+            logger.info("Phase 4 SUCCESS with %s in %.1fs", engine_name, duration)
+            return True
 
-        logger.info(f"Phase 4 SUCCESS with {engine} in {duration:.1f}s")
-        return True
+        logger.error("Phase 4 FAILED with %s (exit %s) in %.1fs", engine_name, result.returncode, duration)
+        logger.error("stderr tail:\n%s", result.stderr[-500:])
 
-    except subprocess.TimeoutExpired:
-        logger.error(f"Phase 4 TIMEOUT (1800s)")
-        return False
-    except Exception as e:
-        logger.error(f"Phase 4 ERROR: {e}")
-        return False
+    logger.error("Phase 4 failed for all configured engines")
+    return False
 
 def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: Path) -> bool:
     """
