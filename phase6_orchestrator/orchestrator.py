@@ -160,6 +160,92 @@ def resolve_phase5_audiobook_path(file_id: str, pipeline_json: Path, phase5_dir:
     return audiobook_path
 
 
+def concat_phase5_from_existing(phase_dir: Path, file_id: str, pipeline_json: Path) -> bool:
+    """
+    Build final MP3 from existing enhanced WAVs without re-running enhancement.
+    """
+    processed_dir = phase_dir / "processed"
+    wavs = sorted(processed_dir.glob("enhanced_*.wav"))
+    if not wavs:
+        logger.error("Concat-only mode: no enhanced_*.wav files found.")
+        return False
+
+    list_file = phase_dir / "temp_concat_list.txt"
+    try:
+        list_file.write_text("\n".join([f"file '{p.resolve().as_posix()}'" for p in wavs]), encoding="utf-8")
+    except Exception as exc:
+        logger.error("Failed to write concat list: %s", exc)
+        return False
+
+    mp3_path = processed_dir / "audiobook.mp3"
+    if mp3_path.exists():
+        mp3_path.unlink()
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-loglevel",
+        "warning",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(list_file),
+        "-ac",
+        "1",
+        "-ar",
+        "24000",
+        "-c:a",
+        "libmp3lame",
+        "-b:a",
+        "192k",
+        "-id3v2_version",
+        "3",
+        "-metadata",
+        f"title={humanize_title(file_id)}",
+        "-metadata",
+        f"artist={file_id}",
+        str(mp3_path),
+    ]
+
+    result = subprocess.run(cmd, cwd=str(phase_dir), capture_output=True, text=True)
+    if result.returncode != 0:
+        logger.error("Concat-only ffmpeg failed (exit %s): %s", result.returncode, result.stderr[-1000:])
+        return False
+
+    logger.info("Concat-only MP3 created at %s", mp3_path)
+
+    # Update pipeline.json
+    try:
+        state = PipelineState(pipeline_json, validate_on_read=False)
+        with state.transaction() as txn:
+            phase5 = txn.data.setdefault("phase5", {"status": "partial", "files": {}})
+            files = phase5.setdefault("files", {})
+            entry = files.get(file_id, {})
+            entry.update(
+                {
+                    "status": "success",
+                    "output_file": serialize_path_for_pipeline(mp3_path),
+                    "chunks_completed": len(wavs),
+                    "total_chunks": len(wavs),
+                    "audio_dir": serialize_path_for_pipeline(processed_dir),
+                }
+            )
+            files[file_id] = entry
+            phase5["status"] = "success"
+        logger.info("pipeline.json updated for concat-only run")
+    except Exception as exc:
+        logger.warning("Failed to update pipeline.json after concat-only: %s", exc)
+
+    try:
+        list_file.unlink()
+    except Exception:
+        pass
+
+    return True
+
+
 def archive_final_audiobook(file_id: str, pipeline_json: Path) -> None:
     """Save a copy of the final audiobook that survives Phase 5 cleanup."""
     phase5_dir = find_phase_dir(5)
@@ -583,6 +669,21 @@ def run_phase_standard(
     
     # Special handling for Phase 5 (needs config.yaml update)
     if phase_num == 5:
+        concat_hint = os.environ.get("PHASE5_CONCAT_ONLY") == "1"
+        processed_dir = phase_dir / "processed"
+        existing_wavs = list(processed_dir.glob("enhanced_*.wav"))
+        if concat_hint and existing_wavs:
+            logger.info("Phase 5: concat-only hint set, detected %d enhanced WAVs. Building MP3...", len(existing_wavs))
+            if concat_phase5_from_existing(phase_dir, file_id, pipeline_json):
+                archive_final_audiobook(file_id, pipeline_json)
+                return True
+            logger.warning("Phase 5: concat-only failed; falling back to full run.")
+        elif existing_wavs and len(existing_wavs) >= 100:
+            logger.info("Phase 5: detected %d enhanced WAVs, attempting concat-only.", len(existing_wavs))
+            if concat_phase5_from_existing(phase_dir, file_id, pipeline_json):
+                archive_final_audiobook(file_id, pipeline_json)
+                return True
+            logger.warning("Phase 5: concat-only failed; falling back to full run.")
         return run_phase5_with_config_update(phase_dir, file_id, pipeline_json)
     
     # Build command with direct script path
@@ -1185,6 +1286,7 @@ def run_pipeline(
     max_retries: int = 3,
     no_resume: bool = False,
     progress_callback=None,
+    concat_only: bool = False,
 ) -> Dict:
     """
     Programmatic interface to run the audiobook pipeline.
@@ -1234,6 +1336,12 @@ def run_pipeline(
 
     # Load pipeline.json (skip if no_resume is True)
     pipeline_data = {} if no_resume else load_pipeline_json(pipeline_json)
+
+    # Concat-only hint for Phase 5
+    if concat_only:
+        os.environ["PHASE5_CONCAT_ONLY"] = "1"
+    else:
+        os.environ.pop("PHASE5_CONCAT_ONLY", None)
 
     # Run phases
     completed_phases = []

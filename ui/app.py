@@ -381,7 +381,7 @@ def create_audiobook(
 
         logger.info(f"Starting audiobook generation: {book_file.name}")
         logger.info(f"Voice: {voice_id}, Engine: {engine}, Preset: {mastering_preset}")
-        logger.info(f"Options: Resume={enable_resume}, Retries={max_retries}, Subtitles={generate_subtitles}")
+        logger.info(f"Options: Resume={enable_resume}, Retries={max_retries}, Subtitles={generate_subtitles}, ConcatOnly={concat_only}")
         logger.info(f"Phases: {phases}")
 
         # Progress callback with cancellation check
@@ -416,6 +416,7 @@ def create_audiobook(
             enable_subtitles=generate_subtitles,
             max_retries=int(max_retries),
             no_resume=not enable_resume,
+            concat_only=concat_only,
             progress_callback=update_progress
         )
 
@@ -505,6 +506,7 @@ def create_batch_audiobooks(
     phase3: bool,
     phase4: bool,
     phase5: bool,
+    concat_only: bool = False,
     progress=gr.Progress()
 ) -> str:
     """Process multiple books sequentially with shared settings."""
@@ -737,6 +739,16 @@ def build_ui():
                                 value=False,
                                 info="Create .srt and .vtt subtitle files"
                             )
+                            concat_only = gr.Checkbox(
+                                label="Concat Only (reuse enhanced WAVs if present)",
+                                value=False,
+                                info="Skip re-enhancement when enhanced WAVs already exist"
+                            )
+                            concat_only = gr.Checkbox(
+                                label="Concat Only (reuse enhanced WAVs if present)",
+                                value=False,
+                                info="Skip re-enhancement when enhanced WAVs already exist"
+                            )
 
                         gr.Markdown("**Phases to Run:**")
                         with gr.Row():
@@ -789,6 +801,7 @@ def build_ui():
                     enable_resume,
                     max_retries,
                     generate_subtitles,
+                    concat_only,
                     phase1_check,
                     phase2_check,
                     phase3_check,

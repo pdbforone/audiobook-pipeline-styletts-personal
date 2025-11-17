@@ -29,6 +29,9 @@ class FileMetadata(BaseModel):
     title: Optional[str] = None
     author: Optional[str] = None
     creation_date: Optional[str] = None
+    file_path: str
+    file_size_bytes: int
+    page_count: Optional[int] = None
     file_type: str
     classification: str  # 'text', 'scanned', 'mixed'
     hash: str
@@ -175,6 +178,10 @@ def validate_and_repair(
     max_size_mb: int = 500,
     retries: int = 2,
     artifacts_dir: str = "artifacts/phase1",
+    force: bool = False,
+    mode: str = "thorough",
+    pipeline_json: Optional[Path] = None,
+    file_id: Optional[str] = None,
 ) -> Optional[FileMetadata]:
     start_time = perf_counter()
     path = Path(file_path)
@@ -185,11 +192,53 @@ def validate_and_repair(
         logger.error("File exceeds size limit.")
         return None
 
+    # Early hash + reuse check
+    file_hash = compute_sha256(file_path)
+    if pipeline_json and file_id:
+        try:
+            data = json.load(open(pipeline_json, "r", encoding="utf-8"))
+            prev = data.get("phase1", {}).get("files", {}).get(file_id)
+            if prev and prev.get("hash") == file_hash and not force:
+                logger.info("Phase 1: hash match found and force=False; skipping revalidation.")
+                return FileMetadata(**prev)
+        except Exception as exc:
+            logger.warning(f"Phase 1: reuse check failed (will revalidate): {exc}")
+
     file_ext = path.suffix.lower()
+    file_size_bytes = path.stat().st_size
+    page_count = None
     repaired = False
     repair_status = "validated"  # Default if no repair needed
+
+    # Fast mode: minimal validation
+    if mode == "fast":
+        metadata = extract_metadata(file_path)
+        end_time = perf_counter()
+        duration = end_time - start_time
+        try:
+            return FileMetadata(
+                title=metadata.get("title"),
+                author=metadata.get("author"),
+                creation_date=metadata.get("creation_date"),
+                file_path=str(path.resolve()),
+                file_size_bytes=file_size_bytes,
+                page_count=page_count,
+                file_type=file_ext[1:],
+                classification="unknown",
+                hash=file_hash,
+                repair_status="validated_fast",
+                timestamps={"start": start_time, "end": end_time, "duration": duration},
+                artifacts_path=None,
+            )
+        except ValidationError as e:
+            logger.error(f"Metadata validation error (fast): {e}")
+            return None
+
     try:
         if file_ext == ".pdf":
+            doc = fitz.open(file_path)
+            page_count = len(doc)
+            doc.close()
             classify_pdf(file_path)  # Test open
         elif file_ext == ".epub":
             ebooklib.epub.read_epub(file_path)
@@ -228,7 +277,6 @@ def validate_and_repair(
         classification = classify_pdf(file_path)
 
     metadata = extract_metadata(file_path)
-    file_hash = compute_sha256(file_path)
     end_time = perf_counter()
     duration = end_time - start_time
     logger.info(f"Validation complete in {duration:.2f}s. Repaired: {repaired}")
@@ -238,6 +286,9 @@ def validate_and_repair(
             title=metadata.get("title"),
             author=metadata.get("author"),
             creation_date=metadata.get("creation_date"),
+            file_path=str(path.resolve()),
+            file_size_bytes=file_size_bytes,
+            page_count=page_count,
             file_type=file_ext[1:],
             classification=classification,
             hash=file_hash,
@@ -302,10 +353,26 @@ def main():
     parser.add_argument(
         "--artifacts_dir", default="artifacts/phase1", help="Artifacts directory."
     )
+    parser.add_argument(
+        "--force", action="store_true", help="Force revalidation even if hash matches prior run."
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["thorough", "fast"],
+        default="thorough",
+        help="Fast mode skips repairs/classification; thorough runs full validation.",
+    )
     args = parser.parse_args()
 
     metadata = validate_and_repair(
-        args.file, args.max_size_mb, args.retries, args.artifacts_dir
+        args.file,
+        args.max_size_mb,
+        args.retries,
+        args.artifacts_dir,
+        force=args.force,
+        mode=args.mode,
+        pipeline_json=Path(args.json_path),
+        file_id=Path(args.file).stem,
     )
     if metadata:
         file_id = Path(args.file).stem

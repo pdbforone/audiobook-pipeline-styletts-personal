@@ -75,6 +75,7 @@ YouTube_Ready/
 voice_samples/
 voice_comparison_samples/
 input/
+audiobooks/
 
 # Temporary files
 temp_*.txt

@@ -10,6 +10,7 @@ Features:
 """
 
 import argparse
+import hashlib
 import logging
 import sys
 from pathlib import Path
@@ -61,6 +62,7 @@ class ExtractionConfig(BaseModel):
     extracted_dir: Optional[str] = "extracted_text"
     retry_limit: int = 1
     use_multipass: bool = True  # Enable multi-pass by default
+    force: bool = False  # Re-extract even if existing success
 
 
 class ExtractionRecord(BaseModel):
@@ -71,8 +73,18 @@ class ExtractionRecord(BaseModel):
     language: str
     lang_confidence: float
     status: str
+    source_hash: Optional[str] = None
     errors: List[str] = Field(default_factory=list)
     timestamps: Dict[str, float]
+
+
+def compute_sha256(file_path: Path) -> str:
+    """Compute sha256 hash for change detection / reuse checks."""
+    sha = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for block in iter(lambda: f.read(1024 * 1024), b""):
+            sha.update(block)
+    return sha.hexdigest()
 
 
 def load_from_json(json_path: str, file_id: str, file_arg: str = None) -> Dict:
@@ -96,6 +108,7 @@ def load_from_json(json_path: str, file_id: str, file_arg: str = None) -> Dict:
         return {
             "file_path": file_path,
             "classification": classification,
+            "pipeline_data": data,
         }
     except Exception as e:
         logger.error(f"JSON load failed: {e}")
@@ -230,10 +243,38 @@ def main(config: ExtractionConfig, file_arg: str = None):
     phase1_data = load_from_json(config.json_path, config.file_id, file_arg)
     file_path = phase1_data["file_path"]
     classification = phase1_data["classification"]
+    pipeline_data = phase1_data.get("pipeline_data", {})
     
     if not file_path or not Path(file_path).exists():
         logger.error(f"Invalid file path: {file_path}")
         return
+
+    # Track source hash for smarter reuse
+    source_hash: Optional[str] = None
+    try:
+        source_hash = compute_sha256(Path(file_path))
+    except Exception as exc:
+        logger.warning(f"Phase 2: could not hash source for reuse check: {exc}")
+
+    # Skip if already extracted and not forced
+    try:
+        phase2_files = pipeline_data.get("phase2", {}).get("files", {}) or {}
+        existing = phase2_files.get(config.file_id, {})
+        existing_path = existing.get("extracted_text_path")
+        existing_hash = existing.get("source_hash")
+        if (
+            existing.get("status") == "success"
+            and existing_path
+            and Path(existing_path).exists()
+            and not config.force
+        ):
+            if source_hash and existing_hash and source_hash != existing_hash:
+                logger.info("Phase 2: source hash changed; re-extracting.")
+            else:
+                logger.info("Phase 2: existing extraction found and force=False; skipping.")
+                return
+    except Exception as exc:
+        logger.warning(f"Phase 2: reuse check failed (will re-extract): {exc}")
     
     Path(config.extracted_dir).mkdir(parents=True, exist_ok=True)
     
@@ -325,6 +366,7 @@ def main(config: ExtractionConfig, file_arg: str = None):
             language=lang,
             lang_confidence=lang_conf,
             status=status,
+            source_hash=source_hash,
             timestamps={"start": start_time, "end": end_time, "duration": duration},
         )
         merge_to_json(record, config.json_path, config.file_id)
@@ -362,6 +404,7 @@ if __name__ == "__main__":
     parser.add_argument("--extracted_dir", default="extracted_text", help="Output directory")
     parser.add_argument("--no-multipass", action="store_true", help="Disable multi-pass")
     parser.add_argument("--config", help="Path to YAML config file")
+    parser.add_argument("--force", action="store_true", help="Force re-extraction even if previous success exists")
     args = parser.parse_args()
     
     config_data = {}
@@ -375,6 +418,7 @@ if __name__ == "__main__":
         extracted_dir=args.extracted_dir,
         use_multipass=not args.no_multipass,
         retry_limit=config_data.get("retry_limit", 1),
+        force=args.force,
     )
     
     main(config, file_arg=args.file)
