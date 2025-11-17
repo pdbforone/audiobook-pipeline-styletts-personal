@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 import yaml
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -103,6 +104,15 @@ def print_panel(content: str, title: str = "", style: str = ""):
             print("="*60)
         print(content)
         print("="*60 + "\n")
+
+
+def compute_sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
+    """Compute SHA256 for reuse decisions."""
+    sha = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(chunk_size), b""):
+            sha.update(block)
+    return sha.hexdigest()
 
 
 def play_sound(success: bool = True) -> None:
@@ -426,6 +436,60 @@ def load_pipeline_json(json_path: Path) -> Dict:
         return {}
 
 
+def should_skip_phase2(file_path: Path, file_id: str, pipeline_json: Path) -> bool:
+    """
+    Decide whether to skip Phase 2 based on existing successful extraction and matching hash.
+    Uses the source_hash from Phase 2 (preferred) or Phase 1 hash as fallback.
+    """
+    if not pipeline_json.exists():
+        return False
+
+    try:
+        pipeline_data = load_pipeline_json(pipeline_json)
+    except Exception as exc:
+        logger.warning("Phase 2 reuse: could not load pipeline.json (%s); will run Phase 2.", exc)
+        return False
+
+    phase2_entry = pipeline_data.get("phase2", {}).get("files", {}).get(file_id, {})
+    if phase2_entry.get("status") != "success":
+        return False
+
+    extracted_path = (
+        phase2_entry.get("extracted_text_path")
+        or phase2_entry.get("path")
+        or phase2_entry.get("output_file")
+    )
+    if not extracted_path or not Path(extracted_path).exists():
+        return False
+
+    recorded_hash = phase2_entry.get("source_hash")
+    phase1_hash = (
+        pipeline_data.get("phase1", {})
+        .get("files", {})
+        .get(file_id, {})
+        .get("hash")
+    )
+
+    # If no hash recorded, still allow skip to honor prior success (legacy runs)
+    if not recorded_hash and not phase1_hash:
+        logger.info("Phase 2 reuse: found existing success (no hash recorded); skipping.")
+        return True
+
+    try:
+        current_hash = compute_sha256(file_path)
+    except Exception as exc:
+        logger.warning("Phase 2 reuse: failed to hash source (%s); will run Phase 2.", exc)
+        return False
+
+    expected_hash = recorded_hash or phase1_hash
+    if expected_hash and current_hash == expected_hash:
+        logger.info("Phase 2 reuse: hash match (%s); skipping.", file_id)
+        return True
+
+    logger.info("Phase 2 reuse: source hash changed; re-running Phase 2.")
+    return False
+
+
 def check_phase_status(pipeline_data: Dict, phase_num: int, file_id: str) -> str:
     """
     Check status of a phase for a specific file.
@@ -631,6 +695,11 @@ def run_phase_standard(
     pipeline_json: Path
 ) -> bool:
     """Run a standard phase using Poetry."""
+
+    # Fast-path reuse for Phase 2: if extraction already exists with matching hash, skip.
+    if phase_num == 2 and should_skip_phase2(file_path, file_id, pipeline_json):
+        return True
+
     # Check for venv and install if needed
     venv_dir = phase_dir / ".venv"
     if not venv_dir.exists():
