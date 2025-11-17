@@ -84,5 +84,7 @@ phase3-chunking/chunks/
 phase4_tts/audio_chunks/
 phase5_enhancement/processed/
 phase5_enhancement/subtitles/
+phase5_enhancement/temp/
+phase5_enhancement/*.mp3
 pipeline.json
 phase4_tts/.engine_envs/

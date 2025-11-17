@@ -26,6 +26,7 @@ import psutil
 import tempfile
 import shutil
 import threading
+import subprocess
 
 from .models import EnhancementConfig, AudioMetadata
 from .phrase_cleaner import PhraseCleaner, PhraseCleanerConfig
@@ -657,6 +658,15 @@ def update_pipeline_json(config: EnhancementConfig, phase5_data: dict):
         logger.error(f"Failed to update pipeline.json: {e}")
 
 
+def run_ffmpeg(cmd: list[str], desc: str) -> None:
+    """Run an ffmpeg command and raise on failure."""
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if result.returncode != 0:
+        logger.error("FFmpeg %s failed (exit %s)", desc, result.returncode)
+        logger.error("stderr (tail): %s", result.stderr[-500:])
+        raise RuntimeError(f"FFmpeg {desc} failed")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Phase 5: Audio Enhancement with Integrated Phrase Cleanup"
@@ -740,7 +750,7 @@ def main():
 
             # ===== PROCESSING =====
             overall_start = time.perf_counter()
-            enhanced_chunks_dict = {}
+            enhanced_paths: list[Path] = []
             processed_metadata = []
 
             logger.info(f"Processing {len(chunks)} audio chunks...")
@@ -795,123 +805,134 @@ def main():
                             subtype="PCM_24",
                         )
                         metadata.enhanced_path = str(enhanced_path)
-                        enhanced_chunks_dict[metadata.chunk_id] = enhanced_audio
+                        enhanced_paths.append(enhanced_path)
                         logger.info(
                             f"[OK] Saved enhanced chunk {metadata.chunk_id}: {enhanced_path}"
                         )
 
             # ===== CONCATENATION =====
             final_output_path = None
-            if enhanced_chunks_dict and not args.skip_concatenation:
-                sorted_chunk_ids = sorted(enhanced_chunks_dict.keys())
-                enhanced_chunks = [enhanced_chunks_dict[cid] for cid in sorted_chunk_ids]
+            if enhanced_paths and not args.skip_concatenation:
+                enhanced_paths = sorted(enhanced_paths)
+                logger.info("Batch-concatenating %d enhanced chunks (streaming)...", len(enhanced_paths))
 
-                logger.info(f"Creating final audiobook from {len(enhanced_chunks)} chunks...")
-                combined_audio = concatenate_with_crossfades(
-                    enhanced_chunks, config.sample_rate, config.crossfade_duration
-                )
-                mp3_path = Path(config.output_dir) / "audiobook.mp3"
-                audio_int16 = (combined_audio * 32767).astype(np.int16)
-                audio_segment = AudioSegment(
-                    audio_int16.tobytes(),
-                    frame_rate=config.sample_rate,
-                    sample_width=2,
-                    channels=1,
-                )
-                audio_segment.export(
-                    mp3_path,
-                    format="mp3",
-                    bitrate=config.mp3_bitrate,
-                    tags={
-                        "title": config.audiobook_title,
-                        "artist": config.audiobook_author,
-                        "album": "Audiobook",
-                        "genre": "Audiobook",
-                    },
-                )
-                embed_metadata(str(mp3_path), config)
-                final_output_path = str(mp3_path)
-                logger.info(f"Final audiobook created: {mp3_path}")
-                logger.info(
-                    f"Duration: {len(combined_audio) / config.sample_rate:.1f} seconds"
-                )
+                output_dir = Path(config.output_dir)
+                output_dir.mkdir(parents=True, exist_ok=True)
+                temp_root = Path(config.temp_dir)
+                temp_root.mkdir(parents=True, exist_ok=True)
+                temp_session = Path(tempfile.mkdtemp(prefix="phase5_batches_", dir=temp_root))
 
-                # ===== MATCHERING MASTERING (OPTIONAL) =====
-                if config.enable_matchering and config.matchering_reference:
-                    logger.info("=" * 60)
-                    logger.info("APPLYING MATCHERING REFERENCE-BASED MASTERING")
-                    logger.info("=" * 60)
+                batch_size = 120  # balance runtime vs. RAM/command length
+                batch_files: list[Path] = []
 
-                    # Matchering requires stereo WAV input
-                    # Convert mono to stereo for Matchering
-                    import soundfile as sf_import
-
-                    temp_wav_mono = Path(config.output_dir) / "audiobook_temp_mono.wav"
-                    temp_wav_stereo = Path(config.output_dir) / "audiobook_temp_stereo.wav"
-                    temp_wav_mastered = Path(config.output_dir) / "audiobook_mastered.wav"
-
-                    try:
-                        # Save combined audio as mono WAV
-                        sf_import.write(temp_wav_mono, combined_audio, config.sample_rate)
-
-                        # Convert mono to stereo (duplicate channel)
-                        stereo_audio = np.stack([combined_audio, combined_audio], axis=1)
-                        sf_import.write(temp_wav_stereo, stereo_audio, config.sample_rate)
-                        logger.info(f"Converted mono to stereo for Matchering: {temp_wav_stereo}")
-
-                        # Apply Matchering
-                        success = apply_matchering(
-                            input_path=str(temp_wav_stereo),
-                            output_path=str(temp_wav_mastered),
-                            reference_path=config.matchering_reference,
-                            config=config
+                try:
+                    # 1) Build batch WAVs via concat demuxer (streaming, no re-encode)
+                    for idx in range(0, len(enhanced_paths), batch_size):
+                        batch = enhanced_paths[idx : idx + batch_size]
+                        batch_list = temp_session / f"batch_{idx//batch_size:04d}.txt"
+                        batch_wav = temp_session / f"batch_{idx//batch_size:04d}.wav"
+                        batch_list.write_text(
+                            "\n".join(f"file '{p.as_posix()}'" for p in batch),
+                            encoding="utf-8",
                         )
+                        cmd = [
+                            "ffmpeg",
+                            "-y",
+                            "-loglevel",
+                            "warning",
+                            "-f",
+                            "concat",
+                            "-safe",
+                            "0",
+                            "-i",
+                            str(batch_list),
+                            "-c",
+                            "copy",
+                            str(batch_wav),
+                        ]
+                        run_ffmpeg(cmd, f"batch concat {batch_wav.name}")
+                        batch_files.append(batch_wav)
 
-                        if success:
-                            # Load mastered audio and convert back to mono MP3
-                            mastered_audio, mastered_sr = sf_import.read(temp_wav_mastered)
+                    logger.info("Created %d batch WAVs; starting crossfade merge...", len(batch_files))
 
-                            # If stereo, take left channel or average
-                            if mastered_audio.ndim == 2:
-                                mastered_audio = np.mean(mastered_audio, axis=1)
+                    # 2) Iteratively crossfade batches to keep filters small
+                    crossfade_sec = float(config.crossfade_duration)
+                    current = batch_files[0]
 
-                            # Export as MP3
-                            mastered_mp3_path = Path(config.output_dir) / "audiobook_mastered.mp3"
-                            audio_int16 = (mastered_audio * 32767).astype(np.int16)
-                            audio_segment = AudioSegment(
-                                audio_int16.tobytes(),
-                                frame_rate=mastered_sr,
-                                sample_width=2,
-                                channels=1,
-                            )
-                            audio_segment.export(
-                                mastered_mp3_path,
-                                format="mp3",
-                                bitrate=config.mp3_bitrate,
-                                tags={
-                                    "title": config.audiobook_title,
-                                    "artist": config.audiobook_author,
-                                    "album": "Audiobook (Mastered)",
-                                    "genre": "Audiobook",
-                                },
-                            )
-                            embed_metadata(str(mastered_mp3_path), config)
-                            logger.info(f"[OK] Mastered audiobook created: {mastered_mp3_path}")
-                            final_output_path = str(mastered_mp3_path)
+                    for merge_idx, next_batch in enumerate(batch_files[1:], start=1):
+                        merged_out = temp_session / f"merged_{merge_idx:04d}.wav"
+                        cmd = [
+                            "ffmpeg",
+                            "-y",
+                            "-loglevel",
+                            "warning",
+                            "-i",
+                            str(current),
+                            "-i",
+                            str(next_batch),
+                            "-filter_complex",
+                            f"[0:a][1:a]acrossfade=d={crossfade_sec}:c1=tri:c2=tri",
+                            "-ar",
+                            str(config.sample_rate),
+                            "-ac",
+                            "1",
+                            "-c:a",
+                            "pcm_s16le",
+                            str(merged_out),
+                        ]
+                        run_ffmpeg(cmd, f"crossfade merge {merge_idx}")
+                        if current not in enhanced_paths:
+                            try:
+                                current.unlink()
+                            except Exception:
+                                pass
+                        current = merged_out
 
-                        # Cleanup temp files
-                        for temp_file in [temp_wav_mono, temp_wav_stereo]:
-                            if temp_file.exists():
-                                temp_file.unlink()
-                                logger.debug(f"Cleaned up temp file: {temp_file}")
+                    # 3) Encode final MP3
+                    mp3_path = output_dir / "audiobook.mp3"
+                    encode_cmd = [
+                        "ffmpeg",
+                        "-y",
+                        "-loglevel",
+                        "warning",
+                        "-i",
+                        str(current),
+                        "-ac",
+                        "1",
+                        "-ar",
+                        str(config.sample_rate),
+                        "-c:a",
+                        "libmp3lame",
+                        "-b:a",
+                        str(config.mp3_bitrate),
+                        "-id3v2_version",
+                        "3",
+                        "-metadata",
+                        f"title={config.audiobook_title}",
+                        "-metadata",
+                        f"artist={config.audiobook_author}",
+                        "-metadata",
+                        "album=Audiobook",
+                        "-metadata",
+                        "genre=Audiobook",
+                        str(mp3_path),
+                    ]
+                    run_ffmpeg(encode_cmd, "final mp3 encode")
+                    embed_metadata(str(mp3_path), config)
+                    final_output_path = str(mp3_path)
+                    logger.info(f"Final audiobook created: {mp3_path}")
 
-                    except Exception as e:
-                        logger.error(f"Matchering failed: {e}")
-                        logger.info("Continuing with non-mastered audiobook")
-                        # Cleanup temp files on error
-                        for temp_file in [temp_wav_mono, temp_wav_stereo, temp_wav_mastered]:
-                            if temp_file.exists():
-                                temp_file.unlink()
+                finally:
+                    # Cleanup intermediate WAVs/batch lists
+                    for p in temp_session.glob("*"):
+                        try:
+                            p.unlink()
+                        except Exception:
+                            pass
+                    try:
+                        temp_session.rmdir()
+                    except Exception:
+                        pass
 
                 create_playlist(config.output_dir, "audiobook.mp3")
 

@@ -9,6 +9,7 @@ Why:
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import logging
 import os
@@ -380,21 +381,46 @@ def update_phase4_summary(
         json.dump(data, f, indent=2)
 
 
+ENGINE_IMPORT_MAP: Dict[str, Tuple[str, str]] = {
+    "xtts": ("engines.xtts_engine", "XTTSEngine"),
+    "kokoro": ("engines.kokoro_engine", "KokoroEngine"),
+}
+
+
 def build_engine_manager(device: str, engines: Optional[List[str]] = None) -> EngineManager:
-    """Build engine manager with lazy imports for isolation."""
+    """Build engine manager while skipping engines whose deps are unavailable."""
     manager = EngineManager(device=device)
 
     # Lazy import only requested engines to avoid dep conflicts
     if engines is None:
-        engines = ["xtts", "kokoro"]
+        engines = list(ENGINE_IMPORT_MAP.keys())
 
     for engine_name in engines:
-        if engine_name == "xtts":
-            from engines.xtts_engine import XTTSEngine
-            manager.register_engine("xtts", XTTSEngine)
-        elif engine_name == "kokoro":
-            from engines.kokoro_engine import KokoroEngine
-            manager.register_engine("kokoro", KokoroEngine)
+        module_info = ENGINE_IMPORT_MAP.get(engine_name)
+        if not module_info:
+            logger.warning("Unknown engine '%s' requested; skipping registration.", engine_name)
+            continue
+
+        module_path, class_name = module_info
+        try:
+            module = importlib.import_module(module_path)
+            engine_class = getattr(module, class_name)
+        except ModuleNotFoundError as exc:
+            logger.warning(
+                "Skipping engine '%s' because dependencies are missing (%s).", engine_name, exc
+            )
+            continue
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.error("Failed to import engine '%s': %s", engine_name, exc)
+            continue
+
+        manager.register_engine(engine_name, engine_class)
+
+    if not manager.engines:
+        raise RuntimeError(
+            f"No TTS engines could be registered for device '{device}'. "
+            "Check per-engine environments or dependency installs."
+        )
 
     return manager
 

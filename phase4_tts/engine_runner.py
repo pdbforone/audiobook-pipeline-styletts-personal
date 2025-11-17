@@ -26,6 +26,22 @@ PYTHON_CANDIDATES = {
 }
 
 
+def determine_default_workers() -> int:
+    """Pick a sensible default worker count with env override support."""
+    env_value = os.environ.get("PHASE4_WORKERS")
+    if env_value:
+        try:
+            return max(1, int(env_value))
+        except ValueError:
+            pass
+
+    cpu_total = os.cpu_count() or 2
+    if cpu_total <= 2:
+        return 1
+    # Keep two cores free for I/O / OS, cap to a reasonable upper bound
+    return max(1, min(cpu_total - 2, 6))
+
+
 def get_env_python(engine: str) -> Path:
     """Ensure the engine-specific virtual environment exists and return python."""
     ENGINE_ENV_ROOT.mkdir(exist_ok=True)
@@ -97,7 +113,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--json_path", required=True)
     parser.add_argument("--voice")
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--workers", type=int, default=determine_default_workers())
     parser.add_argument("--language")
     parser.add_argument("--chunk_id", type=int)
     parser.add_argument("--disable_fallback", action="store_true")
