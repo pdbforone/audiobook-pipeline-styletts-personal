@@ -161,13 +161,14 @@ state = StudioState()
 # ============================================================================
 
 CUSTOM_CSS = """
-/* Modern, clean design */
+/* Modern palette: navy base with orange accents */
 :root {
-    --primary-color: #6366f1;
+    --primary-color: #0b1d3a;
+    --secondary-color: #f97316;
     --success-color: #10b981;
     --warning-color: #f59e0b;
     --danger-color: #ef4444;
-    --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --bg-gradient: linear-gradient(135deg, #0b1d3a 0%, #10294f 50%, #1f3f6b 100%);
 }
 
 .gradio-container {
@@ -184,18 +185,20 @@ CUSTOM_CSS = """
     border-radius: 12px;
     margin-bottom: 2rem;
     text-align: center;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.25);
 }
 
 .header h1 {
     margin: 0;
     font-size: 2.5rem;
-    font-weight: 700;
+    font-weight: 800;
+    letter-spacing: -0.5px;
 }
 
 .header p {
     margin: 0.5rem 0 0 0;
     opacity: 0.9;
-    font-size: 1.1rem;
+    font-size: 1.05rem;
 }
 
 /* Tab styling */
@@ -211,24 +214,31 @@ CUSTOM_CSS = """
 }
 
 .tab-nav button.selected {
-    border-bottom: 3px solid var(--primary-color);
-    color: var(--primary-color);
-    font-weight: 600;
+    border-bottom: 3px solid var(--secondary-color);
+    color: var(--secondary-color);
+    font-weight: 700;
 }
 
 /* Button styling */
 .primary-button {
-    background: var(--primary-color) !important;
-    color: white !important;
-    font-weight: 600;
-    padding: 0.75rem 2rem;
-    border-radius: 8px;
+    background: var(--secondary-color) !important;
+    color: #0b1d3a !important;
+    font-weight: 700;
+    padding: 0.8rem 2rem;
+    border-radius: 10px;
     transition: all 0.2s;
 }
 
 .primary-button:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.35);
+}
+
+.secondary-button {
+    background: white !important;
+    color: var(--primary-color) !important;
+    border: 1px solid var(--primary-color) !important;
+    font-weight: 600;
 }
 
 /* Card styling */
@@ -258,25 +268,11 @@ CUSTOM_CSS = """
 }
 
 .voice-card:hover {
-    border-color: var(--primary-color);
-    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
+    border-color: var(--secondary-color);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
-/* Dark mode support */
-.dark .card {
-    background: #1f2937;
-    border: 1px solid #374151;
-}
-
-.dark .voice-card {
-    border-color: #374151;
-}
-
-.dark .voice-card:hover {
-    border-color: var(--primary-color);
-}
 """
-
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -496,6 +492,91 @@ Your progress is saved - you can continue anytime! 🔄
         return None, f"❌ Error: {str(e)}"
 
 
+def create_batch_audiobooks(
+    book_files,
+    voice_selection: str,
+    engine_selection: str,
+    mastering_preset: str,
+    enable_resume: bool,
+    max_retries: int,
+    generate_subtitles: bool,
+    phase1: bool,
+    phase2: bool,
+    phase3: bool,
+    phase4: bool,
+    phase5: bool,
+    progress=gr.Progress()
+) -> str:
+    """Process multiple books sequentially with shared settings."""
+    if not book_files:
+        return "❌ Please upload one or more book files."
+
+    try:
+        voice_id = voice_selection.split(":")[0].strip()
+    except Exception:
+        return "❌ Please select a voice."
+
+    engine_map = {
+        "XTTS v2 (Expressive)": "xtts",
+        "Kokoro (CPU-Friendly)": "kokoro",
+    }
+    engine = engine_map.get(engine_selection, "xtts")
+
+    phases = []
+    if phase1:
+        phases.append(1)
+    if phase2:
+        phases.append(2)
+    if phase3:
+        phases.append(3)
+    if phase4:
+        phases.append(4)
+    if phase5:
+        phases.append(5)
+
+    if not phases:
+        return "❌ Please select at least one phase to run."
+
+    results = []
+    total = len(book_files)
+
+    for idx, book in enumerate(book_files, start=1):
+        if state.is_cancelled():
+            results.append(f"- ❌ Cancelled before processing `{Path(book.name).name}`")
+            break
+
+        book_path = Path(book.name)
+        logger.info(f"[Batch] Starting {book_path.name} ({idx}/{total})")
+
+        progress(((idx - 1) / total), desc=f"Batch {idx}/{total}: {book_path.name}")
+
+        inner_progress = gr.Progress(track_tqdm=True)
+
+        res = run_pipeline(
+            file_path=book_path,
+            voice_id=voice_id,
+            tts_engine=engine,
+            mastering_preset=mastering_preset,
+            phases=phases,
+            pipeline_json=state.pipeline_json,
+            enable_subtitles=generate_subtitles,
+            max_retries=int(max_retries),
+            no_resume=not enable_resume,
+            progress_callback=lambda phase, pct, msg: inner_progress(
+                ((idx - 1) / total) + (pct / 1000), desc=f"{book_path.name} | Phase {phase}: {msg}"
+            ),
+        )
+
+        if res.get("success"):
+            out_path = res.get("audiobook_path", "phase5_enhancement/processed/")
+            results.append(f"- ✅ `{book_path.name}` → `{out_path}`")
+        else:
+            results.append(f"- ❌ `{book_path.name}` failed: {res.get('error','unknown error')}")
+
+    progress(1.0, desc="Batch complete")
+    return "\n".join(results)
+
+
 def add_voice(
     voice_name: str,
     voice_file,
@@ -550,8 +631,8 @@ def build_ui():
 
     with gr.Blocks(
         theme=gr.themes.Soft(
-            primary_hue="indigo",
-            secondary_hue="purple"
+            primary_hue="blue",
+            secondary_hue="orange"
         ),
         css=CUSTOM_CSS,
         title="🎙️ Personal Audiobook Studio"
@@ -758,16 +839,88 @@ def build_ui():
         with gr.Tab("📦 Batch Queue"):
             gr.Markdown("## Process Multiple Books")
 
-            gr.Markdown("""
-                ### Coming Soon!
+            with gr.Row():
+                with gr.Column(scale=2):
+                    batch_files = gr.File(
+                        label="📚 Upload Books (multiple)",
+                        file_types=[".epub", ".pdf", ".txt", ".mobi"],
+                        file_count="multiple",
+                        type="filepath"
+                    )
 
-                Queue multiple books for overnight processing:
-                - Drag-and-drop ordering
-                - Per-book settings
-                - Pause/resume controls
-                - Progress tracking
-                - Estimated completion time
-            """)
+                    with gr.Row():
+                        batch_voice = gr.Dropdown(
+                            choices=state.get_voice_list(),
+                            label="🎤 Voice",
+                            info="Select narrator voice for all books"
+                        )
+
+                        batch_engine = gr.Dropdown(
+                            choices=state.engines,
+                            value="Kokoro (CPU-Friendly)",
+                            label="🤖 TTS Engine",
+                            info="Choose synthesis engine"
+                        )
+
+                    batch_preset = gr.Dropdown(
+                        choices=state.presets,
+                        value="audiobook_intimate",
+                        label="🎛️ Mastering Preset",
+                        info="Audio processing style"
+                    )
+
+                    with gr.Accordion("⚙️ Batch Options", open=False):
+                        batch_enable_resume = gr.Checkbox(
+                            label="Enable Resume",
+                            value=True,
+                            info="Resume from checkpoint if interrupted"
+                        )
+                        batch_max_retries = gr.Slider(
+                            minimum=0,
+                            maximum=5,
+                            value=1,
+                            step=1,
+                            label="Max Retries",
+                            info="Retry attempts per phase"
+                        )
+                        batch_generate_subtitles = gr.Checkbox(
+                            label="Generate Subtitles",
+                            value=False,
+                            info="Create .srt and .vtt subtitle files"
+                        )
+
+                        gr.Markdown("**Phases to Run:**")
+                        with gr.Row():
+                            b_phase1 = gr.Checkbox(label="Phase 1: Validation", value=True)
+                            b_phase2 = gr.Checkbox(label="Phase 2: Extraction", value=True)
+                            b_phase3 = gr.Checkbox(label="Phase 3: Chunking", value=True)
+                        with gr.Row():
+                            b_phase4 = gr.Checkbox(label="Phase 4: TTS", value=True)
+                            b_phase5 = gr.Checkbox(label="Phase 5: Enhancement", value=True)
+
+                with gr.Column():
+                    gr.Markdown("### Batch Controls")
+                    batch_run_btn = gr.Button("🚀 Run Batch", variant="primary")
+                    batch_status = gr.Markdown("Waiting to start...")
+
+            batch_run_btn.click(
+                fn=create_batch_audiobooks,
+                inputs=[
+                    batch_files,
+                    batch_voice,
+                    batch_engine,
+                    batch_preset,
+                    batch_enable_resume,
+                    batch_max_retries,
+                    batch_generate_subtitles,
+                    b_phase1,
+                    b_phase2,
+                    b_phase3,
+                    b_phase4,
+                    b_phase5,
+                ],
+                outputs=[batch_status],
+            )
 
         # =================================================================
         # TAB 3: VOICE LIBRARY
