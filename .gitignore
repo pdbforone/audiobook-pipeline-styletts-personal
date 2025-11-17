@@ -82,6 +82,7 @@ temp_*.txt
 # Generated chunks/audio
 phase3-chunking/chunks/
 phase4_tts/audio_chunks/
+phase4_tts/models/
 phase5_enhancement/processed/
 phase5_enhancement/subtitles/
 phase5_enhancement/temp/
