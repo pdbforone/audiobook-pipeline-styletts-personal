@@ -105,6 +105,24 @@ def print_panel(content: str, title: str = "", style: str = ""):
         print("="*60 + "\n")
 
 
+def play_sound(success: bool = True) -> None:
+    """Play a short audible cue on Windows; no-op elsewhere."""
+    try:
+        if sys.platform != "win32":
+            return
+        import winsound
+
+        if success:
+            # Two quick beeps: success
+            winsound.Beep(1000, 200)
+            winsound.Beep(1300, 200)
+        else:
+            # Lower, longer tone: failure
+            winsound.Beep(400, 600)
+    except Exception as exc:  # If sound is unavailable, ignore
+        logger.debug("Sound playback skipped: %s", exc)
+
+
 def humanize_title(file_id: str) -> str:
     """Convert file_id or filename into a readable title."""
     name = Path(file_id).stem
@@ -1431,6 +1449,7 @@ Pipeline Mode: {pipeline_mode}
         )
         
         if not success:
+            play_sound(success=False)
             print_panel(
                 f"Pipeline aborted at {phase_name}\n\n"
                 f"Check logs above for details.\n"
@@ -1441,6 +1460,7 @@ Pipeline Mode: {pipeline_mode}
             return 1
         
         print_status(f"[green]OK {phase_name} completed successfully[/green]")
+        play_sound(success=True)
 
         if phase_num == 5:
             archive_final_audiobook(file_id, pipeline_json)

@@ -15,6 +15,7 @@ import atexit
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict
 import yaml
+import psutil
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -44,6 +45,7 @@ class StudioState:
         self.presets = self._load_presets()
         self.pipeline_json = PROJECT_ROOT / "pipeline.json"
         self.cancel_flag = False  # Flag for stopping generation
+        self.file_ids = self._load_file_ids()
 
     def cancel_generation(self):
         """Request cancellation of current generation"""
@@ -100,6 +102,19 @@ class StudioState:
         except Exception as e:
             logger.error(f"Error checking for incomplete generation: {e}")
             return None
+
+    def _load_file_ids(self) -> List[str]:
+        """List known files from pipeline.json (phase1 files)."""
+        if not self.pipeline_json.exists():
+            return []
+        try:
+            with open(self.pipeline_json, "r") as f:
+                data = json.load(f)
+            phase1 = data.get("phase1", {}).get("files", {}) or {}
+            return sorted(list(phase1.keys()))
+        except Exception as exc:
+            logger.error(f"Failed to list file ids: {exc}")
+            return []
 
     def _load_voices(self) -> Dict:
         """Load voice library"""
@@ -551,6 +566,30 @@ def build_ui():
         """)
 
         # =================================================================
+        # TAB 0: STATUS / OBSERVABILITY
+        # =================================================================
+        with gr.Tab("📊 Status"):
+            gr.Markdown("## Live Pipeline Status")
+
+            with gr.Row():
+                status_file_dropdown = gr.Dropdown(
+                    choices=state.file_ids,
+                    value=state.file_ids[0] if state.file_ids else None,
+                    label="Tracked File (from pipeline.json)"
+                )
+                refresh_status_btn = gr.Button("🔄 Refresh", variant="secondary")
+
+            status_markdown = gr.Markdown(
+                build_status_report(state.file_ids[0]) if state.file_ids else "Select a file to view pipeline status."
+            )
+
+            def _refresh_status(file_id):
+                return build_status_report(file_id)
+
+            status_file_dropdown.change(_refresh_status, inputs=status_file_dropdown, outputs=status_markdown)
+            refresh_status_btn.click(_refresh_status, inputs=status_file_dropdown, outputs=status_markdown)
+
+        # =================================================================
         # TAB 1: SINGLE BOOK
         # =================================================================
         with gr.Tab("📖 Single Book"):
@@ -871,6 +910,90 @@ def _generate_voice_gallery_html(voices: Dict) -> str:
 
     html += '</div>'
     return html
+
+
+# ============================================================================
+# STATUS HELPERS
+# ============================================================================
+
+
+def _load_pipeline_data() -> Dict:
+    if not state.pipeline_json.exists():
+        return {}
+    try:
+        with open(state.pipeline_json, "r") as f:
+            return json.load(f)
+    except Exception as exc:
+        logger.error(f"Failed to read pipeline.json: {exc}")
+        return {}
+
+
+def _phase_status(data: Dict, file_id: str, phase_num: int) -> str:
+    phase_key = f"phase{phase_num}"
+    try:
+        phase = data.get(phase_key, {})
+        files = phase.get("files", {}) or {}
+        entry = files.get(file_id, {})
+        return entry.get("status") or phase.get("status") or "missing"
+    except Exception:
+        return "unknown"
+
+
+def _process_snapshot() -> str:
+    lines = []
+    try:
+        for proc in psutil.process_iter(["pid", "name", "cmdline", "cpu_percent", "memory_info"]):
+            cmd = " ".join(proc.info.get("cmdline") or [])[:120]
+            name = proc.info.get("name") or ""
+            if any(key in cmd for key in ["phase4", "phase5", "orchestrator.py"]):
+                mem_info = proc.info.get("memory_info")
+                mem_mb = (mem_info.rss if mem_info else 0) / (1024 * 1024)
+                lines.append(
+                    f"- PID {proc.pid}: {name} ({cmd}) | CPU {proc.info.get('cpu_percent',0):.1f}% | RAM {mem_mb:.0f} MB"
+                )
+    except Exception as exc:
+        lines.append(f"- (process scan failed: {exc})")
+    return "\n".join(lines) if lines else "- No active pipeline processes detected"
+
+
+def _count_files(pattern: str) -> int:
+    try:
+        return len(list(Path().glob(pattern)))
+    except Exception:
+        return 0
+
+
+def build_status_report(selected_file: Optional[str]) -> str:
+    data = _load_pipeline_data()
+    if not selected_file:
+        return "Select a file to view pipeline status."
+
+    phase_lines = []
+    for p in range(1, 5 + 1):
+        phase_lines.append(f"- Phase {p}: **{_phase_status(data, selected_file, p)}**")
+
+    chunk_txt = _count_files(f"phase3-chunking/chunks/{selected_file}_chunk_*.txt")
+    phase4_wav = _count_files("phase4_tts/audio_chunks/*.wav")
+    phase5_wav = _count_files("phase5_enhancement/processed/enhanced_*.wav")
+    mp3_exists = Path("phase5_enhancement/processed/audiobook.mp3").exists()
+
+    process_view = _process_snapshot()
+
+    return f"""
+### Pipeline Status for `{selected_file}`
+
+**Phases**
+{chr(10).join(phase_lines)}
+
+**File System Progress (live)**
+- Phase 3 chunks (txt): {chunk_txt}
+- Phase 4 audio chunks (wav): {phase4_wav}
+- Phase 5 enhanced (wav): {phase5_wav}
+- Final MP3 present: {"yes" if mp3_exists else "no"}
+
+**Active Processes**
+{process_view}
+"""
 
 
 # ============================================================================
