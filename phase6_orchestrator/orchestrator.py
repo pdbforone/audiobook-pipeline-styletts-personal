@@ -490,6 +490,64 @@ def should_skip_phase2(file_path: Path, file_id: str, pipeline_json: Path) -> bo
     return False
 
 
+def should_skip_phase3(file_id: str, pipeline_json: Path) -> bool:
+    """
+    Decide whether to skip Phase 3 based on existing successful chunking and matching text hash.
+    """
+    if not pipeline_json.exists():
+        return False
+
+    try:
+        data = load_pipeline_json(pipeline_json)
+    except Exception as exc:
+        logger.warning("Phase 3 reuse: could not load pipeline.json (%s); will run Phase 3.", exc)
+        return False
+
+    phase3_entry = data.get("phase3", {}).get("files", {}).get(file_id, {})
+    if phase3_entry.get("status") != "success":
+        return False
+
+    chunk_paths = phase3_entry.get("chunk_paths") or []
+    if not chunk_paths or not all(Path(p).exists() for p in chunk_paths):
+        return False
+
+    # Prefer Phase 3 source_hash, else recompute from Phase 2 text
+    recorded_hash = phase3_entry.get("source_hash")
+    if not recorded_hash:
+        text_path = (
+            phase3_entry.get("text_path")
+            or data.get("phase2", {}).get("files", {}).get(file_id, {}).get("extracted_text_path")
+        )
+        if not text_path or not Path(text_path).exists():
+            return False
+        try:
+            recorded_hash = compute_sha256(Path(text_path))
+            # Note: we do not persist this here; Phase 3 main writes it on next run.
+        except Exception as exc:
+            logger.warning("Phase 3 reuse: failed to hash text (%s); will run Phase 3.", exc)
+            return False
+
+    text_path = (
+        phase3_entry.get("text_path")
+        or data.get("phase2", {}).get("files", {}).get(file_id, {}).get("extracted_text_path")
+    )
+    if not text_path or not Path(text_path).exists():
+        return False
+
+    try:
+        current_hash = compute_sha256(Path(text_path))
+    except Exception as exc:
+        logger.warning("Phase 3 reuse: failed to hash current text (%s); will run Phase 3.", exc)
+        return False
+
+    if recorded_hash and recorded_hash == current_hash:
+        logger.info("Phase 3 reuse: hash match (%s); skipping.", file_id)
+        return True
+
+    logger.info("Phase 3 reuse: text hash changed; re-running Phase 3.")
+    return False
+
+
 def check_phase_status(pipeline_data: Dict, phase_num: int, file_id: str) -> str:
     """
     Check status of a phase for a specific file.
@@ -699,6 +757,48 @@ def run_phase_standard(
     # Fast-path reuse for Phase 2: if extraction already exists with matching hash, skip.
     if phase_num == 2 and should_skip_phase2(file_path, file_id, pipeline_json):
         return True
+    # Fast-path reuse for Phase 3: if chunks already exist with matching text hash, skip.
+    if phase_num == 3 and should_skip_phase3(file_id, pipeline_json):
+        return True
+
+    # Special-case Phase 3b (xtts chunking): standalone script, no Poetry env
+    if phase_dir.name == "phase3b-xtts-chunking":
+        main_script = phase_dir / "sentence_splitter.py"
+        if not main_script.exists():
+            logger.error(f"Script not found: {main_script}")
+            return False
+        cmd = [
+            sys.executable,
+            str(main_script),
+            f"--file_id={file_id}",
+            f"--json_path={pipeline_json}",
+            "--config=config.yaml",
+        ]
+        logger.info(f"Command: {' '.join(cmd)}")
+        start_time = time.perf_counter()
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=str(phase_dir),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=18000,
+            )
+            duration = time.perf_counter() - start_time
+            if result.returncode != 0:
+                logger.error(f"Phase {phase_num} FAILED (exit {result.returncode}) in {duration:.1f}s")
+                logger.error(f"Error: {result.stderr[-500:]}")
+                return False
+            logger.info(f"Phase {phase_num} SUCCESS in {duration:.1f}s")
+            return True
+        except subprocess.TimeoutExpired:
+            logger.error(f"Phase {phase_num} TIMEOUT (18000s)")
+            return False
+        except Exception as e:
+            logger.error(f"Phase {phase_num} ERROR: {e}")
+            return False
 
     # Check for venv and install if needed
     venv_dir = phase_dir / ".venv"
@@ -1557,6 +1657,11 @@ Examples:
         action="store_true",
         help="Generate .srt and .vtt subtitles after Phase 5 (optional)"
     )
+    parser.add_argument(
+        "--phase5-concat-only",
+        action="store_true",
+        help="Reuse existing enhanced WAVs and only concatenate/encode MP3 in Phase 5"
+    )
 
     args = parser.parse_args()
 
@@ -1590,6 +1695,13 @@ Pipeline Mode: {pipeline_mode}
     
     # Load pipeline.json
     pipeline_data = load_pipeline_json(pipeline_json) if not args.no_resume else {}
+
+    # Configure Phase 5 concat-only hint
+    if args.phase5_concat_only:
+        os.environ["PHASE5_CONCAT_ONLY"] = "1"
+        logger.info("Phase 5: concat-only mode enabled (will reuse enhanced WAVs if present).")
+    else:
+        os.environ.pop("PHASE5_CONCAT_ONLY", None)
     
     # Run phases
     overall_start = time.perf_counter()

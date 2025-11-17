@@ -219,8 +219,13 @@ def update_pipeline_json(
     if "files" not in phase3:
         phase3["files"] = {}
 
-    # Convert paths to strings relative to pipeline.json
-    chunk_path_strings = [str(p.relative_to(pipeline_path.parent)) for p in chunk_paths]
+    # Convert paths to strings relative to pipeline.json when possible
+    chunk_path_strings = []
+    for p in chunk_paths:
+        try:
+            chunk_path_strings.append(str(Path(p).relative_to(pipeline_path.parent)))
+        except Exception:
+            chunk_path_strings.append(str(p))
 
     # Add file entry
     phase3["files"][file_id] = {
@@ -276,6 +281,32 @@ def get_phase2_text_path(pipeline_path: Path, file_id: str) -> Path:
     return default_path
 
 
+def resolve_text_path(text_path: Path, pipeline_path: Path) -> Path:
+    """Resolve a text path, trying common locations if missing."""
+    base = pipeline_path.parent
+
+    # Absolute or exists relative to cwd
+    if text_path.is_absolute() and text_path.exists():
+        return text_path
+    if text_path.exists():
+        return text_path
+
+    # Try relative to pipeline.json directory
+    candidate = base / text_path
+    if candidate.exists():
+        return candidate
+
+    # Try phase2-extraction/extracted_text
+    candidate = base / "phase2-extraction" / "extracted_text" / text_path.name
+    if candidate.exists():
+        return candidate
+
+    return text_path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
 def main():
     """Main entry point for Phase 3b sentence splitting."""
     import argparse
@@ -284,7 +315,7 @@ def main():
     parser.add_argument("--file_id", required=True, help="File identifier")
     parser.add_argument("--json_path", required=True, help="Path to pipeline.json")
     parser.add_argument("--config", help="Path to config.yaml (unused, for compatibility)")
-    parser.add_argument("--output_dir", default="phase3b_chunks", help="Output directory")
+    parser.add_argument("--output_dir", default=str(PROJECT_ROOT / "phase3b_chunks"), help="Output directory")
 
     args = parser.parse_args()
 
@@ -294,7 +325,7 @@ def main():
     output_dir = Path(args.output_dir)
 
     # Get text file path from Phase 2 data
-    text_path = get_phase2_text_path(pipeline_path, args.file_id)
+    text_path = resolve_text_path(get_phase2_text_path(pipeline_path, args.file_id), pipeline_path)
 
     if not text_path.exists():
         logger.error(f"Text file not found: {text_path}")

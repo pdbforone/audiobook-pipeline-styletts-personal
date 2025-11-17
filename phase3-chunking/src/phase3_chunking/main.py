@@ -8,6 +8,7 @@ import yaml
 import os
 import sys
 import warnings
+import hashlib
 
 try:
     from filelock import FileLock
@@ -50,6 +51,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore", category=UserWarning, module="textstat.textstat")
+
+
+def compute_sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
+    """Compute SHA256 for change detection and reuse checks."""
+    sha = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(chunk_size), b""):
+            sha.update(block)
+    return sha.hexdigest()
 
 
 def find_monorepo_root(start_path: Path) -> Path:
@@ -150,6 +160,33 @@ def process_chunking(
         logger.error(f"Failed to read text file: {e}")
         raise
     
+    # Compute hash for reuse checks
+    try:
+        current_hash = compute_sha256(text_path_abs)
+    except Exception as exc:
+        logger.warning(f"Phase 3: could not hash source text ({exc}); will continue.")
+        current_hash = None
+    
+    # Early reuse check: if phase3 has a success with matching hash and chunk files exist, skip work
+    existing_phase3 = None
+    try:
+        with open(Path(json_path).absolute(), "r") as f:
+            existing_data = json.load(f)
+        existing_phase3 = existing_data.get("phase3", {}).get("files", {}).get(file_id or text_path_abs.stem, {})
+    except Exception as exc:
+        logger.debug(f"Phase 3 reuse: could not load pipeline.json ({exc}); proceeding.")
+    
+    if existing_phase3 and existing_phase3.get("status") == "success":
+        existing_hash = existing_phase3.get("source_hash")
+        chunk_paths_existing = existing_phase3.get("chunk_paths") or []
+        if chunk_paths_existing and all(Path(p).exists() for p in chunk_paths_existing):
+            if current_hash is None or not existing_hash or existing_hash == current_hash:
+                logger.info("Phase 3: existing chunks found with matching hash; skipping chunking.")
+                try:
+                    return ChunkRecord(**existing_phase3)
+                except Exception as exc:
+                    logger.warning(f"Phase 3 reuse: failed to hydrate existing record ({exc}); regenerating.")
+
     if not text or not text.strip():
         raise ValueError(f"Text file is empty: {text_path_abs}")
     
@@ -266,6 +303,7 @@ def process_chunking(
         applied_profile=None if profile == "auto" else profile,
         coherence_threshold=getattr(config, "coherence_threshold", None),
         flesch_threshold=getattr(config, "flesch_threshold", None),
+        source_hash=current_hash,
     )
     
     return record
@@ -425,7 +463,11 @@ def _merge_to_json_impl(record: ChunkRecord, json_path_abs: Path, file_id: str, 
     if "phase3" not in data:
         data["phase3"] = {"files": {}, "errors": [], "metrics": {}}
     
-    data["phase3"]["files"][file_id] = record.model_dump()
+    try:
+        data["phase3"]["files"][file_id] = record.model_dump()
+    except AttributeError:
+        # Pydantic v1 fallback
+        data["phase3"]["files"][file_id] = record.dict()
     
     metrics = record.get_metrics()
     data["phase3"]["files"][file_id]["metrics"] = metrics

@@ -744,11 +744,11 @@ def build_ui():
                                 value=False,
                                 info="Skip re-enhancement when enhanced WAVs already exist"
                             )
-                            concat_only = gr.Checkbox(
-                                label="Concat Only (reuse enhanced WAVs if present)",
-                                value=False,
-                                info="Skip re-enhancement when enhanced WAVs already exist"
-                            )
+
+                        gr.Markdown(
+                            "Tip: When launching from CLI, use `--phase5-concat-only` to reuse enhanced WAVs without reprocessing.",
+                            elem_classes=["text-sm"],
+                        )
 
                         gr.Markdown("**Phases to Run:**")
                         with gr.Row():

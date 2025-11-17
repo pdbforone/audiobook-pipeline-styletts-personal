@@ -15,6 +15,7 @@ class ChunkRecord(BaseModel):
     errors: List[str] = []
     timestamps: Dict[str, float] = {}
     chunk_metrics: Optional[Dict[str, Any]] = None  # Chunk size/duration metrics
+    source_hash: Optional[str] = None  # Hash of source text to enable reuse
     
     # NEW: Genre-aware fields
     applied_profile: Optional[str] = None  # Genre profile used (e.g., 'philosophy', 'fiction')

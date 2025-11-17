@@ -327,7 +327,12 @@ def merge_to_json(
     if file_id not in data["phase1"]["files"]:
         data["phase1"]["files"][file_id] = {}
 
-    data["phase1"]["files"][file_id].update(metadata.model_dump())
+    try:
+        payload = metadata.model_dump()
+    except AttributeError:
+        payload = metadata.dict()
+
+    data["phase1"]["files"][file_id].update(payload)
 
     # Add per-file metric (for aggregate later)
     data["phase1"]["files"][file_id]["metrics"] = {
@@ -377,7 +382,12 @@ def main():
     if metadata:
         file_id = Path(args.file).stem
         merge_to_json(metadata, args.json_path, file_id)
-        logger.info(f"Success: {metadata.model_dump_json(indent=2)}")
+        try:
+            serialized = metadata.model_dump_json(indent=2)
+        except AttributeError:
+            import json as _json
+            serialized = _json.dumps(metadata.dict(), indent=2)
+        logger.info(f"Success: {serialized}")
     else:
         logger.error("Validation failed.")
 

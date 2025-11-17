@@ -21,7 +21,8 @@ ENGINE_REQUIREMENTS = {
     "kokoro": ROOT / "envs" / "requirements_kokoro.txt",
 }
 PYTHON_CANDIDATES = {
-    "xtts": ("python3.11", "python3.10", "python3.9", "python3"),
+    # Include generic 'python' fallback for Windows where python3.x may not be on PATH
+    "xtts": ("python3.11", "python3.10", "python3.9", "python3", "python"),
     "kokoro": ("python3.11", "python3", "python"),
 }
 

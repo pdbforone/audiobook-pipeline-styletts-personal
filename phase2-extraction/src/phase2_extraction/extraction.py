@@ -384,8 +384,13 @@ def merge_to_json(record: ExtractionRecord, json_path: str, file_id: str):
     
     if "phase2" not in data:
         data["phase2"] = {"files": {}, "errors": [], "metrics": {}}
-    
-    data["phase2"]["files"][file_id] = record.model_dump()
+
+    try:
+        payload = record.model_dump()
+    except AttributeError:
+        payload = record.dict()
+
+    data["phase2"]["files"][file_id] = payload
     data["phase2"]["files"][file_id]["metrics"] = {
         "yield_pct": record.yield_pct,
         "quality_score": record.quality_score,

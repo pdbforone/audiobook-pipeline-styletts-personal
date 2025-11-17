@@ -81,19 +81,22 @@ def load_pipeline_json(json_path: Path) -> Dict[str, Any]:
         return json.load(f)
 
 
-def normalize_pipeline_path(raw_path: str) -> Path:
-    """Resolve paths saved in pipeline.json (often Windows absolute paths)."""
+def normalize_pipeline_path(raw_path: str, pipeline_json: Optional[Path] = None) -> Path:
+    """Resolve chunk paths saved in pipeline.json to an existing absolute path."""
     if not raw_path:
         raise FileNotFoundError("Empty chunk path")
 
     normalized = raw_path.strip().strip('"')
-    candidates: List[Path] = []
-
     expanded = Path(normalized).expanduser()
+
+    candidates: List[Path] = []
     candidates.append(expanded)
 
     if not expanded.is_absolute():
         candidates.append((PROJECT_ROOT / normalized).resolve())
+
+    if pipeline_json:
+        candidates.append((pipeline_json.parent / normalized).resolve())
 
     if re.match(r"^[A-Za-z]:\\", normalized):
         win_path = PureWindowsPath(normalized)
@@ -142,19 +145,32 @@ def collect_chunks(
     pipeline_data: Dict[str, Any],
     file_id: str,
     chunk_index: Optional[int] = None,
+    pipeline_json: Optional[Path] = None,
 ) -> Tuple[str, List[ChunkPayload]]:
     """Load chunk paths from phase3 section and sanitize text for synthesis."""
     resolved_key, phase3_entry = resolve_pipeline_file(pipeline_data, "phase3", file_id)
-    if not phase3_entry:
-        raise ValueError(f"No phase3 entry found for '{file_id}'. Run phase3 first.")
 
-    chunk_paths = phase3_entry.get("chunk_paths", [])
+    chunk_paths = phase3_entry.get("chunk_paths", []) if phase3_entry else []
+
+    # Fallback: glob phase3b_chunks if pipeline lacks phase3 entry (or empty)
+    if not chunk_paths:
+        fallback_dir = PROJECT_ROOT / "phase3b_chunks" / file_id
+        if fallback_dir.exists():
+            chunk_paths = sorted(str(p) for p in fallback_dir.glob("chunk_*.txt"))
+            if chunk_paths:
+                logger.warning(
+                    "Phase 3 entry missing for '%s'; using filesystem chunks at %s",
+                    file_id,
+                    fallback_dir,
+                )
+                resolved_key = file_id
+
     if not chunk_paths:
         raise ValueError(f"No chunk paths recorded for '{file_id}'.")
 
     chunk_payloads: List[ChunkPayload] = []
     for index, raw_path in enumerate(chunk_paths):
-        chunk_path = normalize_pipeline_path(raw_path)
+        chunk_path = normalize_pipeline_path(raw_path, pipeline_json=pipeline_json)
         if not chunk_path.exists():
             raise FileNotFoundError(f"Chunk file not found: {raw_path}")
 
@@ -460,6 +476,7 @@ def main() -> int:
         pipeline_data,
         args.file_id,
         chunk_index=args.chunk_id,
+        pipeline_json=json_path,
     )
     if not chunks:
         logger.error("No chunks discovered for %s", args.file_id)
