@@ -181,7 +181,10 @@ def archive_final_audiobook(file_id: str, pipeline_json: Path) -> None:
 
     try:
         shutil.copy2(source_path, dest_path)
-        logger.info(f"Archived final audiobook to {dest_path}")
+        # Also copy canonical name (audiobook.mp3) in the title folder
+        canonical_path = archive_dir / "audiobook.mp3"
+        shutil.copy2(source_path, canonical_path)
+        logger.info(f"Archived final audiobook to {dest_path} and {canonical_path}")
     except Exception as exc:
         logger.warning(f"Failed to archive audiobook copy: {exc}")
 
@@ -804,48 +807,45 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
     config['quality_validation_enabled'] = False
     config['snr_threshold'] = 10.0
     config['noise_reduction_factor'] = 0.1
-    
-    # CRITICAL FIX: Disable resume so all chunks are processed fresh
-    config['resume_on_failure'] = False
-    logger.info("WARNING: Disabled resume_on_failure to force fresh processing of all chunks")
-    
-    # CRITICAL FIX #2: Clear Phase 5's old data from pipeline.json to prevent resume logic from filtering chunks
-    try:
-        state = PipelineState(pipeline_json, validate_on_read=False)
 
-        with state.transaction() as txn:
-            if 'phase5' in txn.data:
-                old_chunk_count = len(txn.data.get('phase5', {}).get('chunks', []))
-                logger.info(f"WARNING: Clearing {old_chunk_count} old Phase 5 chunks from pipeline.json")
-                del txn.data['phase5']
+    # Allow resume by default; only wipe state if explicitly requested
+    if 'resume_on_failure' not in config:
+        config['resume_on_failure'] = True
+    logger.info("Resume_on_failure=%s", config.get('resume_on_failure'))
 
-        logger.info("✓ Cleared Phase 5 data atomically - starting fresh")
-    except Exception as e:
-        logger.warning(f"Could not clear Phase 5 data (non-fatal): {e}")
-    
-    # CRITICAL FIX #3: Clear Phase 5's processed directory for truly fresh start
-    import shutil
-    processed_dir = phase_dir / "processed"
-    output_dir = phase_dir / "output"
-    
-    try:
-        if processed_dir.exists():
-            file_count = len(list(processed_dir.glob("*.wav")))
-            if file_count > 0:
-                logger.info(f"WARNING: Clearing {file_count} old files from processed/ directory")
-                shutil.rmtree(processed_dir)
-                processed_dir.mkdir(parents=True, exist_ok=True)
-                logger.info("OK Cleared processed/ directory")
-        
-        # Also clear old final audiobook if it exists
-        if output_dir.exists():
-            audiobook_path = output_dir / "audiobook.mp3"
-            if audiobook_path.exists():
-                logger.info("WARNING: Removing old audiobook.mp3")
-                audiobook_path.unlink()
-                logger.info("OK Removed old audiobook.mp3")
-    except Exception as e:
-        logger.warning(f"Could not clear processed files (non-fatal): {e}")
+    clear_phase5 = os.environ.get("PHASE5_CLEAR", "0") == "1"
+    if clear_phase5:
+        try:
+            state = PipelineState(pipeline_json, validate_on_read=False)
+            with state.transaction() as txn:
+                if 'phase5' in txn.data:
+                    old_chunk_count = len(txn.data.get('phase5', {}).get('chunks', []))
+                    logger.info(f"WARNING: Clearing {old_chunk_count} old Phase 5 chunks from pipeline.json")
+                    del txn.data['phase5']
+            logger.info("✓ Cleared Phase 5 data from pipeline.json")
+        except Exception as e:
+            logger.warning(f"Could not clear Phase 5 data (non-fatal): {e}")
+
+        import shutil
+        processed_dir = phase_dir / "processed"
+        output_dir = phase_dir / "output"
+        try:
+            if processed_dir.exists():
+                file_count = len(list(processed_dir.glob("*.wav")))
+                if file_count > 0:
+                    logger.info(f"WARNING: Clearing {file_count} old files from processed/ directory")
+                    shutil.rmtree(processed_dir)
+                    processed_dir.mkdir(parents=True, exist_ok=True)
+                    logger.info("OK Cleared processed/ directory")
+
+            if output_dir.exists():
+                audiobook_path = output_dir / "audiobook.mp3"
+                if audiobook_path.exists():
+                    logger.info("WARNING: Removing old audiobook.mp3")
+                    audiobook_path.unlink()
+                    logger.info("OK Removed old audiobook.mp3")
+        except Exception as e:
+            logger.warning(f"Could not clear processed files (non-fatal): {e}")
     
     # Always refresh audiobook title so metadata matches current input
     config['audiobook_title'] = humanize_title(file_id)
