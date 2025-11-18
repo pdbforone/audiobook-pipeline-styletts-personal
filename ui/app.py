@@ -12,6 +12,9 @@ import json
 import logging
 import signal
 import atexit
+import re
+import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict
 import yaml
@@ -579,21 +582,111 @@ def create_batch_audiobooks(
     return "\n".join(results)
 
 
+def _normalize_voice_id(raw_id: str) -> str:
+    """Normalize user-provided voice ID into snake_case."""
+    slug = re.sub(r"[^a-z0-9_]+", "_", (raw_id or "").strip().lower())
+    slug = re.sub(r"_+", "_", slug)
+    return slug.strip("_")
+
+
 def add_voice(
     voice_name: str,
     voice_file,
     narrator_name: str,
     genre_tags: str
-) -> str:
+) -> Tuple[str, str, gr.Dropdown, gr.Dropdown]:
     """Add a new voice to the library"""
+
+    config_path = PROJECT_ROOT / "phase4_tts" / "configs" / "voice_references.json"
+
+    def _build_response(message: str, select_choice: Optional[str] = None):
+        choices = state.get_voice_list()
+        dropdown_kwargs = {"choices": choices}
+        if select_choice and select_choice in choices:
+            dropdown_kwargs["value"] = select_choice
+
+        gallery_html = _generate_voice_gallery_html(state.voices)
+        return (
+            message,
+            gallery_html,
+            gr.Dropdown.update(**dropdown_kwargs),
+            gr.Dropdown.update(**dropdown_kwargs),
+        )
+
     if not voice_name or not voice_file:
-        return "❌ Please provide voice name and audio file"
+        return _build_response("❌ Please provide a voice ID and audio sample")
+
+    normalized_id = _normalize_voice_id(voice_name)
+    if not normalized_id:
+        return _build_response("❌ Voice ID must contain letters or numbers")
+
+    uploaded_path = Path(voice_file if isinstance(voice_file, (str, Path)) else getattr(voice_file, "name", ""))
+    if not uploaded_path or not uploaded_path.exists():
+        return _build_response("❌ Uploaded audio file is not accessible")
+
+    allowed_exts = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
+    ext = uploaded_path.suffix.lower()
+    if ext not in allowed_exts:
+        return _build_response(f"❌ Unsupported audio format '{ext}'. Please upload WAV/MP3/FLAC/OGG/M4A")
+
+    if not config_path.exists():
+        return _build_response("❌ Voice reference configuration is missing")
 
     try:
-        # TODO: Implement voice addition logic
-        return f"✅ Voice '{voice_name}' added successfully!\n\nNarrator: {narrator_name}\nGenres: {genre_tags}"
-    except Exception as e:
-        return f"❌ Error adding voice: {str(e)}"
+        with open(config_path, "r", encoding="utf-8") as f:
+            config_data = json.load(f)
+    except json.JSONDecodeError as exc:
+        return _build_response(f"❌ Unable to parse voice configuration: {exc}")
+
+    voice_refs = config_data.setdefault("voice_references", {})
+    if normalized_id in voice_refs:
+        return _build_response(f"❌ Voice ID '{normalized_id}' already exists")
+
+    destination_dir = PROJECT_ROOT / "voice_samples" / "custom"
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination_path = destination_dir / f"{normalized_id}{ext}"
+
+    try:
+        shutil.copy(uploaded_path, destination_path)
+    except Exception as exc:
+        logger.error("Failed to copy new voice sample", exc_info=True)
+        return _build_response(f"❌ Failed to store audio sample: {exc}")
+
+    tags = [tag.strip() for tag in (genre_tags or "").split(",") if tag.strip()]
+    narrator = (narrator_name or "").strip() or normalized_id.replace("_", " ").title()
+    description = f"Custom voice for {', '.join(tags)}" if tags else "Custom voice added via UI"
+    notes = f"Added via UI on {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"
+
+    new_entry = {
+        "local_path": destination_path.relative_to(PROJECT_ROOT).as_posix(),
+        "narrator_name": narrator,
+        "preferred_profiles": tags,
+        "description": description,
+        "notes": notes,
+    }
+
+    voice_refs[normalized_id] = new_entry
+    config_data["voice_references"] = dict(sorted(voice_refs.items()))
+
+    try:
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+    except Exception as exc:
+        logger.error("Failed to update voice configuration", exc_info=True)
+        return _build_response(f"❌ Could not save voice configuration: {exc}")
+
+    # Refresh in-memory state and build dropdown option for the new voice
+    state.voices = state._load_voices()
+    refreshed_meta = state.voices.get(normalized_id, new_entry)
+    profiles_preview = ", ".join(refreshed_meta.get("preferred_profiles", []))
+    dropdown_choice = f"{normalized_id}: {refreshed_meta.get('narrator_name', 'Unknown')} ({profiles_preview})"
+
+    message = (
+        f"✅ Voice '{normalized_id}' added successfully!"
+        f"\n\nNarrator: {narrator}\nStored at: {new_entry['local_path']}"
+    )
+    return _build_response(message, dropdown_choice)
 
 
 def get_voice_details(voice_selection: str) -> str:
@@ -987,7 +1080,7 @@ def build_ui():
                     new_narrator_name,
                     new_genre_tags
                 ],
-                outputs=[add_voice_status]
+                outputs=[add_voice_status, voice_gallery, voice_dropdown, batch_voice]
             )
 
         # =================================================================
