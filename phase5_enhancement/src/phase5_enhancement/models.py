@@ -76,7 +76,7 @@ class EnhancementConfig(BaseModel):
 
     # Output Parameters
     crossfade_duration: float = Field(
-        default=0.5, ge=0.0, le=5.0, description="Crossfade duration in seconds"
+        default=0.05, ge=0.0, le=5.0, description="Crossfade duration in seconds"
     )
     mp3_bitrate: str = Field(
         default="192k",

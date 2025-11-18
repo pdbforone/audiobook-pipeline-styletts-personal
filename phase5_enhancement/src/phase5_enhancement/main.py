@@ -671,19 +671,45 @@ def enhance_chunk(
 def concatenate_with_crossfades(
     chunks: list[np.ndarray], sr: int, crossfade_sec: float
 ) -> np.ndarray:
+    def _leading_silence_seconds(
+        audio: np.ndarray, sample_rate: int, threshold: float = 1e-4, max_scan_sec: float = 0.6
+    ) -> float:
+        """Estimate leading silence; returns seconds until signal crosses threshold."""
+        if audio.size == 0 or sample_rate <= 0:
+            return 0.0
+        scan_samples = min(audio.size, int(max_scan_sec * sample_rate))
+        if scan_samples <= 0:
+            return 0.0
+        window = np.abs(audio[:scan_samples])
+        non_silent = np.where(window > threshold)[0]
+        if non_silent.size == 0:
+            return scan_samples / sample_rate
+        return non_silent[0] / sample_rate
+
     if not chunks:
         return np.array([])
+    # Clamp to a small, narration-safe crossfade; default to <100 ms even if a larger value is passed.
+    target_crossfade = max(0.0, min(crossfade_sec, 0.1))
+    fade_samples = int(target_crossfade * sr)
+
     combined = chunks[0].copy()
-    fade_samples = int(crossfade_sec * sr)
+
     for chunk in chunks[1:]:
-        if len(combined) < fade_samples or len(chunk) < fade_samples:
+        if chunk.size == 0:
+            continue
+
+        lead_silence = _leading_silence_seconds(chunk, sr)
+        effective_fade = 0 if lead_silence >= 0.2 else fade_samples
+
+        # Skip crossfade if either side is too short for the window
+        if effective_fade < 4 or len(combined) < effective_fade or len(chunk) < effective_fade:
             combined = np.concatenate([combined, chunk])
         else:
-            fade_out = np.linspace(1, 0, fade_samples)
-            fade_in = np.linspace(0, 1, fade_samples)
-            combined[-fade_samples:] *= fade_out
-            combined[-fade_samples:] += chunk[:fade_samples] * fade_in
-            combined = np.concatenate([combined, chunk[fade_samples:]])
+            fade_out = np.linspace(1, 0, effective_fade)
+            fade_in = np.linspace(0, 1, effective_fade)
+            combined[-effective_fade:] *= fade_out
+            combined[-effective_fade:] += chunk[:effective_fade] * fade_in
+            combined = np.concatenate([combined, chunk[effective_fade:]])
     return combined
 
 

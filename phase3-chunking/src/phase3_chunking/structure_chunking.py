@@ -78,7 +78,7 @@ def chunk_by_structure(
     text: str,
     structure: List[dict],
     config: ValidationConfig,
-    max_chunk_words: int = 60,  # FIXED: Reduced from 5000 to match Phase 4 25s limit (~300 chars)
+    max_chunk_words: int = 70,  # Tuned for 12–18s CPU chunks (~50–70 words)
 ) -> Tuple[List[str], List[float], List]:
     """
     Create chunks based on document structure (chapters/sections).
@@ -93,7 +93,7 @@ def chunk_by_structure(
         text: Full document text
         structure: List of structure nodes from Phase 2
         config: Validation config with thresholds
-        max_chunk_words: Maximum words per chunk (default 5000)
+        max_chunk_words: Maximum words per chunk (default 70)
     
     Returns:
         Tuple of (chunks, coherence_scores, embeddings)

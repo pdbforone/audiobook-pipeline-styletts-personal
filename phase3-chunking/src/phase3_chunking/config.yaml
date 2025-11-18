@@ -1,9 +1,9 @@
 json_path: pipeline.json
 chunks_dir: chunks
-chunk_min_words: 200  # Align to 300 chars
-chunk_max_words: 400  # Align to 500 chars
-chunk_min_chars: 1000  # New: Min chars
-chunk_max_chars: 2000  # New: Max chars
+chunk_min_words: 30   # ~9-12s floor on Ryzen 5500U
+chunk_max_words: 75   # ~18-20s ceiling for pacing stability
+chunk_min_chars: 420  # Floor tuned to new duration model
+chunk_max_chars: 950  # Ceiling tuned to finish sentences without drift
 coherence_threshold: 0.5
 flesch_threshold: 60
-max_chunk_duration: 120.0
+max_chunk_duration: 20.0

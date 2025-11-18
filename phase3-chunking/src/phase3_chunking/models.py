@@ -223,15 +223,15 @@ class ValidationConfig(BaseModel):
 
     coherence_threshold: float = 0.87
     flesch_threshold: float = 60.0
-    min_chunk_words: int = 200
-    max_chunk_words: int = 400
-    min_chunk_chars: int = 1000  # Character-based limit (optimized)
-    max_chunk_chars: int = 2000  # Character-based limit (optimized)
-    max_chunk_duration: float = 25.0  # Duration limit in seconds
-    soft_chunk_chars: int = 1800  # Preferred upper bound before completion kicks in
-    hard_chunk_chars: int = 2000  # Historic max; still enforced before emergency rules
-    emergency_chunk_chars: int = 3000  # Absolute max to avoid TTS corruption
-    emergency_chunk_duration: float = 38.0  # Absolute duration ceiling
+    min_chunk_words: int = 30
+    max_chunk_words: int = 75
+    min_chunk_chars: int = 420  # Character-based limit tuned for ~9s minimum
+    max_chunk_chars: int = 950  # Character-based limit tuned for ~21s maximum
+    max_chunk_duration: float = 20.0  # Duration limit in seconds
+    soft_chunk_chars: int = 780  # Preferred upper bound (~17s) before completion kicks in
+    hard_chunk_chars: int = 950  # Upper bound to finish sentences (~21s)
+    emergency_chunk_chars: int = 1250  # Absolute max to avoid TTS corruption
+    emergency_chunk_duration: float = 24.0  # Absolute duration ceiling
     genre_profile: str = "auto"  # Preferred genre profile for voice/metric selection
 
     @field_validator("coherence_threshold")

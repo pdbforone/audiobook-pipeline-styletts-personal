@@ -58,8 +58,16 @@
 - Recent upgrades (Nov 2025):
   - Phase 3 sentence detection: spaCy primary with pySBD fallback for abbreviation/bullet-heavy text. Dependency: `pysbd`.
   - Phase 4 text prep: optional g2p_en number/abbrev normalization toggled in `config.yaml` (`enable_g2p`, `normalize_numbers`, `custom_pronunciations`). Dependency: `g2p-en`. Piper intentionally excluded until a vetted adult audiobook voice is available.
-  - Phase 5 enhancement: added optional RNNoise denoise and Silero VAD speech coverage/trim toggles (`enable_rnnoise`, `enable_silero_vad`, `silero_vad_threshold`, `trim_silence_with_vad`). Dependencies: `rnnoise`, `silero-vad` (+ torch/torchaudio). DeepFilterNet and noisereduce remain supported. Metadata now records speech ratios.
+- Phase 5 enhancement: added optional RNNoise denoise and Silero VAD speech coverage/trim toggles (`enable_rnnoise`, `enable_silero_vad`, `silero_vad_threshold`, `trim_silence_with_vad`). Dependencies: `rnnoise`, `silero-vad` (+ torch/torchaudio). DeepFilterNet and noisereduce remain supported. Metadata now records speech ratios.
   - Phase 5.5 subtitles: optional aeneas forced alignment when reference text is provided (`--use-aeneas` / `use_aeneas_alignment`).
+
+## Operational Heuristics (Dec 2025)
+- Preferred XTTS v2 CPU chunk length 12–18 s using sentence/semantic boundaries; split long sentences at semicolons/emdashes. Current tuning: min_chunk_words=30, max_chunk_words=75; char limits min=420, soft=780, hard=950, emergency=1250; duration model 2700 chars/min & 210 wpm; max_duration 20 s (soft target 18 s).
+- Concatenation: default 50 ms crossfade (clamped to ≤100 ms) with silence guard—skip crossfade when leading silence ≥200 ms to avoid word swallow.
+- CPU guard: cap TTS workers to <=3 on Ryzen 5 5500U to prevent throttling; monitor wall-clock RT per chunk.
+- Kokoro-onnx CPU fallback: ~1.2–1.5x RT for ≤10 s chunks; switch when XTTS RT per chunk exceeds ~4x or risks OOM.
+- Defaults: enable Silero VAD-driven trim; keep RNNoise opt-in to avoid over-softening narration.
+- Mastering (narration): target -18 to -16 LUFS with soft-knee limiter; avoid stacking heavy denoise + limiter unless noisy input demands it.
 
 ## Documentation Reality Checks
 - `README_EXCELLENCE.md` and `PROJECT_OVERVIEW.md` reflect the current CPU-only, XTTS + Kokoro setup and personal-use scope.

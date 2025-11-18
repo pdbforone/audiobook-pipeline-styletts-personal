@@ -527,6 +527,14 @@ def main() -> int:
 
     language = args.language or config.get("language", "en")
     workers = max(1, args.workers)
+    cpu_worker_cap = 3
+    if workers > cpu_worker_cap:
+        logger.info(
+            "Capping workers to %d for CPU stability on Ryzen 5 (requested %d)",
+            cpu_worker_cap,
+            workers,
+        )
+        workers = cpu_worker_cap
     skip_existing = bool(args.resume)
 
     logger.info("=" * 80)

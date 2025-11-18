@@ -25,18 +25,18 @@ logger = logging.getLogger(__name__)
 _nlp = None
 _model = None
 
-# ✅ FLEXIBLE LIMITS: Three-tier structure for semantic completeness
-SOFT_LIMIT_CHARS = 1800  # Preferred chunk size (~23s)
-HARD_LIMIT_CHARS = 2000  # Can extend to here for sentence completion (~25s)
-EMERGENCY_LIMIT_CHARS = 3000  # Absolute max for completing philosophical arguments (~38s)
-MIN_CHUNK_CHARS = 1000  # Minimum viable chunk size
+# ✅ FLEXIBLE LIMITS: Three-tier structure tuned for 12–18s CPU chunks
+SOFT_LIMIT_CHARS = 780   # Preferred chunk size (~17s on Ryzen 5 CPU XTTS cadence)
+HARD_LIMIT_CHARS = 950   # Allow modest extension (~21s) to complete sentences
+EMERGENCY_LIMIT_CHARS = 1250  # Absolute max (~28s) to avoid corrupting arguments
+MIN_CHUNK_CHARS = 420    # Minimum viable chunk size (~9s) to keep pacing natural
 
-# Duration prediction constants (calibrated for Fish Speech fast delivery)
-# Fish Speech averages ~3200 chars/min (~53 chars/sec) and ~640 words/min.
-CHARS_PER_MINUTE = 3200
-WORDS_PER_MINUTE = 640
-MAX_DURATION_SECONDS = 25  # Target maximum duration for preferred chunks
-EMERGENCY_DURATION_SECONDS = 38  # Absolute max for emergency completion
+# Duration prediction constants (calibrated for XTTS/Kokoro CPU delivery)
+# Assumes ~2700 chars/min (~45 chars/sec) and ~210 words/min on this hardware.
+CHARS_PER_MINUTE = 2700
+WORDS_PER_MINUTE = 210
+MAX_DURATION_SECONDS = 18.0  # Target max for preferred chunks
+EMERGENCY_DURATION_SECONDS = 24.0  # Absolute ceiling for completions
 
 
 def get_nlp():
