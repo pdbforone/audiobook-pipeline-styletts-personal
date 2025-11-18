@@ -331,6 +331,7 @@ def synthesize_chunk_with_engine(
         logger.info("Skipping %s (already exists)", chunk.chunk_id)
         return ChunkResult(chunk.chunk_id, True, existing_out, None)
 
+    synth_start = time.time()
     try:
         audio_out, used_engine = engine_manager.synthesize(
             text=chunk.text,
@@ -345,12 +346,85 @@ def synthesize_chunk_with_engine(
         logger.error("Chunk %s failed on engine '%s': %s", chunk.chunk_id, engine_name, exc)
         return ChunkResult(chunk.chunk_id, False, None, None, str(exc))
 
+    synth_elapsed = time.time() - synth_start
+
     audio = np.asarray(audio_out, dtype=np.float32)
     if audio.ndim > 1:
         audio = audio.mean(axis=0)
     audio = np.clip(audio, -1.0, 1.0)
 
     sample_rate = engine_manager.get_engine(used_engine).get_sample_rate()
+    audio_duration = len(audio) / sample_rate if sample_rate else 0.0
+    rt_factor = synth_elapsed / max(audio_duration, 1e-6) if audio_duration else float("inf")
+    logger.info(
+        "Chunk %s via '%s': wall %.2fs, audio %.2fs, RT x%.2f",
+        chunk.chunk_id,
+        used_engine,
+        synth_elapsed,
+        audio_duration,
+        rt_factor,
+    )
+
+    # Latency-driven fallback: if primary is very slow and Kokoro is available, try once.
+    slow_rt_threshold = 4.0
+    kokoro_available = "kokoro" in engine_manager.engines
+    if (
+        allow_fallback
+        and used_engine != "kokoro"
+        and rt_factor > slow_rt_threshold
+        and kokoro_available
+    ):
+        logger.warning(
+            "Chunk %s RT x%.2f exceeds %.1f; attempting Kokoro fallback for speed",
+            chunk.chunk_id,
+            rt_factor,
+            slow_rt_threshold,
+        )
+        try:
+            fallback_start = time.time()
+            fallback_audio, fallback_engine = engine_manager.synthesize(
+                text=chunk.text,
+                reference_audio=reference_audio,
+                engine="kokoro",
+                language=language,
+                fallback=False,
+                return_engine=True,
+                **chunk_kwargs,
+            )
+            fallback_elapsed = time.time() - fallback_start
+            fallback_audio = np.asarray(fallback_audio, dtype=np.float32)
+            if fallback_audio.ndim > 1:
+                fallback_audio = fallback_audio.mean(axis=0)
+            fallback_audio = np.clip(fallback_audio, -1.0, 1.0)
+            kokoro_sr = engine_manager.get_engine(fallback_engine).get_sample_rate()
+            kokoro_dur = len(fallback_audio) / kokoro_sr if kokoro_sr else 0.0
+            kokoro_rt = fallback_elapsed / max(kokoro_dur, 1e-6) if kokoro_dur else float("inf")
+
+            # Replace audio if Kokoro is materially faster or XTTS was effectively stalled.
+            if kokoro_rt < rt_factor or rt_factor == float("inf"):
+                audio = fallback_audio
+                sample_rate = kokoro_sr
+                used_engine = fallback_engine
+                rt_factor = kokoro_rt
+                logger.info(
+                    "Chunk %s switched to Kokoro: wall %.2fs, audio %.2fs, RT x%.2f",
+                    chunk.chunk_id,
+                    fallback_elapsed,
+                    kokoro_dur,
+                    kokoro_rt,
+                )
+            else:
+                logger.info(
+                    "Chunk %s kept primary '%s' (fallback RT x%.2f not better)",
+                    chunk.chunk_id,
+                    used_engine,
+                    kokoro_rt,
+                )
+        except Exception as fallback_exc:  # pylint: disable=broad-except
+            logger.warning(
+                "Chunk %s Kokoro latency fallback failed: %s", chunk.chunk_id, fallback_exc
+            )
+
     output_path = output_dir / f"{chunk.chunk_id}.wav"
     sf.write(output_path, audio, sample_rate)
 

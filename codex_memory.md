@@ -66,6 +66,7 @@
 - Concatenation: default 50 ms crossfade (clamped to ≤100 ms) with silence guard—skip crossfade when leading silence ≥200 ms to avoid word swallow.
 - CPU guard: cap TTS workers to <=3 on Ryzen 5 5500U to prevent throttling; monitor wall-clock RT per chunk.
 - Kokoro-onnx CPU fallback: ~1.2–1.5x RT for ≤10 s chunks; switch when XTTS RT per chunk exceeds ~4x or risks OOM.
+- Latency monitor: log wall vs audio duration; if RT >4x and Kokoro available, attempt single Kokoro re-render and keep if faster.
 - Defaults: enable Silero VAD-driven trim; keep RNNoise opt-in to avoid over-softening narration.
 - Mastering (narration): target -18 to -16 LUFS with soft-knee limiter; avoid stacking heavy denoise + limiter unless noisy input demands it.
 
