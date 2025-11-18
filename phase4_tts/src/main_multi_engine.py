@@ -68,6 +68,9 @@ class ChunkResult:
     success: bool
     output_path: Optional[Path]
     engine_used: Optional[str]
+    rt_factor: Optional[float] = None
+    audio_duration: Optional[float] = None
+    latency_fallback_used: bool = False
     error: Optional[str] = None
 
 
@@ -366,7 +369,15 @@ def synthesize_chunk_with_engine(
     # Resume support: skip already-rendered chunks
     if skip_existing and existing_out.exists():
         logger.info("Skipping %s (already exists)", chunk.chunk_id)
-        return ChunkResult(chunk.chunk_id, True, existing_out, None)
+        return ChunkResult(
+            chunk_id=chunk.chunk_id,
+            success=True,
+            output_path=existing_out,
+            engine_used=None,
+            rt_factor=None,
+            audio_duration=None,
+            latency_fallback_used=False,
+        )
 
     synth_start = time.time()
     try:
@@ -381,7 +392,16 @@ def synthesize_chunk_with_engine(
         )
     except Exception as exc:  # pylint: disable=broad-except
         logger.error("Chunk %s failed on engine '%s': %s", chunk.chunk_id, engine_name, exc)
-        return ChunkResult(chunk.chunk_id, False, None, None, str(exc))
+        return ChunkResult(
+            chunk_id=chunk.chunk_id,
+            success=False,
+            output_path=None,
+            engine_used=None,
+            rt_factor=None,
+            audio_duration=None,
+            latency_fallback_used=False,
+            error=str(exc),
+        )
 
     synth_elapsed = time.time() - synth_start
 
@@ -393,6 +413,7 @@ def synthesize_chunk_with_engine(
     sample_rate = engine_manager.get_engine(used_engine).get_sample_rate()
     audio_duration = len(audio) / sample_rate if sample_rate else 0.0
     rt_factor = synth_elapsed / max(audio_duration, 1e-6) if audio_duration else float("inf")
+    latency_fallback_used = False
     logger.info(
         "Chunk %s via '%s': wall %.2fs, audio %.2fs, RT x%.2f",
         chunk.chunk_id,
@@ -443,6 +464,8 @@ def synthesize_chunk_with_engine(
                 sample_rate = kokoro_sr
                 used_engine = fallback_engine
                 rt_factor = kokoro_rt
+                audio_duration = kokoro_dur
+                latency_fallback_used = True
                 logger.info(
                     "Chunk %s switched to Kokoro: wall %.2fs, audio %.2fs, RT x%.2f",
                     chunk.chunk_id,
@@ -466,7 +489,15 @@ def synthesize_chunk_with_engine(
     sf.write(output_path, audio, sample_rate)
 
     logger.info("Chunk %s synthesized via '%s' → %s", chunk.chunk_id, used_engine, output_path)
-    return ChunkResult(chunk.chunk_id, True, output_path, used_engine)
+    return ChunkResult(
+        chunk_id=chunk.chunk_id,
+        success=True,
+        output_path=output_path,
+        engine_used=used_engine,
+        rt_factor=rt_factor,
+        audio_duration=audio_duration,
+        latency_fallback_used=latency_fallback_used,
+    )
 
 
 def update_phase4_summary(
@@ -474,6 +505,7 @@ def update_phase4_summary(
     file_id: str,
     voice_id: str,
     requested_engine: str,
+    selected_engine: str,
     results: List[ChunkResult],
     output_dir: Path,
     duration_sec: float,
@@ -487,11 +519,17 @@ def update_phase4_summary(
     completed = sum(1 for r in results if r.success)
     failed = total - completed
     engines_used = sorted({r.engine_used for r in results if r.engine_used})
+    rt_factors = [
+        r.rt_factor for r in results if r.success and r.rt_factor is not None and np.isfinite(r.rt_factor)
+    ]
+    avg_rt_factor = float(np.mean(rt_factors)) if rt_factors else None
+    latency_fallback_count = sum(1 for r in results if r.latency_fallback_used)
 
     file_entry: Dict[str, Any] = {
         "status": "success" if failed == 0 else "partial",
         "voice_id": voice_id,
         "requested_engine": requested_engine,
+        "selected_engine": selected_engine,
         "engines_used": engines_used,
         "total_chunks": total,
         "chunks_completed": completed,
@@ -501,6 +539,8 @@ def update_phase4_summary(
             serialize_path_for_pipeline(r.output_path) for r in results if r.success and r.output_path
         ],
         "duration_seconds": duration_sec,
+        "avg_rt_factor": avg_rt_factor,
+        "latency_fallback_chunks": latency_fallback_count,
     }
 
     for result in results:
@@ -509,6 +549,9 @@ def update_phase4_summary(
             "audio_path": serialize_path_for_pipeline(result.output_path) if result.output_path else None,
             "status": "success" if result.success else "failed",
             "engine_used": result.engine_used,
+            "rt_factor": result.rt_factor,
+            "audio_seconds": result.audio_duration,
+            "latency_fallback_used": result.latency_fallback_used,
             "errors": [] if result.success else [result.error or "unknown error"],
         }
 
@@ -619,6 +662,11 @@ def main() -> int:
         action="store_true",
         help="Skip chunks whose output WAV already exists (resume support).",
     )
+    parser.add_argument(
+        "--cpu_safe",
+        action="store_true",
+        help="CPU-friendly preset: clamp workers to Ryzen-safe values, force latency fallbacks on, and enable auto-engine selection.",
+    )
 
     args = parser.parse_args()
 
@@ -631,14 +679,19 @@ def main() -> int:
     enable_g2p = bool(config.get("enable_g2p", False))
     normalize_numbers = bool(config.get("normalize_numbers", True))
     custom_overrides = config.get("custom_pronunciations", {}) or None
+    cpu_safe = bool(args.cpu_safe)
     enable_latency_fallback = not args.disable_latency_fallback and bool(
         config.get("enable_latency_fallback", True)
     )
+    if cpu_safe:
+        enable_latency_fallback = True  # Always allow faster fallback when CPU-safe mode is requested.
     slow_rt_threshold = float(
         args.slow_rt_threshold
         if args.slow_rt_threshold is not None
         else config.get("slow_rt_threshold", 4.0)
     )
+    if cpu_safe:
+        slow_rt_threshold = min(slow_rt_threshold, 3.5)  # Prefer earlier fallback when protecting CPU thermals.
 
     resolved_file_id, chunks = collect_chunks(
         pipeline_data,
@@ -657,7 +710,8 @@ def main() -> int:
 
     engine_requested = args.engine
     engine_selected = engine_requested
-    if args.auto_engine:
+    auto_engine_enabled = args.auto_engine or cpu_safe
+    if auto_engine_enabled:
         engine_selected, reason = choose_engine_auto(
             chunks,
             preferred=engine_requested,
@@ -668,6 +722,8 @@ def main() -> int:
         logger.info("Auto-engine decision: %s (requested=%s, selected=%s)", reason, engine_requested, engine_selected)
     else:
         logger.info("Auto-engine disabled. Using requested engine: %s", engine_requested)
+    if cpu_safe:
+        logger.info("CPU-safe mode: enforcing conservative throughput (workers capped, latency fallback always on).")
 
     if args.play_notification is None:
         args.play_notification = True  # Default ON unless explicitly disabled elsewhere
@@ -694,7 +750,14 @@ def main() -> int:
     language = args.language or config.get("language", "en")
     workers = max(1, args.workers)
     cpu_worker_cap = 3
-    if workers > cpu_worker_cap:
+    if cpu_safe and workers > cpu_worker_cap:
+        logger.info(
+            "CPU-safe mode: clamping workers to %d for Ryzen stability (requested %d)",
+            cpu_worker_cap,
+            workers,
+        )
+        workers = cpu_worker_cap
+    elif workers > cpu_worker_cap:
         logger.info(
             "Capping workers to %d for CPU stability on Ryzen 5 (requested %d)",
             cpu_worker_cap,
@@ -754,7 +817,8 @@ def main() -> int:
         pipeline_path=json_path,
         file_id=resolved_file_id,
         voice_id=voice_id,
-        requested_engine=engine_selected,
+        requested_engine=engine_requested,
+        selected_engine=engine_selected,
         results=results,
         output_dir=output_dir,
         duration_sec=duration,

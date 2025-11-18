@@ -3,11 +3,11 @@
 # HQ Voice Cloning Tips: Use a clean 10-20s ref audio (e.g., neutral speech from LibriVox).
 # Adjust exaggeration for emotion (0.0-1.0; higher for dramatic audiobooks), cfg_weight for stability.
 #
-# ⚡ NEW: Parallel Processing Support
-# - Use --workers N flag to set parallel chunk processing (auto-detected by default)
-# - Standalone mode: Auto-detects CPU cores (physical cores - 2, capped at 12)
-# - Batch mode (Phase 7): Auto-detects AUDIOBOOK_BATCH_MODE env var, uses 1 worker
-# - Expected speedup: 4-6x on 8-core CPU, 6-10x on 16-core CPU
+# ⚡ Parallel Processing (CPU Guardrails)
+# - Use --workers N to set parallel chunk processing.
+# - On this Ryzen 5 5500U we clamp workers to 3 for thermal stability; requesting more will be capped.
+# - Batch mode (Phase 7) still forces 1 worker when AUDIOBOOK_BATCH_MODE is set.
+# - Expected speedup: modest on CPU; keep workers ≤3 on this hardware to avoid throttling.
 #
 # Examples:
 #   python src/main.py --file_id MyBook --workers 8   # Force 8 parallel workers
@@ -29,3 +29,6 @@ enable_g2p: true           # Use number/abbreviation normalization before TTS
 normalize_numbers: true    # Expand numeric tokens (g2p_en)
 enable_latency_fallback: true   # Allow auto-switch to Kokoro when RT is too slow
 slow_rt_threshold: 4.0          # Trigger Kokoro when RT factor exceeds this value
+rt_xtts_factor: 3.2             # Estimated RT factor for XTTS on CPU (used for auto-engine planning)
+rt_kokoro_factor: 1.3           # Estimated RT factor for Kokoro-onnx on CPU
+chars_per_minute: 2700          # Character cadence used to estimate total audio duration
