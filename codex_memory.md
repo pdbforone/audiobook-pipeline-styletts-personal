@@ -69,6 +69,8 @@
 - Latency monitor: log wall vs audio duration; if RT >4x and Kokoro available, attempt single Kokoro re-render and keep if faster (configurable).
 - Defaults: enable Silero VAD-driven trim; keep RNNoise opt-in to avoid over-softening narration.
 - Mastering (narration): target -18 to -16 LUFS with soft-knee limiter; avoid stacking heavy denoise + limiter unless noisy input demands it.
+- Notification assets: Droid beeps generated locally at `assets/notifications/droid_success.wav` and `assets/notifications/droid_alert.wav` for UI/alerts (pure numpy/soundfile, CPU-safe).
+- Astromech notifications: `pipeline_common.astromech_notify` with Phase 3/4/5 CLI flag `--play_notification` to trigger success/alert beeps (winsound/sounddevice fallback).
 
 ## Documentation Reality Checks
 - `README_EXCELLENCE.md` and `PROJECT_OVERVIEW.md` reflect the current CPU-only, XTTS + Kokoro setup and personal-use scope.

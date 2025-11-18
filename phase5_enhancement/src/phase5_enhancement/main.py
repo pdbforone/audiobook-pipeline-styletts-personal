@@ -48,6 +48,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from pipeline_common import PipelineState
+from pipeline_common.astromech_notify import play_success_beep, play_alert_beep
 
 # Simple serializer placeholder (matching Phase 4 usage)
 def serialize_path_for_pipeline(path: Path) -> str:
@@ -908,6 +909,11 @@ def main():
         action="store_true",
         help="Disable silence guard; always apply crossfade",
     )
+    parser.add_argument(
+        "--play_notification",
+        action="store_true",
+        help="Play astromech notification on completion/failure",
+    )
     args = parser.parse_args()
 
     try:
@@ -978,6 +984,8 @@ def main():
 
             if not chunks:
                 logger.error("No audio chunks found to process")
+                if args.play_notification:
+                    play_alert_beep()
                 return 1
 
             # ===== RESUME LOGIC =====
@@ -1299,7 +1307,13 @@ def main():
                     logger.warning(f"[WARNING] Cleanup errors: {cleanup_errors} chunks had cleanup failures")
             logger.info("=" * 60)
 
-            return 0 if successful > 0 else 1
+            exit_code = 0 if successful > 0 else 1
+            if args.play_notification:
+                if exit_code == 0:
+                    play_success_beep()
+                else:
+                    play_alert_beep()
+            return exit_code
 
         finally:
             stop_monitor.set()
@@ -1310,11 +1324,15 @@ def main():
 
     except ValidationError as e:
         logger.error(f"Configuration validation failed: {e}")
+        if args.play_notification:
+            play_alert_beep()
         return 1
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         import traceback
         traceback.print_exc()
+        if args.play_notification:
+            play_alert_beep()
         return 1
 
 

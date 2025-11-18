@@ -42,6 +42,7 @@ except ImportError:
         calculate_chunk_metrics,
     )
     from structure_chunking import chunk_by_structure, should_use_structure_chunking
+from pipeline_common.astromech_notify import play_success_beep, play_alert_beep
 
 # Configure logging
 logging.basicConfig(
@@ -615,6 +616,11 @@ def main():
     parser.add_argument("--strict", action="store_true", help="Fail immediately if Phase 2 data missing")
     parser.add_argument("--voice", help="Override voice selection (e.g., landon_elkind, tom_weiss)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument(
+        "--play_notification",
+        action="store_true",
+        help="Play astromech beep on completion/failure",
+    )
     
     args = parser.parse_args()
     
@@ -627,6 +633,8 @@ def main():
         if not validate_voice_id(args.voice):
             logger.error(f"Invalid voice ID: {args.voice}")
             logger.info("Run 'python -m phase3_chunking.voice_selection --list' to see available voices")
+            if args.play_notification:
+                play_alert_beep()
             sys.exit(1)
         logger.info(f"Using CLI voice override: {args.voice}")
     
@@ -660,6 +668,8 @@ def main():
         text_path_obj = Path(args.text_path).expanduser()
         if not text_path_obj.exists():
             logger.error(f"Specified text file not found: {args.text_path}")
+            if args.play_notification:
+                play_alert_beep()
             sys.exit(1)
         text_path_obj = text_path_obj.resolve()
         text_path = str(text_path_obj)
@@ -672,6 +682,8 @@ def main():
     else:
         if not file_id:
             logger.error("Missing --file-id. Provide one or supply --text-file for automatic detection.")
+            if args.play_notification:
+                play_alert_beep()
             sys.exit(2)
         try:
             text_path = load_from_json(args.json_path, file_id, args.strict)
@@ -682,13 +694,19 @@ def main():
             
             if args.strict:
                 logger.error("Strict mode enabled, exiting")
+                if args.play_notification:
+                    play_alert_beep()
                 sys.exit(1)
             
             logger.error("Both primary and fallback methods failed")
+            if args.play_notification:
+                play_alert_beep()
             sys.exit(1)
     
     if not file_id:
         logger.error("Unable to determine file_id after processing inputs")
+        if args.play_notification:
+            play_alert_beep()
         sys.exit(2)
     
     try:
@@ -724,13 +742,19 @@ def main():
         print("="*60 + "\n")
         
         if record.status == "failed":
-            sys.exit(1)
+            exit_code = 1
         elif record.status == "partial":
             logger.warning("Chunking completed with warnings")
-            sys.exit(0)
+            exit_code = 0
         else:
             logger.info("Chunking completed successfully")
-            sys.exit(0)
+            exit_code = 0
+        if args.play_notification:
+            if exit_code == 0:
+                play_success_beep()
+            else:
+                play_alert_beep()
+        sys.exit(exit_code)
             
     except Exception as e:
         logger.error(f"Fatal error during chunking: {e}", exc_info=True)
@@ -750,6 +774,8 @@ def main():
         except Exception as merge_error:
             logger.error(f"Could not record failure in JSON: {merge_error}")
         
+        if args.play_notification:
+            play_alert_beep()
         sys.exit(1)
 
 

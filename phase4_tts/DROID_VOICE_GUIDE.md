@@ -1,8 +1,8 @@
-# Droid Voice & Beep/Boop Effects Guide
+# Droid (Astromech) Voice & Beep/Boop Effects Guide
 
 **Last Updated:** November 2025  \
 **Scope:** Phase 4 (TTS synthesis) optional sound-design layer  \
-**Audience:** Developers and sound designers experimenting with non-verbal robot or "droid" style outputs inside the Personal Audiobook Studio.
+**Audience:** Developers and sound designers experimenting with non-verbal robot or "droid"/“astromech” style outputs inside the Personal Audiobook Studio.
 
 ---
 
@@ -99,6 +99,20 @@ if __name__ == "__main__":
 - **Asset Export:** Capture PyAudio output via `soundfile` to store WAV assets if you need to stitch them into audiobooks.
 - **Random Seeds:** Allow deterministic seeds for repeatable sequences when QAing.
 - **Testing:** Add smoke tests ensuring the `droid_fx` voice path simply emits non-empty audio buffers without blocking.
+
+### Notification Beeps (Ready-to-Use “Astromech” Set)
+- Generated CPU-safe WAVs live at `assets/notifications/droid_success.wav` and `assets/notifications/droid_alert.wav` (NumPy + soundfile synthesis; no extra deps).
+- Suggested mapping:
+  - `droid_success.wav` → job completion, UI confirm.
+  - `droid_alert.wav` → failure/attention needed.
+- Playback example (Python):
+  ```python
+  import soundfile as sf, sounddevice as sd, pathlib
+  beep = pathlib.Path("assets/notifications/droid_success.wav")
+  audio, sr = sf.read(beep)
+  sd.play(audio, sr); sd.wait()
+  ```
+  If `sounddevice` isn’t installed, any media player works; keep paths relative to repo root.
 
 ---
 

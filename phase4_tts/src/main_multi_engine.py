@@ -27,6 +27,7 @@ import yaml
 
 MODULE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = MODULE_ROOT.parent.parent
+from pipeline_common.astromech_notify import play_success_beep, play_alert_beep
 
 # Add engines + shared utils to path
 sys.path.insert(0, str(MODULE_ROOT.parent))
@@ -564,6 +565,11 @@ def main() -> int:
         help="Disable latency-based Kokoro fallback even if enabled in config.",
     )
     parser.add_argument(
+        "--play_notification",
+        action="store_true",
+        help="Play astromech beep on completion/failure",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Skip chunks whose output WAV already exists (resume support).",
@@ -600,6 +606,8 @@ def main() -> int:
     )
     if not chunks:
         logger.error("No chunks discovered for %s", args.file_id)
+        if args.play_notification:
+            play_alert_beep()
         return 1
 
     voice_references = prepare_voice_references(
@@ -687,7 +695,13 @@ def main() -> int:
         duration_sec=duration,
     )
 
-    return 0 if failed_count == 0 else 1
+    exit_code = 0 if failed_count == 0 else 1
+    if args.play_notification:
+        if exit_code == 0:
+            play_success_beep()
+        else:
+            play_alert_beep()
+    return exit_code
 
 
 if __name__ == "__main__":
