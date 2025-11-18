@@ -34,6 +34,35 @@ class EnhancementConfig(BaseModel):
         default=0.02,
         description="Noise reduction strength for noisereduce",
     )
+    enable_rnnoise: bool = Field(
+        default=False,
+        description="Use RNNoise (CPU) for speech-preserving denoise before normalization",
+    )
+    rnnoise_frame_seconds: float = Field(
+        default=0.02,
+        ge=0.01,
+        le=0.04,
+        description="Frame size (seconds) when applying RNNoise",
+    )
+    enable_silero_vad: bool = Field(
+        default=False,
+        description="Run Silero VAD to measure speech coverage and optionally trim silence",
+    )
+    silero_vad_threshold: float = Field(
+        default=0.6,
+        ge=0.1,
+        le=0.95,
+        description="Probability threshold for Silero VAD speech detection",
+    )
+    silero_vad_min_speech: float = Field(
+        default=1.0,
+        ge=0.1,
+        description="Minimum detected speech seconds required before warning",
+    )
+    trim_silence_with_vad: bool = Field(
+        default=False,
+        description="If true, use VAD to drop detected non-speech regions before mastering",
+    )
     enable_volume_normalization: bool = Field(
         default=True,
         description="Enable pydub volume normalization before processing",
@@ -191,6 +220,8 @@ class AudioMetadata(BaseModel):
     rms_volume_norm_post: Optional[float] = None
     lufs_pre: Optional[float] = None
     lufs_post: Optional[float] = None
+    speech_ratio_pre: Optional[float] = None
+    speech_ratio_post: Optional[float] = None
     status: str = "pending"
     error_message: Optional[str] = None
     duration: Optional[float] = None
@@ -244,6 +275,7 @@ class SubtitleConfig:
     enable_checkpoints: bool = True
     checkpoint_interval: int = 300  # Save every 5 minutes of audio
     reference_text_path: Optional[Path] = None  # For WER calculation
+    use_aeneas_alignment: bool = False  # Optional forced alignment with reference text
 
     # Alignment
     enable_drift_correction: bool = True

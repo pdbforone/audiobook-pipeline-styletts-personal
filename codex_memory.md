@@ -55,6 +55,11 @@
 - Phase 2/3 structure-aware flow: structure detector lives in `phase2-extraction/src/phase2_extraction/structure_detector.py`; chunking uses `phase3-chunking/src/phase3_chunking/structure_chunking.py` with ~5k word caps.
 - Phase 5 mastering presets and subtitle tooling live in `phase5_enhancement/`; Phase 5.5 (subtitles) is optional.
 - Voice assets reside in `phase4_tts/voice_references/`; engine envs are per-engine via `phase4_tts/.engine_envs/`.
+- Recent upgrades (Nov 2025):
+  - Phase 3 sentence detection: spaCy primary with pySBD fallback for abbreviation/bullet-heavy text. Dependency: `pysbd`.
+  - Phase 4 text prep: optional g2p_en number/abbrev normalization toggled in `config.yaml` (`enable_g2p`, `normalize_numbers`, `custom_pronunciations`). Dependency: `g2p-en`. Piper intentionally excluded until a vetted adult audiobook voice is available.
+  - Phase 5 enhancement: added optional RNNoise denoise and Silero VAD speech coverage/trim toggles (`enable_rnnoise`, `enable_silero_vad`, `silero_vad_threshold`, `trim_silence_with_vad`). Dependencies: `rnnoise`, `silero-vad` (+ torch/torchaudio). DeepFilterNet and noisereduce remain supported. Metadata now records speech ratios.
+  - Phase 5.5 subtitles: optional aeneas forced alignment when reference text is provided (`--use-aeneas` / `use_aeneas_alignment`).
 
 ## Documentation Reality Checks
 - `README_EXCELLENCE.md` and `PROJECT_OVERVIEW.md` reflect the current CPU-only, XTTS + Kokoro setup and personal-use scope.

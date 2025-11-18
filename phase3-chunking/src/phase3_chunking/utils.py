@@ -9,6 +9,10 @@ import nltk
 from sentence_transformers import SentenceTransformer, util
 import textstat
 from langdetect import detect, DetectorFactory
+try:
+    import pysbd  # Fast rule-based sentence boundary detector
+except ImportError:  # Optional dependency
+    pysbd = None
 
 DetectorFactory.seed = 0
 
@@ -111,14 +115,23 @@ def clean_text(text: str) -> str:
 
 
 def detect_sentences(text: str) -> List[str]:
-    """Detect sentence boundaries using spaCy."""
+    """Detect sentence boundaries using spaCy with pySBD fallback for edge cases."""
     if not text or not text.strip():
         logger.warning("Empty text provided to detect_sentences")
         return []
 
-    nlp = get_nlp()
-    doc = nlp(text)
-    sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
+    sentences: List[str] = []
+    try:
+        nlp = get_nlp()
+        doc = nlp(text)
+        sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
+    except Exception as exc:
+        logger.warning(f"spaCy sentence detection failed: {exc}")
+
+    # Fallback / refinement: pySBD is strong on abbreviations/bullets and PDF-split text
+    if (not sentences or len(sentences) <= 1) and pysbd:
+        segmenter = pysbd.Segmenter(language="en", clean=True)
+        sentences = [s.strip() for s in segmenter.segment(text) if s and s.strip()]
 
     logger.info(f"Detected {len(sentences)} sentences")
     return sentences

@@ -27,6 +27,17 @@ import tempfile
 import shutil
 import threading
 import subprocess
+from typing import Optional
+try:
+    from rnnoise import RNNoise  # CPU RNNoise wrapper
+except ImportError:
+    RNNoise = None
+try:
+    import torch
+    from silero_vad import load_silero_vad, get_speech_timestamps, collect_chunks
+except ImportError:
+    load_silero_vad = None
+    torch = None
 
 from .models import EnhancementConfig, AudioMetadata
 from .phrase_cleaner import PhraseCleaner, PhraseCleanerConfig
@@ -218,6 +229,83 @@ def reduce_noise_deepfilternet(
     except Exception as e:
         logger.warning(f"DeepFilterNet failed: {e}, falling back to noisereduce")
         return reduce_noise(audio, sr)
+
+
+_rnnoise_model = None
+def apply_rnnoise(audio: np.ndarray, sr: int, frame_seconds: float = 0.02) -> np.ndarray:
+    """Apply RNNoise denoising with graceful fallback when unavailable."""
+    global _rnnoise_model
+    if RNNoise is None:
+        raise ImportError("rnnoise not installed")
+
+    target_sr = 48000
+    work_audio = (
+        librosa.resample(audio, orig_sr=sr, target_sr=target_sr)
+        if sr != target_sr
+        else audio
+    ).astype(np.float32)
+
+    if _rnnoise_model is None:
+        _rnnoise_model = RNNoise()
+
+    try:
+        denoised = _rnnoise_model.filter(work_audio)
+    except Exception as exc:
+        logger.warning(f"RNNoise failed ({exc}); falling back to original audio")
+        denoised = work_audio
+
+    if sr != target_sr:
+        denoised = librosa.resample(denoised, orig_sr=target_sr, target_sr=sr)
+
+    return denoised.astype(np.float32)
+
+
+_silero_vad_model = None
+def analyze_silero_vad(
+    audio: np.ndarray,
+    sr: int,
+    threshold: float,
+    trim: bool = False,
+) -> tuple[float, float, Optional[np.ndarray]]:
+    """
+    Compute speech coverage using Silero VAD and optionally trim non-speech.
+    Returns (speech_ratio, speech_seconds, trimmed_audio_or_none).
+    """
+    global _silero_vad_model
+
+    if load_silero_vad is None or torch is None:
+        raise ImportError("silero-vad not installed")
+
+    if _silero_vad_model is None:
+        _silero_vad_model = load_silero_vad()
+
+    # Silero expects 16 kHz mono float tensor
+    if sr != 16000:
+        audio_16k = librosa.resample(audio, orig_sr=sr, target_sr=16000)
+        work_sr = 16000
+    else:
+        audio_16k = audio
+        work_sr = sr
+
+    wav_tensor = torch.from_numpy(audio_16k.astype(np.float32))
+    speech_ts = get_speech_timestamps(
+        wav_tensor, _silero_vad_model, sampling_rate=work_sr, threshold=threshold
+    )
+    speech_seconds = sum((t["end"] - t["start"]) / work_sr for t in speech_ts)
+    total_seconds = len(audio_16k) / work_sr if work_sr else 0.0
+    speech_ratio = (speech_seconds / total_seconds) if total_seconds else 0.0
+
+    trimmed_audio = None
+    if trim and speech_ts:
+        collected = collect_chunks(speech_ts, wav=wav_tensor, sampling_rate=work_sr)
+        if collected is not None and len(collected) > 0:
+            trimmed_audio = collected.numpy()
+            if sr != work_sr:
+                trimmed_audio = librosa.resample(
+                    trimmed_audio, orig_sr=work_sr, target_sr=sr
+                )
+
+    return float(speech_ratio), float(speech_seconds), trimmed_audio
 
 
 def apply_matchering(
@@ -426,6 +514,22 @@ def enhance_chunk(
         metadata.snr_pre = float(snr_pre)
         metadata.rms_pre = float(rms_pre)
         metadata.lufs_pre = float(lufs_pre)
+        if config.enable_silero_vad:
+            try:
+                speech_ratio_pre, speech_seconds_pre, _ = analyze_silero_vad(
+                    audio,
+                    sr,
+                    config.silero_vad_threshold,
+                    trim=False,
+                )
+                metadata.speech_ratio_pre = speech_ratio_pre
+                if speech_seconds_pre < config.silero_vad_min_speech or speech_ratio_pre < 0.5:
+                    logger.warning(
+                        f"Low speech coverage pre-enhancement "
+                        f"(ratio={speech_ratio_pre:.2f}, seconds={speech_seconds_pre:.1f})"
+                    )
+            except Exception as exc:
+                logger.warning(f"Silero VAD pre-check failed: {exc}")
 
         # ===== STEP 5: BACKUP (OPTIONAL) =====
         if config.backup_original:
@@ -447,6 +551,21 @@ def enhance_chunk(
                 else:
                     enhanced = reduce_noise_deepfilternet(audio, sr)
                 logger.debug(f"Applied DeepFilterNet to chunk {metadata.chunk_id}")
+            elif config.enable_rnnoise:
+                try:
+                    if len(audio) / sr > config.chunk_size_seconds:
+                        enhanced = process_large_chunk(
+                            audio,
+                            sr,
+                            config.chunk_size_seconds,
+                            lambda sub: apply_rnnoise(sub, sr, config.rnnoise_frame_seconds),
+                        )
+                    else:
+                        enhanced = apply_rnnoise(audio, sr, config.rnnoise_frame_seconds)
+                    logger.debug(f"Applied RNNoise to chunk {metadata.chunk_id}")
+                except Exception as exc:
+                    logger.warning(f"RNNoise unavailable or failed ({exc}); using noisereduce instead")
+                    enhanced = reduce_noise(audio, sr, config.noise_reduction_factor)
             else:
                 # Use standard noisereduce (default)
                 if len(audio) / sr > config.chunk_size_seconds:
@@ -468,6 +587,26 @@ def enhance_chunk(
             if peak > 0.95:
                 logger.warning(f"Clipping detected (peak={peak:.3f}), applying limiter")
                 enhanced = enhanced * (0.95 / peak)
+
+            if config.enable_silero_vad:
+                try:
+                    speech_ratio_post, speech_seconds_post, trimmed_audio = analyze_silero_vad(
+                        enhanced,
+                        sr,
+                        config.silero_vad_threshold,
+                        trim=config.trim_silence_with_vad,
+                    )
+                    metadata.speech_ratio_post = speech_ratio_post
+                    if config.trim_silence_with_vad and trimmed_audio is not None and len(trimmed_audio) > 0:
+                        enhanced = trimmed_audio.astype(np.float32)
+                        logger.info(f"Trimmed non-speech sections via VAD for chunk {metadata.chunk_id}")
+                    if speech_seconds_post < config.silero_vad_min_speech or speech_ratio_post < 0.5:
+                        logger.warning(
+                            f"Low speech coverage post-enhancement "
+                            f"(ratio={speech_ratio_post:.2f}, seconds={speech_seconds_post:.1f})"
+                        )
+                except Exception as exc:
+                    logger.warning(f"Silero VAD post-check failed: {exc}")
 
             # Post metrics
             snr_post, rms_post, _, quality_good_temp = validate_audio_quality(

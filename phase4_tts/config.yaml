@@ -25,3 +25,5 @@ silence_duration: 0.5  # Seconds of silence for failed parts
 enable_splitting: true  # NLTK-based splitting for long text (prevents truncation)
 split_char_limit: 1200  # Only split when text exceeds this many characters
 output_dir: "audio_chunks"  # Relative to phase4_tts; absolute in code
+enable_g2p: true           # Use number/abbreviation normalization before TTS
+normalize_numbers: true    # Expand numeric tokens (g2p_en)

@@ -343,7 +343,12 @@ def prepare_reference_audio(config: TTSConfig, output_path: str = "ref_trimmed.w
     os.remove(mp3_path)
     return output_path
 
-def sanitize_text_for_tts(text: str) -> str:
+def sanitize_text_for_tts(
+    text: str,
+    enable_g2p: bool = False,
+    normalize_numbers: bool = True,
+    custom_overrides: Optional[Dict[str, str]] = None,
+) -> str:
     """
     Sanitize text before sending to TTS to prevent artifacts.
     
@@ -358,6 +363,29 @@ def sanitize_text_for_tts(text: str) -> str:
     """
     original_text = text
     
+    if enable_g2p and normalize_numbers:
+        try:
+            from g2p_en import expand_numbers  # Lightweight CPU number/text normalizer
+            text = expand_numbers(text)
+        except ImportError:
+            logger.warning("g2p_en not installed; skipping number expansion")
+        except Exception as exc:
+            logger.warning(f"g2p_en normalization failed: {exc}")
+
+    # Optional heuristic overrides for common abbreviations
+    if enable_g2p:
+        overrides = {
+            "e.g.": "for example",
+            "i.e.": "that is",
+            "vs.": "versus",
+            "St.": "Saint",
+            "Dr.": "Doctor",
+        }
+        if custom_overrides:
+            overrides.update(custom_overrides)
+        for token, replacement in overrides.items():
+            text = re.sub(rf"\b{re.escape(token)}\b", replacement, text, flags=re.IGNORECASE)
+
     # Normalize unicode (smart quotes → straight quotes)
     text = unicodedata.normalize('NFKC', text)
     

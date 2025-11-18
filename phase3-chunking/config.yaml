@@ -3,11 +3,11 @@
 json_path: pipeline.json
 chunks_dir: chunks
 
-# Fish Speech optimized chunk sizes (MUCH larger than Chatterbox)
-chunk_min_words: 200   # ~750 chars (was 60)
-chunk_max_words: 400   # ~1750 chars (was 100)
-chunk_min_chars: 1000   # Minimum chunk size (was 200)
-chunk_max_chars: 2000  # Maximum chunk size (was 312)
+# Kokoro-friendly chunk sizes (larger chunks to reduce total count)
+chunk_min_words: 1200    # ~4500 chars
+chunk_max_words: 2400    # ~9000 chars
+chunk_min_chars: 4000
+chunk_max_chars: 9000
 
 # Quality thresholds
 coherence_threshold: 0.4  # LOWERED: Classical texts have lower coherence due to aphorisms

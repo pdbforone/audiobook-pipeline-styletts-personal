@@ -13,6 +13,12 @@ max_workers: 2
 memory_limit_mb: 1024
 mp3_bitrate: 192k
 noise_reduction_factor: 0.1
+enable_rnnoise: false
+rnnoise_frame_seconds: 0.02
+enable_silero_vad: true
+silero_vad_threshold: 0.6
+silero_vad_min_speech: 1.0
+trim_silence_with_vad: false
 output_dir: processed
 pipeline_json: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\pipeline.json
 processing_timeout: 60

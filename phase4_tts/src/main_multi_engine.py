@@ -146,6 +146,9 @@ def collect_chunks(
     file_id: str,
     chunk_index: Optional[int] = None,
     pipeline_json: Optional[Path] = None,
+    enable_g2p: bool = False,
+    normalize_numbers: bool = True,
+    custom_overrides: Optional[Dict[str, str]] = None,
 ) -> Tuple[str, List[ChunkPayload]]:
     """Load chunk paths from phase3 section and sanitize text for synthesis."""
     resolved_key, phase3_entry = resolve_pipeline_file(pipeline_data, "phase3", file_id)
@@ -180,7 +183,12 @@ def collect_chunks(
             continue
 
         chunk_id = derive_chunk_id(chunk_path, index)
-        sanitized = sanitize_text_for_tts(text)
+        sanitized = sanitize_text_for_tts(
+            text,
+            enable_g2p=enable_g2p,
+            normalize_numbers=normalize_numbers,
+            custom_overrides=custom_overrides,
+        )
         chunk_payloads.append(ChunkPayload(chunk_id, sanitized, chunk_path))
 
     if chunk_index is not None:
@@ -483,12 +491,18 @@ def main() -> int:
 
     config = load_config(config_path)
     pipeline_data = load_pipeline_json(json_path)
+    enable_g2p = bool(config.get("enable_g2p", False))
+    normalize_numbers = bool(config.get("normalize_numbers", True))
+    custom_overrides = config.get("custom_pronunciations", {}) or None
 
     resolved_file_id, chunks = collect_chunks(
         pipeline_data,
         args.file_id,
         chunk_index=args.chunk_id,
         pipeline_json=json_path,
+        enable_g2p=enable_g2p,
+        normalize_numbers=normalize_numbers,
+        custom_overrides=custom_overrides,
     )
     if not chunks:
         logger.error("No chunks discovered for %s", args.file_id)

@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import argparse
+import tempfile
 
 from faster_whisper import WhisperModel
 from pydub import AudioSegment
@@ -216,11 +217,72 @@ class SubtitleGenerator:
         logger.info(f"Processed {len(processed)} subtitle segments")
         return processed
 
+    def align_with_aeneas(self, reference_text: Path) -> Optional[List[Dict]]:
+        """Optional forced alignment using aeneas when reference text is available."""
+        try:
+            from aeneas.executetask import ExecuteTask
+            from aeneas.task import Task
+        except ImportError:
+            logger.warning("aeneas not installed; skipping forced alignment")
+            return None
+
+        task = Task(config_string="task_language=en|is_text_type=plain|os_task_file_format=json")
+        task.audio_file_path = str(self.config.audio_path)
+        task.text_file_path = str(reference_text)
+
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+            sync_map_path = tmp.name
+        task.sync_map_file_path = sync_map_path
+
+        try:
+            ExecuteTask(task).execute()
+            task.output_sync_map_file()
+            with open(sync_map_path, "r", encoding="utf-8") as f:
+                sync_map = json.load(f)
+            fragments = sync_map.get("fragments", [])
+            aligned_segments = []
+            for frag in fragments:
+                try:
+                    start = float(frag["begin"])
+                    end = float(frag["end"])
+                    text = frag.get("lines", [""])[0].strip()
+                    if text:
+                        aligned_segments.append({"start": start, "end": end, "text": text})
+                except (KeyError, ValueError):
+                    continue
+            if aligned_segments:
+                logger.info(f"aeneas aligned {len(aligned_segments)} segments")
+                return aligned_segments
+            logger.warning("aeneas produced no segments; falling back to Whisper timestamps")
+            return None
+        except Exception as exc:
+            logger.warning(f"aeneas alignment failed: {exc}")
+            return None
+        finally:
+            try:
+                Path(sync_map_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+
     def align_and_validate(self, segments: List[Dict]) -> Tuple[List[Dict], Dict[str, Any]]:
         """Align timestamps and validate quality."""
         logger.info("Validating subtitle quality...")
 
         metrics = {}
+
+        if (
+            self.config.use_aeneas_alignment
+            and self.config.reference_text_path
+            and self.config.reference_text_path.exists()
+        ):
+            aligned = self.align_with_aeneas(self.config.reference_text_path)
+            if aligned:
+                segments = aligned
+                metrics["aligned_with_aeneas"] = True
+            else:
+                metrics["aligned_with_aeneas"] = False
+        else:
+            metrics["aligned_with_aeneas"] = False
 
         # 1. Check coverage
         last_timestamp = segments[-1]['end'] if segments else 0
@@ -401,6 +463,8 @@ def main():
                        help='Whisper model size (tiny=fast, base=accurate)')
     parser.add_argument('--reference-text', type=Path, default=None,
                        help='Reference text file for WER calculation')
+    parser.add_argument('--use-aeneas', action='store_true',
+                       help='Use aeneas forced alignment when reference text is provided')
     parser.add_argument('--no-checkpoints', action='store_true',
                        help='Disable checkpoint/resume')
     parser.add_argument('--no-drift-correction', action='store_true',
@@ -423,6 +487,7 @@ def main():
         file_id=args.file_id,
         model_size=args.model,
         reference_text_path=args.reference_text,
+        use_aeneas_alignment=args.use_aeneas,
         enable_checkpoints=not args.no_checkpoints,
         enable_drift_correction=not args.no_drift_correction
     )

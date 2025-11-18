@@ -19,6 +19,7 @@ pyyaml = "^6.0.1"  # For config
 filelock = "^3.19.1"  # Add for locking
 langdetect = "1.0.9"  # For language detection
 charset-normalizer = "^3.4.3"
+pysbd = "^0.3.4"  # Rule-based sentence splitter (CPU-friendly fallback)
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.2"
 pytest-cov = "^7.0.0"
