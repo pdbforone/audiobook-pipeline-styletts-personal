@@ -2,7 +2,7 @@
   "voice_references": {
     "george_mckayland": {
       "description": "Custom voice - George Mckayland",
-      "local_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-chatterbox\\Voices\\George Mckayland 01.mp3",
+      "local_path": "phase4_tts/voice_references/george_mckayland_trimmed.wav",
       "trim_start": 26,
       "trim_end": 56,
       "preferred_profiles": ["philosophy", "academic"],

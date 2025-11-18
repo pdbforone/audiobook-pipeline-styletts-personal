@@ -28,6 +28,10 @@ class XTTSEngine(TTSEngine):
     def __init__(self, device: str = "cpu"):
         super().__init__(device)
         self.sample_rate_val = 24000
+        # Local default reference to satisfy XTTS builds that require speaker_wav
+        self.default_reference = (
+            Path(__file__).parent.parent / "voice_references" / "george_mckayland_trimmed.wav"
+        )
 
     @property
     def name(self) -> str:
@@ -100,6 +104,13 @@ class XTTSEngine(TTSEngine):
         speed = kwargs.get("speed", 1.0)
         temperature = kwargs.get("temperature", 0.7)
         speaker = kwargs.get("speaker", "Claribel Dervla")  # Default XTTS voice
+        # Some XTTS builds report single-speaker even though we pass a speaker name.
+        # Avoid passing the speaker flag if the model does not support it to prevent ValueError.
+        speaker_supported = getattr(self.model, "is_multi_speaker", True)
+        active_speaker = speaker if speaker_supported else None
+        fallback_reference = None
+        if not speaker_supported and not reference_audio and self.default_reference.exists():
+            fallback_reference = self.default_reference
 
         # Validate language
         if language not in self.get_supported_languages():
@@ -110,12 +121,13 @@ class XTTSEngine(TTSEngine):
 
         try:
             # Voice cloning vs default voice
-            if reference_audio and reference_audio.exists():
-                logger.info(f"Using voice cloning with reference: {reference_audio}")
+            ref_to_use = reference_audio or fallback_reference
+            if ref_to_use and ref_to_use.exists():
+                logger.info(f"Using voice cloning with reference: {ref_to_use}")
                 # Generate audio using XTTS with voice cloning
                 wav = self.model.tts(
                     text=text,
-                    speaker_wav=str(reference_audio),
+                    speaker_wav=str(ref_to_use),
                     language=language,
                     speed=speed,
                     temperature=temperature
@@ -123,16 +135,22 @@ class XTTSEngine(TTSEngine):
             else:
                 if reference_audio:
                     logger.warning(f"Reference audio not found: {reference_audio}, using default voice")
+                elif active_speaker:
+                    logger.info(f"Using default XTTS voice: {active_speaker}")
                 else:
-                    logger.info(f"Using default XTTS voice: {speaker}")
+                    logger.info(
+                        "XTTS model reports single-speaker; running with built-in default voice"
+                    )
                 # Generate audio using XTTS default voice
-                wav = self.model.tts(
+                tts_kwargs = dict(
                     text=text,
-                    speaker=speaker,
                     language=language,
                     speed=speed,
-                    temperature=temperature
+                    temperature=temperature,
                 )
+                if active_speaker:
+                    tts_kwargs["speaker"] = active_speaker
+                wav = self.model.tts(**tts_kwargs)
 
             # Convert to numpy array
             if isinstance(wav, list):

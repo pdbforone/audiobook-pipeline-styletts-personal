@@ -8,4 +8,4 @@ log_file: "orchestrator.log"
 
 # Runtime switches
 pipeline_mode: "personal"
-tts_engine: "kokoro"     # xtts | kokoro
+tts_engine: "xtts"       # xtts | kokoro

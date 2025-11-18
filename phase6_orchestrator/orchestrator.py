@@ -77,7 +77,7 @@ def get_pipeline_mode() -> str:
 
 
 def get_tts_engine() -> str:
-    return get_orchestrator_config().get("tts_engine", "chatterbox").lower()
+    return get_orchestrator_config().get("tts_engine", "xtts").lower()
 
 
 def set_phase4_audio_dir(audio_dir: Path) -> None:
@@ -361,8 +361,8 @@ def check_conda_environment(env_name: str) -> Tuple[bool, Optional[str]]:
                 f"  cd phase4_tts\n"
                 f"  conda env create -f environment.yml\n"
                 f"  conda activate {env_name}\n"
-                f"  pip install git+https://github.com/resemble-ai/chatterbox.git\n"
-                f"  pip install piper-tts librosa requests torchaudio"
+                f"  pip install -r envs/requirements_xtts.txt\n"
+                f"  pip install kokoro-onnx piper-tts"
             )
             return False, error_msg
         

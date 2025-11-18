@@ -1,9 +1,7 @@
 """Compatibility shim delegating to the multi-engine Phase 4 entry point.
 
-Historically this module provided a Chatterbox-specific pipeline. The project
-now exclusively uses the multi-engine implementation in ``main_multi_engine``,
-so this module simply forwards to that CLI to preserve existing scripts that
-import or execute ``main.py``.
+This module now forwards to the XTTS/Kokoro multi-engine CLI and exists only to
+keep older entrypoints working.
 """
 
 from __future__ import annotations

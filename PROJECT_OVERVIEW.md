@@ -52,7 +52,7 @@ Seven primary phases (plus 5.5) comprise the pipeline. Each phase is isolated vi
 | **1. Validation & Repair** | Verifies integrity, repairs common PDF/EPUB issues, extracts metadata. | `pikepdf`, `PyMuPDF`, `hachoir`, `pydantic` | ✅ Production-ready |
 | **2. Text Extraction** | Multi-format ingest, OCR when needed, text normalization. | `pdfplumber`, `pytesseract`, `ftfy`, `langdetect` | ✅ Production-ready |
 | **3. Semantic Chunking** | Genre-aware segmentation, readability scoring, voice suggestion. | `spaCy`, `sentence-transformers`, `textstat` | ✅ Production-ready |
-| **4. TTS Synthesis** | Voice cloning with validation + retries. | Chatterbox TTS Extended, `torchaudio`, Whisper tier 2 validation | ✅ Production-ready (expand tests) |
+| **4. TTS Synthesis** | Voice cloning with validation + retries. | XTTS (primary), Kokoro (fallback), Whisper tier 2 validation | ✅ Production-ready (expand tests) |
 | **5. Audio Enhancement** | Noise reduction, LUFS normalization, crossfades, mastering. | `librosa`, `pyloudnorm`, `pydub`, `numpy` | ✅ Production-ready |
 | **5.5. Subtitle Generation** | CPU Whisper transcription, SRT/VTT generation, WER metrics. | `faster-whisper`, `jiwer`, `webvtt-py`, `srt` | ✅ Production-ready |
 | **6. Orchestration** | Single-title runner with resume + reporting. | `rich`, `typer`, JSON state machine | ✅ Production-ready |

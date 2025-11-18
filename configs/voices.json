@@ -254,7 +254,7 @@
     },
     "george_mckayland": {
       "description": "Deep, measured tone for philosophy/academic texts",
-      "reference_audio": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-chatterbox\\Voices\\George Mckayland 01.mp3",
+      "reference_audio": "phase4_tts/voice_references/george_mckayland_trimmed.wav",
       "start_time": 950,
       "duration": 30,
       "preferred_profiles": ["philosophy", "academic"],

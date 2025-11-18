@@ -77,7 +77,7 @@ def create_chapter_chunks(text, structure, max_words=5000):
 **Why max_words=5000?**
 - Phase 4 processes ~2-5s per 100 words
 - 5000 words = ~3-4 minutes max (safe from 10min timeout)
-- Chatterbox internal splitter handles sentence boundaries within chunk
+- Phase 4’s internal splitter handles sentence boundaries within chunk
 
 ---
 

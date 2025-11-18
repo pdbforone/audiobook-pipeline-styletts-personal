@@ -47,7 +47,10 @@ def get_env_python(engine: str) -> Path:
     """Ensure the engine-specific virtual environment exists and return python."""
     ENGINE_ENV_ROOT.mkdir(exist_ok=True)
     env_dir = ENGINE_ENV_ROOT / engine
-    python_path = env_dir / ("Scripts" if os.name == "nt" else "bin") / "python"
+    if os.name == "nt":
+        python_path = env_dir / "Scripts" / "python.exe"
+    else:
+        python_path = env_dir / "bin" / "python"
 
     if python_path.exists():
         return python_path

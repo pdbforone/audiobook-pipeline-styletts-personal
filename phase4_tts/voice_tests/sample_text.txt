@@ -1,0 +1,1 @@
+This is a short narration snippet for voice evaluation. The goal is to check pronunciation, pacing, and warmth across all available voices.

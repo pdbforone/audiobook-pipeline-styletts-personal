@@ -53,7 +53,10 @@ class KokoroEngine(TTSEngine):
             # Model files are in phase4_tts/models/kokoro/
             model_dir = Path(__file__).parent.parent / "models" / "kokoro"
             model_path = model_dir / "kokoro-v1.0.onnx"
-            voices_path = model_dir / "voices.json"
+            # Kokoro releases ship a binary voice pack (voices-v1.0.bin). Keep JSON support if present.
+            voices_bin = model_dir / "voices-v1.0.bin"
+            voices_json = model_dir / "voices.json"
+            voices_path = voices_json if voices_json.exists() else voices_bin
 
             if not model_path.exists() or not voices_path.exists():
                 raise FileNotFoundError(
