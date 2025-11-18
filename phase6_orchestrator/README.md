@@ -1,5 +1,7 @@
-# Audiobook Production Pipeline (Private)
-> Internal operations manual for commercial audiobook production. Keep repository private.
+# Audiobook Orchestrator (Advanced / Legacy CLI)
+> Originally written as the commercial production runbook—now serves as the power-user companion to the Personal Audiobook Studio UI for private listening runs.
+
+> **Current role (Nov 2025):** The Gradio UI automatically calls this orchestrator for you. Reach for these CLI commands only when you need manual control, troubleshooting, or manifest-based experiments to create personal-study audiobooks.
 
 ---
 
@@ -29,7 +31,7 @@ poetry run python orchestrator.py \
   --phases 4 5 \
   /path/to/book.pdf
 
-# Batch processing (10–50 titles)
+# Batch processing (10–50 titles, legacy workflow)
 cd phase7_batch
 poetry run python src/phase7_batch/main.py \
   --manifest ../manifests/current_batch.csv \
@@ -80,10 +82,10 @@ poetry run python orchestrator.py \
 ---
 
 ## 📊 System Status
-- ✅ Phases 1–7 production-ready
-- ✅ Subtitle generation (Phase 5.5) integrated
-- ✅ Batch processing stable
-- ⚠️ Phase 4 lacks automated tests (monitor manually)
+- ✅ Phases 1–5 are actively exercised through the Personal Audiobook Studio UI (this CLI simply exposes the same orchestration).
+- 🟡 Subtitle generation (Phase 5.5) remains optional via `--enable-subtitles`.
+- 🟠 Batch tooling (Phase 7) is still available but considered legacy/power-user territory.
+- ⚠️ Phase 4 continues to lack automated tests—smoke-test XTTS/Kokoro changes manually.
 
 ---
 
@@ -132,7 +134,7 @@ pipeline.json                   # Master state (backup daily)
 
 ---
 
-## 📋 Production Checklist
+## 📋 Production Checklist (Personal Use)
 
 **Before batch run**
 - [ ] Confirm all titles are public domain.
@@ -144,14 +146,14 @@ pipeline.json                   # Master state (backup daily)
 **After batch run**
 - [ ] Review `pipeline.json` for any failures.
 - [ ] Spot-check 2–3 audiobooks (intro/mid/outro).
-- [ ] Verify subtitle sync on sample title.
-- [ ] Copy masters to publishing queue + external backup.
-- [ ] Upload to YouTube/podcast platforms.
+- [ ] Verify subtitle sync on sample title (if generated).
+- [ ] Copy masters to your private listening library (phone, Plex, Audiobookshelf) and external backup.
+- [ ] Skip public uploads unless you intentionally revisit the legacy publishing workflow.
 
 **Weekly**
 - [ ] Backup completed audiobooks offsite.
 - [ ] Cleanup old artifacts (archive first).
-- [ ] Log analytics (views, RPM, downloads).
+- [ ] Jot down listening notes (what to re-run, which voices resonate most).
 - [ ] Update manifests for next batch.
 
 ---
@@ -167,15 +169,15 @@ pipeline.json                   # Master state (backup daily)
 
 ---
 
-## 📈 Production Metrics to Track
+## 📒 Personal Listening Notes to Track
 - Titles processed (weekly/monthly).
-- Total runtime published (hours).
+- Total runtime ready for private listening.
 - Average processing time per title.
 - Error rates by phase.
-- YouTube views + revenue per title.
-- Podcast downloads + CPM.
+- Favorite voices or mastering presets per genre.
+- Time spent enjoying finished audiobooks while commuting/driving/exercising.
 
-Maintain spreadsheet in `docs/production_log.xlsx`.
+Maintain lightweight notes in `docs/personal_listening_log.md` (or reuse the existing spreadsheet if helpful).
 
 ---
 
@@ -207,13 +209,15 @@ Update this section when hardware changes.
 
 ---
 
-## 💰 Business Snapshot
+## 💰 Legacy Business Snapshot (Historical)
 - Cost per book (electricity + time): ~$2–3.
 - Sweet spot: Inspiring classics, philosophy, mystery series.
 - Break-even: ~100 titles (catalog effect drives exponential revenue).
 - Goal: Consistent upload cadence + playlist strategy.
 
+> Ignore unless you intentionally reboot the commercial plan—the active workflow is strictly for private listening and study.
+
 ---
 
-**Daily operations:** run commands in Quick Start, follow checklists, update logs. Everything else lives in `PROJECT_OVERVIEW.md`.  
+**Daily operations:** run commands in Quick Start, follow checklists, and capture personal listening notes. Everything else lives in `PROJECT_OVERVIEW.md`.
 Keep documenting improvements—future you (or future collaborators) will thank you.

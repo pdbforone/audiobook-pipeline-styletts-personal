@@ -1,7 +1,6 @@
 pipeline_json: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\pipeline.json
-input_dir: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\audio_chunks
-# Enhanced WAVs go here per title; final MP3 will be placed in output_dir/mp3
-output_dir: processed/{file_id}
+input_dir: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts_styletts\audio_chunks
+output_dir: processed
 sample_rate: 24000
 lufs_target: -18.0
 snr_threshold: 10.0
@@ -10,7 +9,7 @@ enable_volume_normalization: true
 volume_norm_headroom: 0.3
 crossfade_duration: 0.2
 mp3_bitrate: 192k
-audiobook_title: Metaphysics
+audiobook_title: Meditations
 audiobook_author: Marcus Aurelius
 max_workers: 2
 chunk_size_seconds: 30
@@ -22,7 +21,7 @@ temp_dir: temp
 cleanup_temp_files: true
 log_level: INFO
 log_file: audio_enhancement.log
-resume_on_failure: true
+resume_on_failure: false
 backup_original: false
 enable_phrase_cleanup: true
 cleanup_target_phrases:

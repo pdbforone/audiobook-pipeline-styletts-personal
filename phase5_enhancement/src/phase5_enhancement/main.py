@@ -38,6 +38,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from pipeline_common import PipelineState
 
+# Simple serializer placeholder (matching Phase 4 usage)
+def serialize_path_for_pipeline(path: Path) -> str:
+    return str(path)
+
 # Setup logging
 logger = logging.getLogger(__name__)
 
@@ -590,6 +594,7 @@ def extract_chunk_number_from_filename(filepath: str) -> int:
 
 
 def get_audio_chunks_from_json(config: EnhancementConfig) -> list[AudioMetadata]:
+    target_file = os.environ.get("PHASE5_FILE_ID") or config.audiobook_title
     chunks = []
     try:
         logger.info(f"Loading pipeline.json from: {config.pipeline_json}")
@@ -600,6 +605,8 @@ def get_audio_chunks_from_json(config: EnhancementConfig) -> list[AudioMetadata]
         logger.info(f"Phase 4 files in JSON: {list(phase4_files.keys())}")
         
         for file_id, data in phase4_files.items():
+            if target_file and file_id != target_file:
+                continue
             chunk_audio_paths = data.get("chunk_audio_paths", [])
             
             logger.info(f"File ID '{file_id}': {len(chunk_audio_paths)} audio paths")
@@ -643,16 +650,20 @@ def get_audio_chunks_from_json(config: EnhancementConfig) -> list[AudioMetadata]
         return []
 
 
-def update_pipeline_json(config: EnhancementConfig, phase5_data: dict):
+def update_pipeline_json(config: EnhancementConfig, file_id: str, phase5_data: dict):
     """
-    Persist Phase 5 results atomically so later orchestrator writes cannot clobber them.
+    Persist Phase 5 results atomically under phase5 -> files -> file_id.
     """
     try:
         state = PipelineState(config.pipeline_json, validate_on_read=False)
         with state.transaction() as txn:
-            txn.data["phase5"] = phase5_data
+            phase5 = txn.data.setdefault("phase5", {"files": {}})
+            files = phase5.setdefault("files", {})
+            files[file_id] = phase5_data
         logger.info(
-            "Updated pipeline.json with phase5 results at %s", config.pipeline_json
+            "Updated pipeline.json for %s with phase5 results at %s",
+            file_id,
+            config.pipeline_json,
         )
     except Exception as e:
         logger.error(f"Failed to update pipeline.json: {e}")
@@ -674,6 +685,10 @@ def main():
     parser.add_argument(
         "--config", type=str, default="config.yaml", help="YAML config path"
     )
+    parser.add_argument(
+        "--pipeline-json", type=str, help="Override pipeline.json path"
+    )
+    parser.add_argument("--file_id", type=str, help="Target file_id (matches phase4 entry)")
     parser.add_argument("--chunk_id", type=int, help="Process specific chunk only")
     parser.add_argument(
         "--skip_concatenation",
@@ -684,7 +699,14 @@ def main():
 
     try:
         config = load_config(args.config)
+        if args.pipeline_json:
+            config.pipeline_json = args.pipeline_json
         setup_logging(config)
+        target_file_id = args.file_id or config.audiobook_title or Path(config.pipeline_json).stem
+        # Per-title output/input directories
+        config.output_dir = str(Path(config.output_dir.format(file_id=target_file_id)).resolve())
+        config.input_dir = str((Path(config.input_dir) / target_file_id).resolve())
+        os.environ["PHASE5_FILE_ID"] = target_file_id
 
         logger.info("=" * 60)
         logger.info("Phase 5: Audio Enhancement with Integrated Phrase Cleanup")
@@ -745,7 +767,15 @@ def main():
                 existing_ids = {
                     c["chunk_id"] for c in phase5_existing if c["status"] == "complete"
                 }
-                chunks = [c for c in chunks if c.chunk_id not in existing_ids]
+                # Also skip if enhanced WAV already exists on disk
+                output_dir = Path(config.output_dir)
+                disk_existing = {
+                    c.chunk_id
+                    for c in chunks
+                    if (output_dir / f"enhanced_{c.chunk_id:04d}.wav").exists()
+                }
+                existing_all = existing_ids.union(disk_existing)
+                chunks = [c for c in chunks if c.chunk_id not in existing_all]
                 logger.info(f"Resume enabled: {len(chunks)} chunks remain unprocessed")
 
             # ===== PROCESSING =====
@@ -810,6 +840,29 @@ def main():
                             f"[OK] Saved enhanced chunk {metadata.chunk_id}: {enhanced_path}"
                         )
 
+            # If nothing was processed this run but resume is enabled, fall back to cached enhanced files
+            if not enhanced_paths and config.resume_on_failure:
+                output_dir = Path(config.output_dir).resolve()
+                candidate_sets = [
+                    sorted(output_dir.glob("enhanced_*.wav")),
+                    sorted(output_dir.parent.glob(f"{output_dir.name}/enhanced_*.wav")),
+                ]
+                for cached in candidate_sets:
+                    if cached:
+                        enhanced_paths = cached
+                        logger.info("Resume concat using cached enhanced files: %d found", len(enhanced_paths))
+                        if enhanced_paths and not processed_metadata:
+                            for p in enhanced_paths:
+                                try:
+                                    cid = int(p.stem.split("_")[-1])
+                                except Exception:
+                                    continue
+                                m = AudioMetadata(chunk_id=cid, wav_path=str(p))
+                                m.enhanced_path = str(p)
+                                m.status = "complete"
+                                processed_metadata.append(m)
+                        break
+
             # ===== CONCATENATION =====
             final_output_path = None
             if enhanced_paths and not args.skip_concatenation:
@@ -832,7 +885,7 @@ def main():
                         batch_list = temp_session / f"batch_{idx//batch_size:04d}.txt"
                         batch_wav = temp_session / f"batch_{idx//batch_size:04d}.wav"
                         batch_list.write_text(
-                            "\n".join(f"file '{p.as_posix()}'" for p in batch),
+                            "\n".join(f"file '{p.resolve().as_posix()}'" for p in batch),
                             encoding="utf-8",
                         )
                         cmd = [
@@ -889,7 +942,9 @@ def main():
                         current = merged_out
 
                     # 3) Encode final MP3
-                    mp3_path = output_dir / "audiobook.mp3"
+                    mp3_dir = output_dir / "mp3"
+                    mp3_dir.mkdir(parents=True, exist_ok=True)
+                    mp3_path = mp3_dir / "audiobook.mp3"
                     encode_cmd = [
                         "ffmpeg",
                         "-y",
@@ -1007,7 +1062,7 @@ def main():
                 },
                 "chunks": [m.model_dump() for m in processed_metadata],
             }
-            update_pipeline_json(config, phase5_data)
+            update_pipeline_json(config, target_file_id, phase5_data)
 
             logger.info("=" * 60)
             logger.info("PROCESSING SUMMARY")

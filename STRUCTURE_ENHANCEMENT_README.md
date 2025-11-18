@@ -59,19 +59,19 @@
 
 ### Test 1: Verify Structure Detection
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase2-extraction
-python -m phase2_extraction.extraction \
-  --file_id "The_Analects_of_Confucius_20240228" \
+cd C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase2-extraction
+python -m phase2_extraction.extraction `
+  --file_id "The_Analects_of_Confucius_20240228" `
   --json_path "../pipeline.json"
 ```
 
 ### Test 2: Verify Structure-Based Chunking
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase3-chunking
-python -m phase3_chunking.main \
-  --file_id "The_Analects_of_Confucius_20240228" \
-  --json_path "../pipeline.json" \
-  --chunks_dir "chunks" \
+cd C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase3-chunking
+python -m phase3_chunking.main `
+  --file_id "The_Analects_of_Confucius_20240228" `
+  --json_path "../pipeline.json" `
+  --chunks_dir "chunks" `
   --verbose
 ```
 

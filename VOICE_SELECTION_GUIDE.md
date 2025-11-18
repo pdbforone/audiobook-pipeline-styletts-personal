@@ -20,6 +20,8 @@
 
 The audiobook pipeline now supports **15+ narrator voices** across multiple genres. You can override voice selection at multiple levels:
 
+> **Private-use reminder:** These LibriVox-sourced references and synthetic voices are curated for the Personal Audiobook Studio you run locally. Keep the resulting audiobooks for personal study/listening unless you independently confirm each narrator's license for distribution.
+
 - **Level 1**: CLI argument (highest priority)
 - **Level 2**: pipeline.json `tts_voice` field
 - **Level 3**: Phase 3 genre-based suggestion
@@ -73,6 +75,14 @@ The audiobook pipeline now supports **15+ narrator voices** across multiple genr
 |----------|----------|-------------|----------|
 | `neutral_narrator` | Mark Twain | Clear, engaging | General use, auto-detect |
 | `female_calm` | Generic female | Warm, conversational | Memoir, self-help |
+
+### Experimental / FX (Optional)
+
+| Voice ID | Engine | Description | Notes |
+|----------|--------|-------------|-------|
+| `droid_fx` | PyAudio / `ttastromech` | R2-D2 style beeps/boops | See `phase4_tts/DROID_VOICE_GUIDE.md` for setup + mapping.
+
+> ⚠️ `droid_fx` is meant for UI flourishes, promos, or creative easter eggs. It bypasses XTTS/Kokoro and generates tones locally, so keep it out of production narration runs unless you truly want robotic output.
 
 ---
 

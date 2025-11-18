@@ -1,21 +1,24 @@
-# Project Overview · Private Audiobook Production System
+# Project Overview · Personal Audiobook Studio (Private Study Edition)
 
-> **Audience:** Owner, trusted collaborators, and future team members.  
-> **Purpose:** Capture business logic, technical architecture, and operating playbook for a fully automated, commercial audiobook pipeline.  
+> **Audience:** Owner, trusted collaborators, and future team members.
+> **Purpose:** Document how the original business pipeline was structured **and** explain how each phase now powers the Personal Audiobook Studio for private listening and study.
+> **Current Status (Nov 2025):** The pipeline runs locally as a single-user creative tool to make personal study materials accessible while commuting, driving, or exercising. Business references below are preserved for historical context, but status badges, notes, and callouts reflect the system's personal-use focus.
 > **Security:** This document is **PRIVATE**. Do not distribute publicly.
 
 ---
 
-## 1. Business Model
+## 1. Business Model (Legacy Reference – optional)
 
 ### 1.1 Mission Statement
-Build and operate a lean audiobook publishing studio that:
-- Converts public domain texts into commercial-grade assets.
+Originally, the pipeline targeted a lean audiobook publishing studio that:
+- Converts public domain texts into professional, catalog-ready assets.
 - Delivers consistent narrator branding via voice cloning.
 - Publishes to multiple revenue channels with minimal manual labor.
 - Scales to 50–100+ titles per month using automation and CPU-only infrastructure.
 
-### 1.2 Revenue Streams
+> **Personal Studio Reality:** Today the system focuses on crafting a handful of bespoke titles for personal study and enjoyment via the Gradio UI. Keep this section for archival inspiration only; the current charter is private, non-commercial listening.
+
+### 1.2 Revenue Streams (Historical)
 | Channel | Description | Notes |
 |---------|-------------|-------|
 | **YouTube** | Ad revenue, memberships, Super Thanks | Primary funnel; benefits from subtitles + playlists. |
@@ -23,7 +26,7 @@ Build and operate a lean audiobook publishing studio that:
 | **Streaming (Future)** | Audible, Spotify Audiobooks, Storytel | Requires QC + platform-specific packaging. |
 | **Subscription (Future)** | Patreon, private RSS, direct sales bundles | Leverage loyal audience after catalog growth. |
 
-### 1.3 Unit Economics (Per Audiobook)
+### 1.3 Unit Economics (Historical)
 | Item | Cost | Notes |
 |------|------|-------|
 | Content acquisition | **$0** | Public domain texts only. |
@@ -33,30 +36,32 @@ Build and operate a lean audiobook publishing studio that:
 | Labor | ≤$1 (oversight) | Most time spent vetting sources + QC. |
 | **Total** | **≈$3 per book** | Payback < 3 months once catalog monetizes. |
 
-### 1.4 Competitive Advantages
+### 1.4 Competitive Advantages (Still True for Personal Use)
 - **Marginal cost ≈ $0.** After initial setup, each additional book is nearly free.
 - **Consistent voice identity.** Voice cloning ensures brand recognition across series.
 - **Automated QA.** Validation layers catch OCR issues, TTS artifacts, and subtitle drift.
 - **Multi-format output.** Single run yields audio masters, subtitles, and video assets.
-- **Batch throughput.** Parallel processing handles 10–50 books per batch run.
+- **Flexible throughput.** Parallel processing still exists, but the Personal Studio defaults to one title at a time with optional batch tooling for power users.
 
 ---
 
 ## 2. System Architecture
 
-Seven primary phases (plus 5.5) comprise the pipeline. Each phase is isolated via Poetry environments (Conda for Phase 4 only) to maintain reproducibility and minimize dependency conflicts. All state flows through `pipeline.json`.
+Seven primary phases (plus 5.5) comprise the pipeline. Each phase is isolated via Poetry environments (Conda for Phase 4 only) to maintain reproducibility and minimize dependency conflicts. All state flows through `pipeline.json` and is orchestrated automatically by the Personal Audiobook Studio UI unless otherwise noted.
 
 ### 2.1 Phase Overview
 | Phase | Description | Key Tools | Status |
 |-------|-------------|-----------|--------|
-| **1. Validation & Repair** | Verifies integrity, repairs common PDF/EPUB issues, extracts metadata. | `pikepdf`, `PyMuPDF`, `hachoir`, `pydantic` | ✅ Production-ready |
-| **2. Text Extraction** | Multi-format ingest, OCR when needed, text normalization. | `pdfplumber`, `pytesseract`, `ftfy`, `langdetect` | ✅ Production-ready |
-| **3. Semantic Chunking** | Genre-aware segmentation, readability scoring, voice suggestion. | `spaCy`, `sentence-transformers`, `textstat` | ✅ Production-ready |
-| **4. TTS Synthesis** | Voice cloning with validation + retries. | XTTS (primary), Kokoro (fallback), Whisper tier 2 validation | ✅ Production-ready (expand tests) |
-| **5. Audio Enhancement** | Noise reduction, LUFS normalization, crossfades, mastering. | `librosa`, `pyloudnorm`, `pydub`, `numpy` | ✅ Production-ready |
-| **5.5. Subtitle Generation** | CPU Whisper transcription, SRT/VTT generation, WER metrics. | `faster-whisper`, `jiwer`, `webvtt-py`, `srt` | ✅ Production-ready |
-| **6. Orchestration** | Single-title runner with resume + reporting. | `rich`, `typer`, JSON state machine | ✅ Production-ready |
-| **7. Batch Processing** | Parallel execution, queue management, resource throttling. | `concurrent.futures`, `psutil` | ✅ Production-ready |
+| **1. Validation & Repair** | Verifies integrity, repairs common PDF/EPUB issues, extracts metadata. | `pikepdf`, `PyMuPDF`, `hachoir`, `pydantic` | ✅ **Active** – invoked automatically by the Studio UI |
+| **2. Text Extraction** | Multi-format ingest, OCR when needed, text normalization. | `pdfplumber`, `pytesseract`, `ftfy`, `langdetect` | ✅ **Active** – handled by the Studio UI |
+| **3. Semantic Chunking** | Genre-aware segmentation, readability scoring, voice suggestion. | `spaCy`, `sentence-transformers`, `textstat` | ✅ **Active** – handled by the Studio UI |
+| **4. TTS Synthesis** | Voice cloning with validation + retries. | XTTS (primary), Kokoro (fallback), Whisper tier 2 validation | ✅ **Active** – XTTS/Kokoro managed through the UI |
+| **5. Audio Enhancement** | Noise reduction, LUFS normalization, crossfades, mastering. | `librosa`, `pyloudnorm`, `pydub`, `numpy` | ✅ **Active** – presets selectable in the UI |
+| **5.5. Subtitle Generation** | CPU Whisper transcription, SRT/VTT generation, WER metrics. | `faster-whisper`, `jiwer`, `webvtt-py`, `srt` | 🟡 **Optional** – toggle via "Generate Subtitles" in the UI |
+| **6. Orchestration** | Single-title runner with resume + reporting. | `rich`, `typer`, JSON state machine | 🟠 **Advanced** – legacy CLI for power users; UI wraps this automatically |
+| **7. Batch Processing** | Parallel execution, queue management, resource throttling. | `concurrent.futures`, `psutil` | 🟠 **Advanced** – retained for manifests/batch experiments |
+
+> 📘 **Need deeper guidance?** The detailed per-phase evaluation (health scores, owners, tests) lives in `docs/PHASE_EVALUATION_2025-11.md`. Review it before modifying a phase so you preserve what works while targeting the highest-leverage fixes.
 
 ### 2.2 Supporting Services
 - **Pipeline State:** `pipeline.json` (see schema reference) tracks metrics, artifacts, and error states. Always back up before and after large batches.
@@ -74,8 +79,9 @@ Seven primary phases (plus 5.5) comprise the pipeline. Each phase is isolated vi
 2. **Intake & Validation**
    - Download source into `input/`.
    - Run Phase 1 manually if necessary to vet unusual formats.
-3. **Batch Execution**
-   - Use Phase 7 for volume; fall back to Phase 6 for single titles or troubleshooting.
+3. **Execution**
+   - **Default:** Use the Personal Audiobook Studio UI, which sequentially drives Phases 1–5 (and optional 5.5) to produce private listening masters.
+   - **Advanced:** Phase 6 CLI and Phase 7 batch tooling remain available for experimentation or manifest-based runs when you want extra control.
 4. **Quality Control**
    - Inspect `pipeline.json` for anomalies.
    - Spot-check audio (intro, random middle chapter, conclusion).
@@ -83,13 +89,13 @@ Seven primary phases (plus 5.5) comprise the pipeline. Each phase is isolated vi
 5. **Distribution Prep**
    - Generate cover art or reuse template (dimensions: 1920×1080 for YT, 3000×3000 for podcasts).
    - Export MP4 (audio + static cover + subtitles) via FFmpeg helper script.
-6. **Publishing & Monetization**
-   - Upload to YouTube (include timestamps, keywords, public domain notice).
-   - Push audio to podcast host (include show notes, call-to-action).
-   - Schedule social posts or community updates.
-7. **Analytics & Iteration**
-   - Log KPIs (views, CPM, subscriber growth) weekly.
-   - Use insights to prioritize sequel titles or extended bundles.
+6. **Listening & Sharing (Personal Use)**
+   - Sync mastered MP3s to your phone, car playlist, or preferred podcast app for offline listening while driving or working out.
+   - Optionally sideload into Plex/Audiobookshelf for organized private playback.
+   - Keep distribution private; skip public uploads unless you intentionally revisit publishing workflows.
+7. **Reflection & Iteration**
+   - Track listening notes (what resonated, pacing tweaks) rather than revenue KPIs.
+   - If you ever return to public publishing, re-enable the spreadsheet/logging process outlined in the legacy plan.
 
 ### 3.2 Sample Batch Command
 ```bash
@@ -153,7 +159,7 @@ audiobook-pipeline/
 
 ---
 
-## 6. System Requirements
+## 6. System Requirements (Personal Rig)
 
 ### 6.1 Hardware Baseline
 | Component | Minimum | Recommended |
@@ -174,7 +180,7 @@ audiobook-pipeline/
 
 ---
 
-## 7. Cost Analysis
+## 7. Cost Analysis (Legacy context)
 
 ### 7.1 Setup Costs
 | Category | Amount |
@@ -192,10 +198,12 @@ audiobook-pipeline/
 | Domain/hosting (if using website) | $10–$20 |
 | Labor (oversight) | Variable (~5–10 hrs/week) |
 
-### 7.3 Revenue Targets
+### 7.3 Revenue Targets (Legacy only)
 - **YouTube:** Expect $2–$10 RPM initially; grows with watch-time and channel authority.
 - **Podcasts:** $15–$30 CPM sponsorship after consistent downloads (>1k/listen).
 - **Break-even:** Catalog of ~100 books typically covers setup costs via evergreen plays.
+
+> **Personal Note:** Ignore this section unless you intentionally revive the commercial plan. The active pipeline is optimized for private craftsmanship, study, and enjoyment.
 
 ---
 
@@ -234,11 +242,13 @@ audiobook-pipeline/
 - For poetry/drama, manually adjust chunk settings (shorter segments).
 - If MOS proxy drops, inspect source text for formatting anomalies.
 
-### 10.3 Revenue
+### 10.3 Legacy Publishing Tips
 - Craft YouTube titles with `"[Full Audiobook] Title — Subtitle"`.
 - Add chapter timestamps via Phase 3 chunk metadata.
 - Include end screens promoting related audiobooks.
 - Translate descriptions into top viewer languages if analytics indicate demand.
+
+> Keep this subsection bookmarked only if you re-open the publishing channels; it is not required for private study runs.
 
 ---
 
@@ -275,6 +285,7 @@ audiobook-pipeline/
 | `phase6_orchestrator/PIPELINE_JSON_SCHEMA.md` | Schema reference, validation rules. |
 | `DEPENDENCY_CLEANUP_GUIDE.md` | Phased dependency pruning plan. |
 | `scripts/README.md` | Utility scripts (backup, render_video). |
+| `docs/personal_listening_log.md` | Track what you produced for private study (voices, contexts, tweaks). |
 
 Keep documentation updated when processes evolve to ensure future continuity.
 
@@ -366,6 +377,6 @@ Maintain updated contact list for:
 
 ---
 
-**Current Focus:** Maintain stability, increase catalog volume, and refine monetization.  
-**Next Milestone:** Automate publishing (Phase 6.5) to remove remaining manual steps.  
-✅ All phases operational · 💰 Commercial-ready · 🧭 Private internal use only.
+**Current Focus:** Craft a small, high-quality personal catalog using the Studio UI while keeping legacy automation healthy.
+**Next Milestone:** Decide whether Phase 6.5 publishing automation should be revived for hobby publishing or left archived.
+✅ Phases 1–5 active in Studio · 🟡 Phase 5.5 opt-in · 🟠 Phase 6/7 = advanced/legacy paths.

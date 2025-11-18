@@ -12,11 +12,16 @@ import json
 import logging
 import signal
 import atexit
+<<<<<<< ours
 import re
 import shutil
 from datetime import datetime
+=======
+import shutil
+import re
+>>>>>>> theirs
 from pathlib import Path
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Tuple, Dict, Any
 import yaml
 import psutil
 
@@ -26,6 +31,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from phase6_orchestrator.orchestrator import run_pipeline
 from pipeline_common import PipelineState
+
+VOICE_CONFIG_PATH = PROJECT_ROOT / "phase4_tts" / "configs" / "voice_references.json"
+CUSTOM_VOICE_DIR = PROJECT_ROOT / "voice_samples" / "custom"
+ALLOWED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg", ".m4a"}
 
 # Setup logging
 logging.basicConfig(
@@ -121,9 +130,8 @@ class StudioState:
 
     def _load_voices(self) -> Dict:
         """Load voice library"""
-        voice_json = PROJECT_ROOT / "phase4_tts" / "configs" / "voice_references.json"
         try:
-            with open(voice_json, 'r') as f:
+            with open(VOICE_CONFIG_PATH, 'r') as f:
                 data = json.load(f)
             return data.get('voice_references', {})
         except Exception as e:
@@ -582,11 +590,56 @@ def create_batch_audiobooks(
     return "\n".join(results)
 
 
+<<<<<<< ours
 def _normalize_voice_id(raw_id: str) -> str:
     """Normalize user-provided voice ID into snake_case."""
     slug = re.sub(r"[^a-z0-9_]+", "_", (raw_id or "").strip().lower())
     slug = re.sub(r"_+", "_", slug)
     return slug.strip("_")
+=======
+def _slugify_voice_id(value: str) -> str:
+    """Normalize user input into a valid voice_id."""
+    value = value.strip().lower()
+    value = re.sub(r"[^a-z0-9]+", "_", value)
+    return value.strip("_")
+
+
+def _resolve_audio_source(upload: Any) -> Optional[Path]:
+    """Best-effort conversion of a Gradio upload payload into a Path."""
+
+    def _candidate_path(value: Optional[str]) -> Optional[Path]:
+        if not value:
+            return None
+        path = Path(value)
+        return path if path.exists() else None
+
+    if not upload:
+        return None
+
+    if isinstance(upload, (str, Path)):
+        return _candidate_path(str(upload))
+
+    if isinstance(upload, dict):
+        for key in ("path", "name"):
+            candidate = _candidate_path(upload.get(key))
+            if candidate:
+                return candidate
+        return None
+
+    for attr in ("name", "path"):
+        if hasattr(upload, attr):
+            candidate = _candidate_path(getattr(upload, attr))
+            if candidate:
+                return candidate
+
+    if isinstance(upload, (list, tuple)):
+        for item in upload:
+            candidate = _resolve_audio_source(item)
+            if candidate:
+                return candidate
+
+    return None
+>>>>>>> theirs
 
 
 def add_voice(
@@ -594,6 +647,7 @@ def add_voice(
     voice_file,
     narrator_name: str,
     genre_tags: str
+<<<<<<< ours
 ) -> Tuple[str, str, gr.Dropdown, gr.Dropdown]:
     """Add a new voice to the library"""
 
@@ -687,6 +741,109 @@ def add_voice(
         f"\n\nNarrator: {narrator}\nStored at: {new_entry['local_path']}"
     )
     return _build_response(message, dropdown_choice)
+=======
+) -> Tuple[str, str, dict, dict]:
+    """Add a new voice to the library"""
+    voice_id = _slugify_voice_id(voice_name or "")
+
+    if not voice_id:
+        return (
+            "❌ Please provide a valid voice ID",
+            _generate_voice_gallery_html(state.voices),
+            gr.update(),
+            gr.update(),
+        )
+
+    if not voice_file:
+        return (
+            "❌ Please upload a short audio sample",
+            _generate_voice_gallery_html(state.voices),
+            gr.update(),
+            gr.update(),
+        )
+
+    source_path = _resolve_audio_source(voice_file)
+    if not source_path:
+        return (
+            "❌ Uploaded audio file could not be found on disk",
+            _generate_voice_gallery_html(state.voices),
+            gr.update(),
+            gr.update(),
+        )
+
+    try:
+        config = {}
+        if VOICE_CONFIG_PATH.exists():
+            with open(VOICE_CONFIG_PATH, "r") as f:
+                config = json.load(f)
+
+        voice_refs = config.setdefault("voice_references", {})
+        if voice_id in voice_refs:
+            return (
+                f"❌ Voice ID '{voice_id}' already exists",
+                _generate_voice_gallery_html(state.voices),
+                gr.update(),
+                gr.update(),
+            )
+
+        CUSTOM_VOICE_DIR.mkdir(parents=True, exist_ok=True)
+
+        extension = source_path.suffix.lower()
+        if not extension:
+            extension = ".wav"
+
+        if extension not in ALLOWED_AUDIO_EXTENSIONS:
+            allowed = ", ".join(sorted(ALLOWED_AUDIO_EXTENSIONS))
+            return (
+                f"❌ Unsupported audio type '{extension or 'unknown'}'. Please upload one of: {allowed}",
+                _generate_voice_gallery_html(state.voices),
+                gr.update(),
+                gr.update(),
+            )
+
+        destination = CUSTOM_VOICE_DIR / f"{voice_id}{extension}"
+        shutil.copy2(source_path, destination)
+
+        genres = [tag.strip() for tag in (genre_tags or "").split(",") if tag.strip()]
+        narrator = narrator_name.strip() if narrator_name else voice_name
+        local_path = destination.relative_to(PROJECT_ROOT)
+
+        voice_refs[voice_id] = {
+            "local_path": str(local_path).replace("\\", "/"),
+            "narrator_name": narrator,
+            "preferred_profiles": genres or ["custom"],
+            "description": f"{narrator} - Custom upload via Personal Audiobook Studio",
+            "notes": "Added via UI"
+        }
+
+        with open(VOICE_CONFIG_PATH, "w") as f:
+            json.dump(config, f, indent=2)
+
+        state.voices = state._load_voices()
+        voice_choices = state.get_voice_list()
+        new_choice = next((item for item in voice_choices if item.startswith(f"{voice_id}:")), None)
+
+        success_msg = (
+            f"✅ Voice '{voice_id}' added successfully!\n\n"
+            f"Narrator: {narrator}\nGenres: {', '.join(genres) if genres else 'custom'}"
+        )
+
+        return (
+            success_msg,
+            _generate_voice_gallery_html(state.voices),
+            gr.Dropdown.update(choices=voice_choices, value=new_choice or None),
+            gr.Dropdown.update(choices=voice_choices, value=new_choice or None),
+        )
+
+    except Exception as e:
+        logger.exception("Failed to add voice")
+        return (
+            f"❌ Error adding voice: {str(e)}",
+            _generate_voice_gallery_html(state.voices),
+            gr.update(),
+            gr.update(),
+        )
+>>>>>>> theirs
 
 
 def get_voice_details(voice_selection: str) -> str:

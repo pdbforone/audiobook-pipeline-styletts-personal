@@ -586,18 +586,14 @@ def find_phase_dir(phase_num: int, variant: Optional[str] = None) -> Optional[Pa
     """
     project_root = PROJECT_ROOT
 
-    # Handle Phase 3 variants (Phase 3b for XTTS)
-    if phase_num == 3 and variant == "xtts":
-        phase_name = "phase3b-xtts-chunking"
-    else:
-        mapping = {
-            1: "phase1-validation",
-            2: "phase2-extraction",
-            3: "phase3-chunking",
-            4: "phase4_tts",
-            5: "phase5_enhancement"
-        }
-        phase_name = mapping.get(phase_num)
+    mapping = {
+        1: "phase1-validation",
+        2: "phase2-extraction",
+        3: "phase3-chunking",
+        4: "phase4_tts",
+        5: "phase5_enhancement"
+    }
+    phase_name = mapping.get(phase_num)
 
     if not phase_name:
         return None
