@@ -27,6 +27,7 @@ import yaml
 
 MODULE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = MODULE_ROOT.parent.parent
+DEFAULT_CHARS_PER_MINUTE = 2700  # CPU XTTS cadence heuristic
 from pipeline_common.astromech_notify import play_success_beep, play_alert_beep
 
 # Add engines + shared utils to path
@@ -80,6 +81,39 @@ def load_pipeline_json(json_path: Path) -> Dict[str, Any]:
         return {}
     with open(json_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def estimate_audio_seconds(chunks: List[ChunkPayload], chars_per_min: int = DEFAULT_CHARS_PER_MINUTE) -> float:
+    """Estimate total audio length (seconds) from chunk text sizes."""
+    if chars_per_min <= 0:
+        chars_per_min = DEFAULT_CHARS_PER_MINUTE
+    total_chars = sum(len(c.text) for c in chunks)
+    return (total_chars / chars_per_min) * 60.0
+
+
+def choose_engine_auto(
+    chunks: List[ChunkPayload],
+    preferred: str,
+    rt_xtts: float = 3.2,
+    rt_kokoro: float = 1.3,
+    chars_per_min: int = DEFAULT_CHARS_PER_MINUTE,
+) -> Tuple[str, str]:
+    """
+    Heuristic engine selector: pick Kokoro when estimated XTTS wall time greatly exceeds Kokoro.
+    Returns (engine_name, reason).
+    """
+    est_audio = estimate_audio_seconds(chunks, chars_per_min=chars_per_min)
+    xtts_time = est_audio * rt_xtts
+    kokoro_time = est_audio * rt_kokoro
+
+    if xtts_time > kokoro_time * 1.3:
+        reason = (
+            f"Estimated XTTS wall {xtts_time/3600:.2f}h vs Kokoro {kokoro_time/3600:.2f}h; "
+            "selecting Kokoro for throughput."
+        )
+        return "kokoro", reason
+
+    return preferred, "Using preferred engine (throughput acceptable)."
 
 
 def normalize_pipeline_path(raw_path: str, pipeline_json: Optional[Path] = None) -> Path:
@@ -566,8 +600,19 @@ def main() -> int:
     )
     parser.add_argument(
         "--play_notification",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Play astromech beep on completion/failure (default: ON)",
+    )
+    parser.add_argument(
+        "--silence_notifications",
         action="store_true",
-        help="Play astromech beep on completion/failure",
+        help="Silence astromech notifications (beeps are ON by default)",
+    )
+    parser.add_argument(
+        "--auto_engine",
+        action="store_true",
+        help="Enable heuristic engine selection (Kokoro when XTTS throughput would be much slower).",
     )
     parser.add_argument(
         "--resume",
@@ -606,9 +651,28 @@ def main() -> int:
     )
     if not chunks:
         logger.error("No chunks discovered for %s", args.file_id)
-        if args.play_notification:
-            play_alert_beep()
+        if args.play_notification is not False and not args.silence_notifications:
+            play_alert_beep(silence_mode=False)
         return 1
+
+    engine_requested = args.engine
+    engine_selected = engine_requested
+    if args.auto_engine:
+        engine_selected, reason = choose_engine_auto(
+            chunks,
+            preferred=engine_requested,
+            rt_xtts=float(config.get("rt_xtts_factor", 3.2)),
+            rt_kokoro=float(config.get("rt_kokoro_factor", 1.3)),
+            chars_per_min=int(config.get("chars_per_minute", DEFAULT_CHARS_PER_MINUTE)),
+        )
+        logger.info("Auto-engine decision: %s (requested=%s, selected=%s)", reason, engine_requested, engine_selected)
+    else:
+        logger.info("Auto-engine disabled. Using requested engine: %s", engine_requested)
+
+    if args.play_notification is None:
+        args.play_notification = True  # Default ON unless explicitly disabled elsewhere
+    if args.play_notification and not args.silence_notifications:
+        logger.info("Astromech notifications: ON (use --silence_notifications to mute).")
 
     voice_references = prepare_voice_references(
         voice_config_path=str(voices_config_path),
@@ -623,9 +687,9 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Lazy-load only needed engines for isolation
-    engines_to_load = [args.engine] if args.disable_fallback else None
+    engines_to_load = [engine_selected] if args.disable_fallback else None
     manager = build_engine_manager(args.device, engines=engines_to_load)
-    manager.set_default_engine(args.engine)
+    manager.set_default_engine(engine_selected)
 
     language = args.language or config.get("language", "en")
     workers = max(1, args.workers)
@@ -643,7 +707,8 @@ def main() -> int:
     logger.info("Phase 4 Multi-Engine TTS")
     logger.info("File ID      : %s", resolved_file_id)
     logger.info("Voice        : %s", voice_id)
-    logger.info("Engine (req) : %s", args.engine)
+    logger.info("Engine (req) : %s", engine_requested)
+    logger.info("Engine (use) : %s", engine_selected)
     logger.info("Language     : %s", language)
     logger.info("Chunks       : %d", len(chunks))
     logger.info("Workers      : %d", workers)
@@ -660,7 +725,7 @@ def main() -> int:
                 chunk,
                 reference_audio,
                 manager,
-                args.engine,
+                engine_selected,
                 output_dir,
                 language,
                 allow_fallback=not args.disable_fallback,
@@ -689,18 +754,18 @@ def main() -> int:
         pipeline_path=json_path,
         file_id=resolved_file_id,
         voice_id=voice_id,
-        requested_engine=args.engine,
+        requested_engine=engine_selected,
         results=results,
         output_dir=output_dir,
         duration_sec=duration,
     )
 
     exit_code = 0 if failed_count == 0 else 1
-    if args.play_notification:
+    if args.play_notification is not False and not args.silence_notifications:
         if exit_code == 0:
-            play_success_beep()
+            play_success_beep(silence_mode=False)
         else:
-            play_alert_beep()
+            play_alert_beep(silence_mode=False)
     return exit_code
 
 

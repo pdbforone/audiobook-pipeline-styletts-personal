@@ -58,12 +58,17 @@ def _play_asset(name: str) -> None:
     logger.info("Notification ready (manual playback): %s", wav_path)
 
 
-def play_success_beep() -> None:
+def play_success_beep(silence_mode: bool = False) -> None:
     """Play the astromech success beep (non-blocking fallback logs path)."""
+    if silence_mode:
+        logger.debug("Silence mode enabled; skipping success beep.")
+        return
     _play_asset("droid_success.wav")
 
 
-def play_alert_beep() -> None:
+def play_alert_beep(silence_mode: bool = False) -> None:
     """Play the astromech alert beep (non-blocking fallback logs path)."""
+    if silence_mode:
+        logger.debug("Silence mode enabled; skipping alert beep.")
+        return
     _play_asset("droid_alert.wav")
-

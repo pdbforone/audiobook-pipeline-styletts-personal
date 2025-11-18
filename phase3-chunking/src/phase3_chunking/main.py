@@ -617,9 +617,9 @@ def main():
     parser.add_argument("--voice", help="Override voice selection (e.g., landon_elkind, tom_weiss)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
     parser.add_argument(
-        "--play_notification",
+        "--silence_notifications",
         action="store_true",
-        help="Play astromech beep on completion/failure",
+        help="Silence astromech notifications (beeps are ON by default)",
     )
     
     args = parser.parse_args()
@@ -627,14 +627,17 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
         logger.setLevel(logging.DEBUG)
+
+    if not args.silence_notifications:
+        logger.info("Astromech notifications: ON (use --silence_notifications to mute).")
     
     # Validate voice override if provided
     if args.voice:
         if not validate_voice_id(args.voice):
             logger.error(f"Invalid voice ID: {args.voice}")
             logger.info("Run 'python -m phase3_chunking.voice_selection --list' to see available voices")
-            if args.play_notification:
-                play_alert_beep()
+            if not args.silence_notifications:
+                play_alert_beep(silence_mode=False)
             sys.exit(1)
         logger.info(f"Using CLI voice override: {args.voice}")
     
@@ -668,8 +671,8 @@ def main():
         text_path_obj = Path(args.text_path).expanduser()
         if not text_path_obj.exists():
             logger.error(f"Specified text file not found: {args.text_path}")
-            if args.play_notification:
-                play_alert_beep()
+            if not args.silence_notifications:
+                play_alert_beep(silence_mode=False)
             sys.exit(1)
         text_path_obj = text_path_obj.resolve()
         text_path = str(text_path_obj)
@@ -682,8 +685,8 @@ def main():
     else:
         if not file_id:
             logger.error("Missing --file-id. Provide one or supply --text-file for automatic detection.")
-            if args.play_notification:
-                play_alert_beep()
+            if not args.silence_notifications:
+                play_alert_beep(silence_mode=False)
             sys.exit(2)
         try:
             text_path = load_from_json(args.json_path, file_id, args.strict)
@@ -694,19 +697,19 @@ def main():
             
             if args.strict:
                 logger.error("Strict mode enabled, exiting")
-                if args.play_notification:
-                    play_alert_beep()
+                if not args.silence_notifications:
+                    play_alert_beep(silence_mode=False)
                 sys.exit(1)
             
             logger.error("Both primary and fallback methods failed")
-            if args.play_notification:
-                play_alert_beep()
+            if not args.silence_notifications:
+                play_alert_beep(silence_mode=False)
             sys.exit(1)
     
     if not file_id:
         logger.error("Unable to determine file_id after processing inputs")
-        if args.play_notification:
-            play_alert_beep()
+        if not args.silence_notifications:
+            play_alert_beep(silence_mode=False)
         sys.exit(2)
     
     try:
@@ -749,11 +752,11 @@ def main():
         else:
             logger.info("Chunking completed successfully")
             exit_code = 0
-        if args.play_notification:
+        if not args.silence_notifications:
             if exit_code == 0:
-                play_success_beep()
+                play_success_beep(silence_mode=False)
             else:
-                play_alert_beep()
+                play_alert_beep(silence_mode=False)
         sys.exit(exit_code)
             
     except Exception as e:
@@ -774,8 +777,8 @@ def main():
         except Exception as merge_error:
             logger.error(f"Could not record failure in JSON: {merge_error}")
         
-        if args.play_notification:
-            play_alert_beep()
+        if not args.silence_notifications:
+            play_alert_beep(silence_mode=False)
         sys.exit(1)
 
 

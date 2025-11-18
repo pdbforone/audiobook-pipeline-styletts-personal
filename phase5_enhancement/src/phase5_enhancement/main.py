@@ -910,9 +910,9 @@ def main():
         help="Disable silence guard; always apply crossfade",
     )
     parser.add_argument(
-        "--play_notification",
+        "--silence_notifications",
         action="store_true",
-        help="Play astromech notification on completion/failure",
+        help="Silence astromech notifications (beeps are ON by default)",
     )
     args = parser.parse_args()
 
@@ -928,6 +928,10 @@ def main():
             config.crossfade_silence_guard_sec = args.crossfade_silence_guard_sec
         if args.disable_crossfade_silence_guard:
             config.crossfade_enable_silence_guard = False
+        logger.info(
+            "Astromech notifications: %s (use --silence_notifications to mute).",
+            "ON" if not args.silence_notifications else "OFF",
+        )
         setup_logging(config)
         target_file_id = args.file_id or config.audiobook_title or Path(config.pipeline_json).stem
         # Per-title output/input directories
@@ -984,8 +988,8 @@ def main():
 
             if not chunks:
                 logger.error("No audio chunks found to process")
-                if args.play_notification:
-                    play_alert_beep()
+                if not args.silence_notifications:
+                    play_alert_beep(silence_mode=False)
                 return 1
 
             # ===== RESUME LOGIC =====
@@ -1308,11 +1312,11 @@ def main():
             logger.info("=" * 60)
 
             exit_code = 0 if successful > 0 else 1
-            if args.play_notification:
+            if not args.silence_notifications:
                 if exit_code == 0:
-                    play_success_beep()
+                    play_success_beep(silence_mode=False)
                 else:
-                    play_alert_beep()
+                    play_alert_beep(silence_mode=False)
             return exit_code
 
         finally:

@@ -67,6 +67,7 @@
 - CPU guard: cap TTS workers to <=3 on Ryzen 5 5500U to prevent throttling; monitor wall-clock RT per chunk.
 - Kokoro-onnx CPU fallback: ~1.2–1.5x RT for ≤10 s chunks; switch when XTTS RT per chunk exceeds ~4x or risks OOM. Phase4 config now exposes enable_latency_fallback + slow_rt_threshold (default 4.0).
 - Latency monitor: log wall vs audio duration; if RT >4x and Kokoro available, attempt single Kokoro re-render and keep if faster (configurable).
+- Auto engine heuristic: Phase 4 `--auto_engine` estimates total audio (chars_per_minute=2700, rt_xtts≈3.2, rt_kokoro≈1.3) and selects Kokoro when XTTS walltime is >30% slower.
 - Defaults: enable Silero VAD-driven trim; keep RNNoise opt-in to avoid over-softening narration.
 - Mastering (narration): target -18 to -16 LUFS with soft-knee limiter; avoid stacking heavy denoise + limiter unless noisy input demands it.
 - Notification assets: Droid beeps generated locally at `assets/notifications/droid_success.wav` and `assets/notifications/droid_alert.wav` for UI/alerts (pure numpy/soundfile, CPU-safe).
