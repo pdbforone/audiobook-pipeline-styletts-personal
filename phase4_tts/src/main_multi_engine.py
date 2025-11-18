@@ -502,7 +502,8 @@ def main() -> int:
         json_path, resolved_file_id, args.voice, voice_references, voices_config_path
     )
 
-    output_dir = Path(config.get("audio_chunks_dir", "audio_chunks")).resolve()
+    base_output = Path(config.get("audio_chunks_dir", "audio_chunks")).resolve()
+    output_dir = base_output / resolved_file_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Lazy-load only needed engines for isolation
