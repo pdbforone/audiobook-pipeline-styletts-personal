@@ -676,6 +676,25 @@ def concatenate_with_crossfades(
     silence_guard_sec: float = 0.2,
     enable_silence_guard: bool = True,
 ) -> np.ndarray:
+    def _detect_seam_pop(
+        a: np.ndarray, b: np.ndarray, fade_len: int, threshold: float = 0.2
+    ) -> bool:
+        """
+        Heuristic seam pop detector: check energy discontinuity at join.
+        - Compare RMS of last 100 samples of 'a' to first 100 samples of 'b'
+        - Flag if jump exceeds threshold fraction of max amplitude.
+        """
+        if fade_len <= 0 or a.size < 100 or b.size < 100:
+            return False
+        tail = a[-100:]
+        head = b[:100]
+        rms_tail = float(np.sqrt(np.mean(tail * tail)))
+        rms_head = float(np.sqrt(np.mean(head * head)))
+        if rms_tail < 1e-6 and rms_head < 1e-6:
+            return False
+        jump = abs(rms_head - rms_tail)
+        denom = max(rms_head, rms_tail, 1e-3)
+        return (jump / denom) > threshold
     def _leading_silence_seconds(
         audio: np.ndarray, sample_rate: int, threshold: float = 1e-4, max_scan_sec: float = 0.6
     ) -> float:
@@ -710,6 +729,10 @@ def concatenate_with_crossfades(
         if effective_fade < 4 or len(combined) < effective_fade or len(chunk) < effective_fade:
             combined = np.concatenate([combined, chunk])
         else:
+            if _detect_seam_pop(combined, chunk, effective_fade):
+                logger.warning(
+                    "Potential seam discontinuity detected; consider increasing fade or adjusting guard"
+                )
             fade_out = np.linspace(1, 0, effective_fade)
             fade_in = np.linspace(0, 1, effective_fade)
             combined[-effective_fade:] *= fade_out
@@ -865,12 +888,40 @@ def main():
         action="store_true",
         help="Skip final concatenation step",
     )
+    parser.add_argument(
+        "--crossfade_sec",
+        type=float,
+        help="Override crossfade duration (seconds)",
+    )
+    parser.add_argument(
+        "--crossfade_max_sec",
+        type=float,
+        help="Override maximum allowed crossfade duration (seconds)",
+    )
+    parser.add_argument(
+        "--crossfade_silence_guard_sec",
+        type=float,
+        help="Silence guard threshold in seconds (skip crossfade when leading silence exceeds this)",
+    )
+    parser.add_argument(
+        "--disable_crossfade_silence_guard",
+        action="store_true",
+        help="Disable silence guard; always apply crossfade",
+    )
     args = parser.parse_args()
 
     try:
         config = load_config(args.config)
         if args.pipeline_json:
             config.pipeline_json = args.pipeline_json
+        if args.crossfade_sec is not None:
+            config.crossfade_duration = args.crossfade_sec
+        if args.crossfade_max_sec is not None:
+            config.crossfade_max_sec = args.crossfade_max_sec
+        if args.crossfade_silence_guard_sec is not None:
+            config.crossfade_silence_guard_sec = args.crossfade_silence_guard_sec
+        if args.disable_crossfade_silence_guard:
+            config.crossfade_enable_silence_guard = False
         setup_logging(config)
         target_file_id = args.file_id or config.audiobook_title or Path(config.pipeline_json).stem
         # Per-title output/input directories
