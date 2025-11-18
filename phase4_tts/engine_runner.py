@@ -106,6 +106,8 @@ def build_phase4_command(args: argparse.Namespace, engine_py: Path, engine: str)
         cmd.append(f"--chunk_id={args.chunk_id}")
     if args.disable_fallback:
         cmd.append("--disable_fallback")
+    if args.resume:
+        cmd.append("--resume")
 
     return cmd
 
@@ -122,6 +124,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--chunk_id", type=int)
     parser.add_argument("--disable_fallback", action="store_true")
     parser.add_argument("--config", default="config.yaml")
+    parser.add_argument("--resume", action="store_true", help="Skip existing chunk outputs (resume)")
     return parser.parse_args()
 
 
