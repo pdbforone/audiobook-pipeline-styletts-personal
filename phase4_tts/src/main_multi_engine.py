@@ -319,6 +319,8 @@ def synthesize_chunk_with_engine(
     output_dir: Path,
     language: str,
     allow_fallback: bool,
+    enable_latency_fallback: bool = True,
+    slow_rt_threshold: float = 4.0,
     engine_kwargs: Optional[Dict[str, Any]] = None,
     skip_existing: bool = False,
 ) -> ChunkResult:
@@ -366,10 +368,10 @@ def synthesize_chunk_with_engine(
     )
 
     # Latency-driven fallback: if primary is very slow and Kokoro is available, try once.
-    slow_rt_threshold = 4.0
     kokoro_available = "kokoro" in engine_manager.engines
     if (
-        allow_fallback
+        enable_latency_fallback
+        and allow_fallback
         and used_engine != "kokoro"
         and rt_factor > slow_rt_threshold
         and kokoro_available
@@ -552,6 +554,16 @@ def main() -> int:
         help="Disables cascading to other engines on failure (per-process fallback).",
     )
     parser.add_argument(
+        "--slow-rt-threshold",
+        type=float,
+        help="Real-time factor threshold to trigger Kokoro latency fallback (default from config or 4.0).",
+    )
+    parser.add_argument(
+        "--disable_latency_fallback",
+        action="store_true",
+        help="Disable latency-based Kokoro fallback even if enabled in config.",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Skip chunks whose output WAV already exists (resume support).",
@@ -568,6 +580,14 @@ def main() -> int:
     enable_g2p = bool(config.get("enable_g2p", False))
     normalize_numbers = bool(config.get("normalize_numbers", True))
     custom_overrides = config.get("custom_pronunciations", {}) or None
+    enable_latency_fallback = not args.disable_latency_fallback and bool(
+        config.get("enable_latency_fallback", True)
+    )
+    slow_rt_threshold = float(
+        args.slow_rt_threshold
+        if args.slow_rt_threshold is not None
+        else config.get("slow_rt_threshold", 4.0)
+    )
 
     resolved_file_id, chunks = collect_chunks(
         pipeline_data,
@@ -636,6 +656,8 @@ def main() -> int:
                 output_dir,
                 language,
                 allow_fallback=not args.disable_fallback,
+                enable_latency_fallback=enable_latency_fallback,
+                slow_rt_threshold=slow_rt_threshold,
                 engine_kwargs=engine_params,
                 skip_existing=skip_existing,
             ): chunk.chunk_id

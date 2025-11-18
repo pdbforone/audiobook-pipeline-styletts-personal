@@ -27,3 +27,5 @@ split_char_limit: 1200  # Only split when text exceeds this many characters
 output_dir: "audio_chunks"  # Relative to phase4_tts; absolute in code
 enable_g2p: true           # Use number/abbreviation normalization before TTS
 normalize_numbers: true    # Expand numeric tokens (g2p_en)
+enable_latency_fallback: true   # Allow auto-switch to Kokoro when RT is too slow
+slow_rt_threshold: 4.0          # Trigger Kokoro when RT factor exceeds this value

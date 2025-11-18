@@ -78,6 +78,18 @@ class EnhancementConfig(BaseModel):
     crossfade_duration: float = Field(
         default=0.05, ge=0.0, le=5.0, description="Crossfade duration in seconds"
     )
+    crossfade_max_sec: float = Field(
+        default=0.1, ge=0.0, le=5.0, description="Maximum allowed crossfade duration"
+    )
+    crossfade_silence_guard_sec: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=2.0,
+        description="Skip crossfade when leading silence on next chunk exceeds this duration",
+    )
+    crossfade_enable_silence_guard: bool = Field(
+        default=True, description="Disable to always apply crossfade regardless of silence"
+    )
     mp3_bitrate: str = Field(
         default="192k",
         pattern=r"^\d{2,3}k$",

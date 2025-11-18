@@ -669,7 +669,12 @@ def enhance_chunk(
 
 
 def concatenate_with_crossfades(
-    chunks: list[np.ndarray], sr: int, crossfade_sec: float
+    chunks: list[np.ndarray],
+    sr: int,
+    crossfade_sec: float,
+    max_crossfade_sec: float = 0.1,
+    silence_guard_sec: float = 0.2,
+    enable_silence_guard: bool = True,
 ) -> np.ndarray:
     def _leading_silence_seconds(
         audio: np.ndarray, sample_rate: int, threshold: float = 1e-4, max_scan_sec: float = 0.6
@@ -688,8 +693,8 @@ def concatenate_with_crossfades(
 
     if not chunks:
         return np.array([])
-    # Clamp to a small, narration-safe crossfade; default to <100 ms even if a larger value is passed.
-    target_crossfade = max(0.0, min(crossfade_sec, 0.1))
+    # Clamp to a small, narration-safe crossfade; cap via config to avoid word swallow.
+    target_crossfade = max(0.0, min(crossfade_sec, max_crossfade_sec))
     fade_samples = int(target_crossfade * sr)
 
     combined = chunks[0].copy()
@@ -699,7 +704,7 @@ def concatenate_with_crossfades(
             continue
 
         lead_silence = _leading_silence_seconds(chunk, sr)
-        effective_fade = 0 if lead_silence >= 0.2 else fade_samples
+        effective_fade = 0 if (enable_silence_guard and lead_silence >= silence_guard_sec) else fade_samples
 
         # Skip crossfade if either side is too short for the window
         if effective_fade < 4 or len(combined) < effective_fade or len(chunk) < effective_fade:
@@ -1074,7 +1079,10 @@ def main():
                     logger.info("Created %d batch WAVs; starting crossfade merge...", len(batch_files))
 
                     # 2) Iteratively crossfade batches to keep filters small
-                    crossfade_sec = float(config.crossfade_duration)
+                    crossfade_sec = min(
+                        float(config.crossfade_duration),
+                        float(getattr(config, "crossfade_max_sec", 0.1)),
+                    )
                     current = batch_files[0]
 
                     for merge_idx, next_batch in enumerate(batch_files[1:], start=1):

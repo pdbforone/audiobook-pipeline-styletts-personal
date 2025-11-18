@@ -4,6 +4,9 @@ backup_original: false
 chunk_size_seconds: 30
 cleanup_temp_files: true
 crossfade_duration: 0.05
+crossfade_max_sec: 0.1
+crossfade_silence_guard_sec: 0.2
+crossfade_enable_silence_guard: true
 enable_volume_normalization: true
 input_dir: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts_styletts\audio_chunks
 log_file: audio_enhancement.log
