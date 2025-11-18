@@ -182,13 +182,24 @@ class StateTransaction:
         self.data: Dict[str, Any] = {}
         self.original_data: Dict[str, Any] = {}
         self.committed = False
+        self._lock_cm = None
 
     def __enter__(self) -> 'StateTransaction':
         """Begin transaction - load current state"""
-        self.original_data = self.state.read()
-        self.data = deepcopy(self.original_data)
-        logger.debug("Transaction started")
-        return self
+        # Acquire exclusive lock for entire transaction to guarantee isolation
+        self._lock_cm = self.state._file_lock()
+        self._lock_cm.__enter__()
+        try:
+            self.original_data = self.state.read()
+            self.data = deepcopy(self.original_data)
+            logger.debug("Transaction started")
+            return self
+        except Exception:
+            # If read fails, release lock before propagating error
+            if self._lock_cm is not None:
+                self._lock_cm.__exit__(*sys.exc_info())
+                self._lock_cm = None
+            raise
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """End transaction - commit or rollback"""
@@ -200,6 +211,7 @@ class StateTransaction:
                 success=True,
                 details={"reason": str(exc_val)}
             )
+            self._release_lock()
             return False  # Re-raise exception
 
         # No exception - commit
@@ -219,8 +231,10 @@ class StateTransaction:
                 success=False,
                 details={"error": str(e)}
             )
+            self._release_lock()
             raise
 
+        self._release_lock()
         return True
 
     def _get_changed_keys(self) -> list[str]:
@@ -230,6 +244,14 @@ class StateTransaction:
             if self.data.get(key) != self.original_data.get(key):
                 changed.append(key)
         return changed
+
+    def _release_lock(self):
+        """Release transaction lock if held"""
+        if self._lock_cm is not None:
+            try:
+                self._lock_cm.__exit__(None, None, None)
+            finally:
+                self._lock_cm = None
 
 
 class PipelineState:

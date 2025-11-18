@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-from state_manager import (
+from pipeline_common.state_manager import (
     PipelineState,
     StateError,
     StateLockError,
