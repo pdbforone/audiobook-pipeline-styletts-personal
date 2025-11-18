@@ -312,9 +312,16 @@ def synthesize_chunk_with_engine(
     language: str,
     allow_fallback: bool,
     engine_kwargs: Optional[Dict[str, Any]] = None,
+    skip_existing: bool = False,
 ) -> ChunkResult:
     """Synthesize text for a single chunk using requested engine with fallback."""
     chunk_kwargs = dict(engine_kwargs) if engine_kwargs else {}
+    existing_out = output_dir / f"{chunk.chunk_id}.wav"
+
+    # Resume support: skip already-rendered chunks
+    if skip_existing and existing_out.exists():
+        logger.info("Skipping %s (already exists)", chunk.chunk_id)
+        return ChunkResult(chunk.chunk_id, True, existing_out, None)
 
     try:
         audio_out, used_engine = engine_manager.synthesize(
@@ -462,6 +469,11 @@ def main() -> int:
         action="store_true",
         help="Disables cascading to other engines on failure (per-process fallback).",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip chunks whose output WAV already exists (resume support).",
+    )
 
     args = parser.parse_args()
 
@@ -500,6 +512,7 @@ def main() -> int:
 
     language = args.language or config.get("language", "en")
     workers = max(1, args.workers)
+    skip_existing = bool(args.resume)
 
     logger.info("=" * 80)
     logger.info("Phase 4 Multi-Engine TTS")
@@ -527,6 +540,7 @@ def main() -> int:
                 language,
                 allow_fallback=not args.disable_fallback,
                 engine_kwargs=engine_params,
+                skip_existing=skip_existing,
             ): chunk.chunk_id
             for chunk in chunks
         }
