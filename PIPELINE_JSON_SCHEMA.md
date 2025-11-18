@@ -256,30 +256,27 @@
   "files": {
     "<file_id>": {
       "status": "partial|success|failed",
-      "total_chunks": 34,              // optional convenience counter
-      "chunk_audio_paths": ["phase4_tts/audio_chunks/chunk_0.wav", "..."],  // optional
+      "voice_id": "neutral_narrator",
+      "requested_engine": "xtts",
+      "selected_engine": "kokoro",
+      "engines_used": ["xtts", "kokoro"],
+      "total_chunks": 34,
+      "chunks_completed": 33,
+      "chunks_failed": 1,
+      "audio_dir": "phase4_tts/audio_chunks/Gift_of_the_Magi",
+      "chunk_audio_paths": ["phase4_tts/audio_chunks/Gift_of_the_Magi/chunk_0000.wav", "..."],
+      "duration_seconds": 542.8,
+      "avg_rt_factor": 3.4,                // walltime / audio duration (mean of successes)
+      "latency_fallback_chunks": 2,        // count of chunks that switched engines for latency
       "<chunk_id>": {
-        "chunk_id": "chunk_0",
-        "audio_path": "phase4_tts/audio_chunks/chunk_0.wav",
+        "chunk_id": "chunk_0000",
+        "audio_path": "phase4_tts/audio_chunks/Gift_of_the_Magi/chunk_0000.wav",
         "status": "success|failed",
-        "mos_score": 4.35,
-        "metrics": {
-          "duration_per_chunk": 3.8,
-          "splitting_enabled": true,
-          "selected_voice": "neutral_narrator",
-          "validation": {
-            "validation_passed": true,
-            "tier1": { "passed": true, "reason": "", "duration_sec": 1.2, "details": {...} },
-            "tier2": { "passed": true, "reason": "", "duration_sec": 35.0, "details": { "wer": 0.08 } }
-          }
-        },
-        "errors": [],
-        "timestamps": { "start": 1696214338.62, "end": 1696214345.44, "duration": 6.82 },
-        "split_metadata": {
-          "split_applied": false,
-          "num_sub_chunks": 1,
-          "failed_sub_chunks": []
-        }
+        "engine_used": "xtts|kokoro",
+        "rt_factor": 3.2,                  // walltime / audio duration
+        "audio_seconds": 3.8,
+        "latency_fallback_used": false,
+        "errors": []
       }
     }
   }
@@ -293,26 +290,29 @@
   "files": {
     "Gift_of_the_Magi": {
       "status": "success",
+      "voice_id": "neutral_narrator",
+      "requested_engine": "xtts",
+      "selected_engine": "kokoro",
+      "engines_used": ["xtts", "kokoro"],
       "total_chunks": 34,
-      "chunk_audio_paths": ["phase4_tts/audio_chunks/chunk_0.wav"],
-      "chunk_0": {
-        "chunk_id": "chunk_0",
-        "audio_path": "phase4_tts/audio_chunks/chunk_0.wav",
+      "chunks_completed": 34,
+      "chunks_failed": 0,
+      "audio_dir": "phase4_tts/audio_chunks/Gift_of_the_Magi",
+      "chunk_audio_paths": [
+        "phase4_tts/audio_chunks/Gift_of_the_Magi/chunk_0000.wav"
+      ],
+      "duration_seconds": 532.4,
+      "avg_rt_factor": 3.3,
+      "latency_fallback_chunks": 2,
+      "chunk_0000": {
+        "chunk_id": "chunk_0000",
+        "audio_path": "phase4_tts/audio_chunks/Gift_of_the_Magi/chunk_0000.wav",
         "status": "success",
-        "mos_score": 4.52,
-        "metrics": {
-          "duration_per_chunk": 3.6,
-          "splitting_enabled": false,
-          "selected_voice": "neutral_narrator",
-          "validation": {
-            "validation_passed": true,
-            "tier1": { "passed": true, "reason": "", "details": {}, "duration_sec": 1.1 },
-            "tier2": null
-          }
-        },
-        "errors": [],
-        "timestamps": { "start": 1696214338.62, "end": 1696214342.21, "duration": 3.59 },
-        "split_metadata": { "split_applied": false, "num_sub_chunks": 1, "failed_sub_chunks": [] }
+        "engine_used": "xtts",
+        "rt_factor": 3.2,
+        "audio_seconds": 3.6,
+        "latency_fallback_used": false,
+        "errors": []
       }
     }
   }

@@ -485,6 +485,14 @@ def synthesize_chunk_with_engine(
                 "Chunk %s Kokoro latency fallback failed: %s", chunk.chunk_id, fallback_exc
             )
 
+    if rt_factor > slow_rt_threshold:
+        logger.warning(
+            "Chunk %s final RT x%.2f remains above threshold %.1f; consider Kokoro or shorter chunks.",
+            chunk.chunk_id,
+            rt_factor,
+            slow_rt_threshold,
+        )
+
     output_path = output_dir / f"{chunk.chunk_id}.wav"
     sf.write(output_path, audio, sample_rate)
 
