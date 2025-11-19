@@ -25,6 +25,8 @@ python src/main_multi_engine.py --file_id MyBook --json_path ../pipeline.json --
 python src/main_multi_engine.py --file_id MyBook --json_path ../pipeline.json --resume --disable_fallback
 # Prefer Kokoro for throughput
 python src/main_multi_engine.py --file_id MyBook --json_path ../pipeline.json --prefer_kokoro
+# Profiles (safe | balanced | max_quality)
+python src/main_multi_engine.py --file_id MyBook --json_path ../pipeline.json --profile safe
 ```
 
 ## Voice assets

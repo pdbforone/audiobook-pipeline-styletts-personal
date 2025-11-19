@@ -661,6 +661,11 @@ def main() -> int:
         action="store_true",
         help="Shortcut to default to Kokoro for throughput (overrides --engine if it is xtts).",
     )
+    parser.add_argument(
+        "--profile",
+        choices=["safe", "balanced", "max_quality"],
+        help="Preset: safe (workers=3, prefer Kokoro, guard on), balanced (workers=3, auto-engine), max_quality (workers=2, xtts focus).",
+    )
     parser.add_argument("--json_path", required=True, help="Path to pipeline.json")
     parser.add_argument("--config", default="config.yaml", help="Phase4 config file")
     parser.add_argument("--voice", help="Voice ID override (keys from configs/voice_references.json)")
@@ -769,6 +774,20 @@ def main() -> int:
         return 1
 
     engine_requested = args.engine
+    if args.profile:
+        if args.profile == "safe":
+            cpu_safe = True
+            args.prefer_kokoro = True
+            workers = min(workers, 3)
+        elif args.profile == "balanced":
+            cpu_safe = False
+            workers = min(workers, 3)
+        elif args.profile == "max_quality":
+            engine_requested = "xtts"
+            cpu_safe = False
+            workers = min(workers, 2)
+            enable_latency_fallback = False
+            args.prefer_kokoro = False
     if args.prefer_kokoro and engine_requested == "xtts":
         engine_requested = "kokoro"
         logger.info("Prefer Kokoro flag set: overriding requested engine to kokoro for throughput.")
