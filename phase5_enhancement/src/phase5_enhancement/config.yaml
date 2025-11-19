@@ -8,7 +8,7 @@ crossfade_max_sec: 0.1
 crossfade_silence_guard_sec: 0.2
 crossfade_enable_silence_guard: true
 enable_volume_normalization: true
-input_dir: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts_styletts\audio_chunks
+input_dir: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\audio_chunks
 log_file: audio_enhancement.log
 log_level: INFO
 lufs_target: -18.0
@@ -22,7 +22,7 @@ enable_silero_vad: true
 silero_vad_threshold: 0.6
 silero_vad_min_speech: 1.0
 trim_silence_with_vad: false
-output_dir: processed
+output_dir: processed/{file_id}
 pipeline_json: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\pipeline.json
 processing_timeout: 60
 quality_validation_enabled: false

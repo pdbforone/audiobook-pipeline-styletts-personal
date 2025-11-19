@@ -937,6 +937,8 @@ def main():
         # Per-title output/input directories
         config.output_dir = str(Path(config.output_dir.format(file_id=target_file_id)).resolve())
         config.input_dir = str((Path(config.input_dir) / target_file_id).resolve())
+        # Keep downstream helpers aligned to the target file id
+        config.audiobook_title = target_file_id
         os.environ["PHASE5_FILE_ID"] = target_file_id
 
         logger.info("=" * 60)
@@ -996,10 +998,23 @@ def main():
             if args.chunk_id is None and config.resume_on_failure:
                 with open(config.pipeline_json, "r") as f:
                     pipeline = json.load(f)
-                phase5_existing = pipeline.get("phase5", {}).get("chunks", [])
+
+                phase5_files = pipeline.get("phase5", {}).get("files", {})
+                file_entry = phase5_files.get(target_file_id, {})
+                phase5_existing = file_entry.get("chunks", [])
+
+                # Legacy support: if older top-level chunks exist, only count ones
+                # whose paths reference the target file_id to avoid skipping others.
+                legacy_chunks = [
+                    c
+                    for c in pipeline.get("phase5", {}).get("chunks", [])
+                    if target_file_id in str(c.get("wav_path", "")) or target_file_id in str(c.get("enhanced_path", ""))
+                ]
+
                 existing_ids = {
-                    c["chunk_id"] for c in phase5_existing if c["status"] == "complete"
+                    c["chunk_id"] for c in phase5_existing + legacy_chunks if c.get("status") == "complete"
                 }
+
                 # Also skip if enhanced WAV already exists on disk
                 output_dir = Path(config.output_dir)
                 disk_existing = {

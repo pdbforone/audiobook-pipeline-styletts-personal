@@ -268,6 +268,11 @@
       "duration_seconds": 542.8,
       "avg_rt_factor": 3.4,                // walltime / audio duration (mean of successes)
       "latency_fallback_chunks": 2,        // count of chunks that switched engines for latency
+      "fallback_rate": 0.06,               // ratio of successful chunks using latency fallback
+      "rt_p50": 3.1,
+      "rt_p90": 3.9,
+      "rt_p99": 4.6,
+      "advisory": "High RT: p90=3.9x > threshold 3.5. Consider --cpu_safe or --workers 2.",
       "<chunk_id>": {
         "chunk_id": "chunk_0000",
         "audio_path": "phase4_tts/audio_chunks/Gift_of_the_Magi/chunk_0000.wav",
@@ -304,6 +309,11 @@
       "duration_seconds": 532.4,
       "avg_rt_factor": 3.3,
       "latency_fallback_chunks": 2,
+      "fallback_rate": 0.06,
+      "rt_p50": 3.0,
+      "rt_p90": 3.8,
+      "rt_p99": 4.2,
+      "advisory": null,
       "chunk_0000": {
         "chunk_id": "chunk_0000",
         "audio_path": "phase4_tts/audio_chunks/Gift_of_the_Magi/chunk_0000.wav",

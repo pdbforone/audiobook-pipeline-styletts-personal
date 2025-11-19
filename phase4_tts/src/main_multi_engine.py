@@ -16,7 +16,8 @@ import os
 import re
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor
+from concurrent.futures import wait
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from typing import Any, Dict, List, Optional, Tuple
@@ -514,6 +515,7 @@ def update_phase4_summary(
     voice_id: str,
     requested_engine: str,
     selected_engine: str,
+    slow_rt_threshold: float,
     results: List[ChunkResult],
     output_dir: Path,
     duration_sec: float,
@@ -532,6 +534,21 @@ def update_phase4_summary(
     ]
     avg_rt_factor = float(np.mean(rt_factors)) if rt_factors else None
     latency_fallback_count = sum(1 for r in results if r.latency_fallback_used)
+    fallback_rate = (
+        float(latency_fallback_count) / max(1, completed) if completed else None
+    )
+    rt_p50 = float(np.percentile(rt_factors, 50)) if rt_factors else None
+    rt_p90 = float(np.percentile(rt_factors, 90)) if rt_factors else None
+    rt_p99 = float(np.percentile(rt_factors, 99)) if rt_factors else None
+    advisory: Optional[str] = None
+    if rt_p90 and rt_p90 > slow_rt_threshold:
+        advisory = (
+            f"High RT: p90={rt_p90:.2f}x > threshold {slow_rt_threshold:.1f}. "
+            "Consider --cpu_safe, --workers 2, --auto_engine, or lowering slow-rt-threshold."
+        )
+    if fallback_rate is not None and fallback_rate > 0.2:
+        extra = " High latency fallback usage (>20%)."
+        advisory = (advisory + extra) if advisory else ("High latency fallback usage (>20%). " "Consider Kokoro.")
 
     file_entry: Dict[str, Any] = {
         "status": "success" if failed == 0 else "partial",
@@ -549,6 +566,11 @@ def update_phase4_summary(
         "duration_seconds": duration_sec,
         "avg_rt_factor": avg_rt_factor,
         "latency_fallback_chunks": latency_fallback_count,
+        "fallback_rate": fallback_rate,
+        "rt_p50": rt_p50,
+        "rt_p90": rt_p90,
+        "rt_p99": rt_p99,
+        "advisory": advisory,
     }
 
     for result in results:
@@ -788,29 +810,60 @@ def main() -> int:
 
     start_time = time.time()
     results: List[ChunkResult] = []
+    allowed_workers = workers
+    slow_streak = 0
+    pending = list(chunks)
+    active_futures: Dict[Any, str] = {}
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        future_map = {
-            executor.submit(
-                synthesize_chunk_with_engine,
-                chunk,
-                reference_audio,
-                manager,
-                engine_selected,
-                output_dir,
-                language,
-                allow_fallback=not args.disable_fallback,
-                enable_latency_fallback=enable_latency_fallback,
-                slow_rt_threshold=slow_rt_threshold,
-                engine_kwargs=engine_params,
-                skip_existing=skip_existing,
-            ): chunk.chunk_id
-            for chunk in chunks
-        }
+        while pending or active_futures:
+            # Fill the queue up to the current allowed concurrency
+            while pending and len(active_futures) < allowed_workers:
+                chunk = pending.pop(0)
+                future = executor.submit(
+                    synthesize_chunk_with_engine,
+                    chunk,
+                    reference_audio,
+                    manager,
+                    engine_selected,
+                    output_dir,
+                    language,
+                    allow_fallback=not args.disable_fallback,
+                    enable_latency_fallback=enable_latency_fallback,
+                    slow_rt_threshold=slow_rt_threshold,
+                    engine_kwargs=engine_params,
+                    skip_existing=skip_existing,
+                )
+                active_futures[future] = chunk.chunk_id
 
-        for future in as_completed(future_map):
-            result = future.result()
-            results.append(result)
+            if not active_futures:
+                break
+
+            done, _ = wait(active_futures, return_when=FIRST_COMPLETED)
+            for future in done:
+                active_futures.pop(future, None)
+                result = future.result()
+                results.append(result)
+
+                if (
+                    cpu_safe
+                    and result.success
+                    and result.rt_factor is not None
+                    and np.isfinite(result.rt_factor)
+                    and result.rt_factor > slow_rt_threshold
+                ):
+                    slow_streak += 1
+                else:
+                    slow_streak = 0
+
+                if cpu_safe and allowed_workers > 1 and slow_streak >= 2:
+                    allowed_workers -= 1
+                    slow_streak = 0
+                    logger.warning(
+                        "Adaptive worker scaling: reducing workers to %d after consecutive slow chunks (threshold %.1f).",
+                        allowed_workers,
+                        slow_rt_threshold,
+                    )
 
     duration = time.time() - start_time
     success_count = sum(1 for r in results if r.success)
@@ -819,6 +872,34 @@ def main() -> int:
     logger.info("-" * 80)
     logger.info("Completed in %.1fs (%0.1fs/chunk)", duration, duration / max(1, len(results)))
     logger.info("Success: %d | Failed: %d", success_count, failed_count)
+    rt_values = [
+        r.rt_factor for r in results if r.success and r.rt_factor is not None and np.isfinite(r.rt_factor)
+    ]
+    if rt_values:
+        rt_p50 = float(np.percentile(rt_values, 50))
+        rt_p90 = float(np.percentile(rt_values, 90))
+        rt_p99 = float(np.percentile(rt_values, 99))
+        fallback_rate = sum(1 for r in results if r.latency_fallback_used and r.success) / max(
+            1, success_count
+        )
+        logger.info(
+            "RT factors p50=%.2fx p90=%.2fx p99=%.2fx | latency fallback rate=%.1f%%",
+            rt_p50,
+            rt_p90,
+            rt_p99,
+            fallback_rate * 100.0,
+        )
+        if rt_p90 > slow_rt_threshold:
+            logger.warning(
+                "High RT p90=%.2fx above threshold %.1f; consider --cpu_safe, --workers 2, or --auto_engine.",
+                rt_p90,
+                slow_rt_threshold,
+            )
+        if fallback_rate > 0.2:
+            logger.warning(
+                "Latency fallback used on %.1f%% of chunks; Kokoro may be preferable for this run.",
+                fallback_rate * 100.0,
+            )
     logger.info("-" * 80)
 
     update_phase4_summary(
@@ -827,6 +908,7 @@ def main() -> int:
         voice_id=voice_id,
         requested_engine=engine_requested,
         selected_engine=engine_selected,
+        slow_rt_threshold=slow_rt_threshold,
         results=results,
         output_dir=output_dir,
         duration_sec=duration,

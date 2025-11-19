@@ -87,6 +87,15 @@ python engine_runner.py \
   --file_id "sample_book" \
   --json_path ../pipeline.json \
   --disable_fallback
+
+# CPU-safe multi-engine with latency guardrails (recommended on Ryzen 5)
+python -m phase4_tts.src.main_multi_engine \
+  --file_id "sample_book" \
+  --json_path ../pipeline.json \
+  --cpu_safe \
+  --auto_engine \
+  --resume
+# cpu_safe caps workers to 3, enables latency fallback, and now records RT percentiles + advisories in pipeline.json.
 ```
 
 ### Apply Professional Mastering
