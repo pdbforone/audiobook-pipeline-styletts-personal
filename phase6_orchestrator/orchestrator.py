@@ -22,11 +22,12 @@ import yaml
 import hashlib
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # Add parent directory to path for pipeline_common
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from pipeline_common import PipelineState, StateError
+from pydantic import BaseModel, Field, ValidationError, ConfigDict
 
 try:
     from rich.console import Console
@@ -51,33 +52,81 @@ console = Console() if RICH_AVAILABLE else None
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ARCHIVE_ROOT = PROJECT_ROOT / "audiobooks"
 PHASE4_AUDIO_DIR: Optional[Path] = None
-_ORCHESTRATOR_CONFIG: Optional[Dict] = None
+_ORCHESTRATOR_CONFIG: Optional["OrchestratorConfig"] = None
+RUN_SUMMARY: Dict[str, Any] = {
+    "phase4_reused": False,
+    "per_chunk_fallback_used": False,
+    "tts_workers_used": None,
+    "chunk_integrity_passed": None,
+    "backup_subtitles_used": False,
+    "budget_exceeded": False,
+}
 
 
-def get_orchestrator_config() -> Dict:
-    """Load phase6 config.yaml once."""
+class SubtitleConfig(BaseModel):
+    enable_backup_align: bool = True
+    max_drift_sec: float = 2.0
+    min_coverage_ratio: float = 0.95
+
+
+class TTSEngineConfig(BaseModel):
+    primary: str = "xtts"
+    secondary: Optional[str] = "kokoro"
+
+
+class OrchestratorConfig(BaseModel):
+    pipeline_path: Path = Field(default=Path("../pipeline.json"), alias="pipeline_json")
+    phases_to_run: List[int] = Field(default_factory=lambda: [1, 2, 3, 4, 5])
+    phase_timeout: Optional[int] = None
+    resume_enabled: bool = True
+    log_level: str = "INFO"
+    log_file: Optional[str] = None
+    pipeline_mode: str = "commercial"
+    tts_engine: str = "xtts"
+    phase4_reuse_enabled: bool = True
+    min_mos_for_reuse: Optional[float] = None
+    strict_chunk_integrity: bool = True
+    max_tts_workers: int = 1
+    per_chunk_fallback: bool = True
+    tts_engines: TTSEngineConfig = Field(default_factory=TTSEngineConfig)
+    prefer_shell_tts_execution: bool = False
+    global_time_budget_sec: Optional[int] = None
+    subtitles: SubtitleConfig = Field(default_factory=SubtitleConfig)
+    model_config = ConfigDict(populate_by_name=True)
+
+
+
+def get_orchestrator_config() -> OrchestratorConfig:
+    """Load phase6 config.yaml once and validate with Pydantic."""
     global _ORCHESTRATOR_CONFIG
-    if _ORCHESTRATOR_CONFIG is not None:
+    if isinstance(_ORCHESTRATOR_CONFIG, OrchestratorConfig):
         return _ORCHESTRATOR_CONFIG
 
     config_path = Path(__file__).with_name("config.yaml")
-    data: Dict = {}
+    data: Dict[str, Any] = {}
     if config_path.exists():
         try:
             with config_path.open("r", encoding="utf-8") as handle:
                 data = yaml.safe_load(handle) or {}
         except Exception as exc:
             logger.warning("Failed to read orchestrator config (%s); using defaults.", exc)
-    _ORCHESTRATOR_CONFIG = data
-    return data
+    if "pipeline_path" not in data and "pipeline_json" not in data:
+        data["pipeline_json"] = "../pipeline.json"
+
+    try:
+        _ORCHESTRATOR_CONFIG = OrchestratorConfig(**data)
+    except ValidationError as exc:
+        logger.warning("Invalid orchestrator config, using defaults. Details: %s", exc)
+        _ORCHESTRATOR_CONFIG = OrchestratorConfig()
+    return _ORCHESTRATOR_CONFIG
 
 
 def get_pipeline_mode() -> str:
-    return get_orchestrator_config().get("pipeline_mode", "commercial").lower()
+    return get_orchestrator_config().pipeline_mode.lower()
 
 
 def get_tts_engine() -> str:
-    return get_orchestrator_config().get("tts_engine", "xtts").lower()
+    return get_orchestrator_config().tts_engine.lower()
 
 
 def set_phase4_audio_dir(audio_dir: Path) -> None:
@@ -112,6 +161,22 @@ def compute_sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(chunk_size), b""):
             sha.update(block)
+    return sha.hexdigest()
+
+
+def compute_chunk_text_hash(chunk_paths: List[str]) -> str:
+    """Hash concatenated chunk text to enable Phase 4 reuse decisions."""
+    sha = hashlib.sha256()
+    for raw_path in chunk_paths:
+        path = Path(raw_path)
+        if not path.is_absolute():
+            path = path.resolve()
+        if not path.exists():
+            continue
+        try:
+            sha.update(path.read_bytes())
+        except Exception as exc:  # best-effort hashing
+            logger.warning("Could not hash %s for reuse check: %s", path, exc)
     return sha.hexdigest()
 
 
@@ -633,6 +698,154 @@ def load_phase3_chunks(file_id: str, pipeline_json: Path) -> Tuple[str, List[str
     return resolved_id, chunks
 
 
+def _find_phase_file_entry(data: Dict[str, Any], phase_key: str, file_id: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+    """Locate a phase entry for a given file_id with lenient matching."""
+    files = data.get(phase_key, {}).get("files", {}) or {}
+    if file_id in files:
+        return file_id, files[file_id]
+    for key, value in files.items():
+        if file_id in key or key in file_id:
+            return key, value
+    return file_id, None
+
+
+def get_phase4_output_dir(phase_dir: Path, pipeline_json: Path, file_id: str) -> Path:
+    """Resolve the output directory for Phase 4 audio."""
+    try:
+        state = PipelineState(pipeline_json, validate_on_read=False)
+        data = state.read()
+        _, entry = _find_phase_file_entry(data, "phase4", file_id)
+        audio_dir = entry.get("audio_dir") if entry else None
+        if audio_dir:
+            path = Path(audio_dir)
+            return path if path.is_absolute() else (phase_dir / path).resolve()
+    except Exception:
+        pass
+    return (phase_dir / "audio_chunks" / file_id).resolve()
+
+
+def cleanup_partial_outputs(file_id: str, chunk_id: Optional[str], phase_dir: Path, pipeline_json: Path) -> None:
+    """Remove partial audio for a specific chunk and clear its pipeline entry."""
+    output_dir = get_phase4_output_dir(phase_dir, pipeline_json, file_id)
+    patterns = [f"{chunk_id}*"] if chunk_id else ["chunk_*"]
+    for pattern in patterns:
+        for candidate in output_dir.glob(pattern):
+            try:
+                candidate.unlink()
+                logger.info(
+                    "Removing partial outputs for chunk %s before retry.",
+                    chunk_id or candidate.name,
+                )
+            except Exception as exc:
+                logger.warning("Could not remove partial output %s: %s", candidate, exc)
+
+    try:
+        state = PipelineState(pipeline_json, validate_on_read=False)
+        with state.transaction() as txn:
+            phase4 = txn.data.get("phase4", {})
+            files = phase4.get("files", {}) or {}
+            file_key, entry = _find_phase_file_entry(txn.data, "phase4", file_id)
+            if entry and chunk_id and chunk_id in entry:
+                entry.pop(chunk_id, None)
+                logger.debug("Cleared pipeline entry for chunk %s under file %s", chunk_id, file_key)
+    except Exception as exc:
+        logger.warning("Failed to clean pipeline entry for chunk %s: %s", chunk_id, exc)
+
+
+def should_reuse_phase4(
+    file_id: str,
+    pipeline_json: Path,
+    phase_dir: Path,
+    expected_engine: str,
+    chunk_hash: Optional[str],
+    config: OrchestratorConfig,
+) -> bool:
+    """Determine whether Phase 4 results can be reused."""
+    if not config.phase4_reuse_enabled:
+        return False
+
+    try:
+        state = PipelineState(pipeline_json, validate_on_read=False)
+        data = state.read()
+    except Exception as exc:
+        logger.warning("Could not read pipeline.json for reuse check: %s", exc)
+        return False
+
+    _, entry = _find_phase_file_entry(data, "phase4", file_id)
+    if not entry:
+        return False
+
+    audio_paths = entry.get("chunk_audio_paths") or []
+    total_chunks = entry.get("total_chunks") or len(audio_paths)
+    if total_chunks and len(audio_paths) < total_chunks:
+        logger.info("Phase 4 reuse rejected: missing chunks (%d/%d).", len(audio_paths), total_chunks)
+        return False
+
+    if expected_engine:
+        engines = set(entry.get("engines_used") or [])
+        selected = entry.get("selected_engine")
+        if selected:
+            engines.add(selected)
+        if expected_engine not in engines:
+            logger.info("Phase 4 reuse rejected: engine mismatch (%s not in %s).", expected_engine, engines)
+            return False
+
+    if config.min_mos_for_reuse:
+        mos = entry.get("metrics", {}).get("avg_mos")
+        if mos is not None and mos < config.min_mos_for_reuse:
+            logger.info("Phase 4 reuse rejected: MOS %.2f below threshold %.2f", mos, config.min_mos_for_reuse)
+            return False
+
+    if chunk_hash and entry.get("input_hash") and entry.get("input_hash") != chunk_hash:
+        logger.info("Phase 4 reuse rejected: chunk text hash changed.")
+        return False
+
+    # Validate artifact presence
+    output_dir = get_phase4_output_dir(phase_dir, pipeline_json, file_id)
+    for path_str in audio_paths:
+        path = Path(path_str)
+        if not path.is_absolute():
+            path = (output_dir / path).resolve()
+        if not path.exists() or path.stat().st_size == 0:
+            logger.info("Phase 4 reuse rejected: missing or empty file %s", path)
+            return False
+
+    logger.info("Phase 4 output will be reused (no changes detected).")
+    return True
+
+
+def record_phase4_metadata(
+    file_id: str,
+    pipeline_json: Path,
+    chunk_hash: Optional[str],
+) -> None:
+    """Augment phase4 metadata with reuse-friendly fields."""
+    try:
+        state = PipelineState(pipeline_json, validate_on_read=False)
+        with state.transaction() as txn:
+            phase4 = txn.data.get("phase4", {}) or {}
+            files = phase4.get("files", {}) or {}
+            file_key, entry = _find_phase_file_entry(txn.data, "phase4", file_id)
+            entry = entry or {}
+            # Derive chunk durations
+            durations = []
+            for key, value in entry.items():
+                if isinstance(value, dict) and value.get("audio_seconds") is not None:
+                    durations.append(value.get("audio_seconds"))
+            avg_duration = float(sum(durations) / len(durations)) if durations else None
+            if chunk_hash:
+                entry["input_hash"] = chunk_hash
+            entry["chunks_processed"] = entry.get("chunks_completed") or entry.get("total_chunks")
+            entry["avg_chunk_duration_sec"] = avg_duration
+            if entry.get("duration_seconds") is not None:
+                entry["total_tts_time_sec"] = entry["duration_seconds"]
+            entry["engine_used"] = entry.get("selected_engine") or entry.get("requested_engine")
+            files[file_key] = entry
+            phase4["files"] = files
+            txn.data["phase4"] = phase4
+    except Exception as exc:
+        logger.warning("Could not record Phase 4 metadata: %s", exc)
+
 def run_phase_with_retry(
     phase_num: int,
     file_path: Path,
@@ -663,6 +876,10 @@ def run_phase_with_retry(
         if attempt > 0:
             logger.info(f"Retry attempt {attempt}/{max_retries} for Phase {phase_num}")
             time.sleep(2)  # Brief pause before retry
+            if phase_num == 4:
+                phase_dir = find_phase_dir(4)
+                if phase_dir:
+                    cleanup_partial_outputs(file_id, None, phase_dir, pipeline_json)
         
         success = run_phase(
             phase_num,
@@ -705,8 +922,9 @@ def run_phase(
     Returns:
         True if successful, False otherwise
     """
+    config = get_orchestrator_config()
     # Determine engine early (needed for Phase 3 routing)
-    engine = tts_engine if tts_engine else get_tts_engine()
+    engine = tts_engine if tts_engine else (config.tts_engines.primary or get_tts_engine())
 
     # Special handling for Phase 3 (route to Phase 3b for XTTS)
     if phase_num == 3:
@@ -728,14 +946,38 @@ def run_phase(
     # Special handling for Phase 4 (Multi-Engine TTS)
     if phase_num == 4:
         logger.info(f"Phase 4: Using TTS engine: {engine}")
-
+        resolved_id, chunk_paths = load_phase3_chunks(file_id, pipeline_json)
+        chunk_hash = compute_chunk_text_hash(chunk_paths)
+        if should_reuse_phase4(resolved_id, pipeline_json, phase_dir, engine, chunk_hash, config):
+            RUN_SUMMARY["phase4_reused"] = True
+            return True
+        RUN_SUMMARY["phase4_reused"] = False
         # Route to appropriate Phase 4 implementation
         if engine not in {"xtts", "kokoro"}:
             logger.error(f"Unknown TTS engine: {engine}")
             return False
 
         # Use unified multi-engine system
-        return run_phase4_multi_engine(phase_dir, file_id, pipeline_json, voice_id, engine, pipeline_mode)
+        return run_phase4_multi_engine(
+            phase_dir,
+            resolved_id,
+            pipeline_json,
+            voice_id,
+            engine,
+            pipeline_mode,
+            config=config,
+            chunk_hash=chunk_hash,
+        )
+
+    if phase_num == 5 and config.strict_chunk_integrity:
+        phase4_dir = find_phase_dir(4)
+        if not phase4_dir:
+            logger.error("Cannot verify chunk integrity: Phase 4 directory missing.")
+            return False
+        if not verify_phase4_chunk_integrity(file_id, pipeline_json, phase4_dir):
+            RUN_SUMMARY["chunk_integrity_passed"] = False
+            return False
+        RUN_SUMMARY["chunk_integrity_passed"] = True
 
     # Standard phases (1, 2, 5) use Poetry
     return run_phase_standard(phase_num, phase_dir, file_path, file_id, pipeline_json)
@@ -937,48 +1179,63 @@ def run_phase4_multi_engine(
     voice_id: Optional[str] = None,
     engine: str = "xtts",
     pipeline_mode: str = "commercial",
+    config: Optional[OrchestratorConfig] = None,
+    chunk_hash: Optional[str] = None,
 ) -> bool:
     """
     Run Phase 4 with multi-engine support (XTTS v2 primary, Kokoro fallback).
 
-    Uses the unified main_multi_engine.py with Poetry environment.
-
-    Args:
-        phase_dir: Path to phase4_tts directory
-        file_id: File identifier
-        pipeline_json: Path to pipeline.json
-        voice_id: Optional voice ID for TTS
-        engine: Engine name (xtts or kokoro)
-        pipeline_mode: Pipeline mode (commercial or personal)
-
-    Returns:
-        True if successful, False otherwise
+    A per-chunk fallback path will retry failed chunks on the secondary engine
+    without reprocessing the entire book.
     """
     logger.info(f"Phase 4 directory: {phase_dir}")
+    cfg = config or get_orchestrator_config()
+    secondary_engine = cfg.tts_engines.secondary
+    workers = max(1, min(cfg.max_tts_workers, os.cpu_count() or cfg.max_tts_workers))
+    RUN_SUMMARY["tts_workers_used"] = workers
 
-    engines_to_try = [engine]
-    if engine == "xtts":
-        engines_to_try.append("kokoro")
-
-    for index, engine_name in enumerate(engines_to_try):
-        logger.info("Running Phase 4 via %s (attempt %d/%d)", engine_name, index + 1, len(engines_to_try))
+    def build_base_cmd(engine_name: str, chunk_index: Optional[int] = None, disable_fallback: bool = False) -> List[str]:
+        runner = [sys.executable]
+        env_name = os.environ.get("PHASE4_CONDA_ENV") or os.environ.get("CONDA_DEFAULT_ENV")
+        if cfg.prefer_shell_tts_execution and env_name:
+            runner = ["conda", "run", "-n", env_name, "python"]
+        elif cfg.prefer_shell_tts_execution:
+            runner = ["python"]
 
         cmd = [
-            sys.executable,
+            *runner,
             str(phase_dir / "engine_runner.py"),
             f"--engine={engine_name}",
             f"--file_id={file_id}",
             f"--json_path={pipeline_json}",
+            f"--workers={workers}",
         ]
-
         if voice_id:
             cmd.append(f"--voice={voice_id}")
         cmd.append("--config=config.yaml")
-
-        disable_fallback = len(engines_to_try) > 1 and engine_name != engines_to_try[-1]
         if disable_fallback:
             cmd.append("--disable_fallback")
+        if chunk_index is not None:
+            cmd.append(f"--chunk_id={chunk_index}")
+            cmd.append("--resume")
+        return cmd
 
+    def collect_failed_chunks() -> List[str]:
+        try:
+            state = PipelineState(pipeline_json, validate_on_read=False)
+            data = state.read()
+            _, entry = _find_phase_file_entry(data, "phase4", file_id)
+            if not entry:
+                return []
+            return [
+                key for key, value in entry.items()
+                if isinstance(value, dict) and value.get("status") == "failed"
+            ]
+        except Exception as exc:
+            logger.warning("Unable to inspect pipeline.json for failed chunks: %s", exc)
+            return []
+
+    def run_cmd(cmd: List[str]) -> subprocess.CompletedProcess:
         start_time = time.perf_counter()
         result = subprocess.run(
             cmd,
@@ -990,19 +1247,128 @@ def run_phase4_multi_engine(
             timeout=1800,
         )
         duration = time.perf_counter() - start_time
-
         if result.stdout:
-            logger.info("Phase 4 output (%s):\n%s", engine_name, result.stdout[-1000:])
+            logger.info("Phase 4 output (%s):\n%s", cmd[0], result.stdout[-1000:])
+        if result.returncode != 0:
+            logger.error(
+                "Phase 4 command failed (exit %s) in %.1fs\nstderr tail:\n%s",
+                result.returncode,
+                duration,
+                result.stderr[-500:],
+            )
+        else:
+            logger.info("Phase 4 command finished in %.1fs", duration)
+        return result
 
-        if result.returncode == 0:
-            logger.info("Phase 4 SUCCESS with %s in %.1fs", engine_name, duration)
-            return True
+    # Primary engine run - disable fallback so we can drive per-chunk retries ourselves.
+    primary_cmd = build_base_cmd(engine, disable_fallback=bool(cfg.per_chunk_fallback and secondary_engine))
+    result = run_cmd(primary_cmd)
 
-        logger.error("Phase 4 FAILED with %s (exit %s) in %.1fs", engine_name, result.returncode, duration)
-        logger.error("stderr tail:\n%s", result.stderr[-500:])
+    failed_chunks = collect_failed_chunks()
+    if failed_chunks and cfg.per_chunk_fallback and secondary_engine:
+        RUN_SUMMARY["per_chunk_fallback_used"] = True
+        logger.info("Retrying %d failed chunks via %s", len(failed_chunks), secondary_engine)
+        for chunk_id in failed_chunks:
+            match = re.search(r"(\\d+)", chunk_id)
+            if not match:
+                logger.warning("Cannot parse chunk id %s for fallback", chunk_id)
+                continue
+            cleanup_partial_outputs(file_id, chunk_id, phase_dir, pipeline_json)
+            chunk_index = int(match.group(1))
+            fallback_cmd = build_base_cmd(secondary_engine, chunk_index=chunk_index)
+            run_cmd(fallback_cmd)
+        # Re-read failures after fallback attempts
+        failed_chunks = collect_failed_chunks()
 
-    logger.error("Phase 4 failed for all configured engines")
+    success = result.returncode == 0 and not failed_chunks
+    if not success and cfg.per_chunk_fallback and secondary_engine and not failed_chunks:
+        success = True
+    if success:
+        logger.info("Phase 4 SUCCESS with %s", engine)
+        record_phase4_metadata(file_id, pipeline_json, chunk_hash)
+        return True
+
+    logger.error("Phase 4 failed; remaining failed chunks: %s", failed_chunks)
     return False
+
+
+def verify_phase4_chunk_integrity(file_id: str, pipeline_json: Path, phase4_dir: Path) -> bool:
+    """Ensure all expected chunk audio files exist before concatenation."""
+    try:
+        state = PipelineState(pipeline_json, validate_on_read=False)
+        data = state.read()
+    except Exception as exc:
+        logger.error("Cannot read pipeline.json for integrity check: %s", exc)
+        return False
+
+    resolved_id, entry = _find_phase_file_entry(data, "phase4", file_id)
+    if not entry:
+        logger.error("No Phase 4 entry found for %s; cannot concatenate.", file_id)
+        return False
+
+    chunk_audio_paths = entry.get("chunk_audio_paths") or []
+    if not chunk_audio_paths:
+        for key, value in entry.items():
+            if isinstance(value, dict) and value.get("audio_path"):
+                chunk_audio_paths.append(value["audio_path"])
+    expected_total = entry.get("total_chunks") or len(chunk_audio_paths)
+    if expected_total and len(chunk_audio_paths) < expected_total:
+        logger.error(
+            "Chunk integrity failed: only %d of %d audio chunks recorded for %s.",
+            len(chunk_audio_paths),
+            expected_total,
+            resolved_id,
+        )
+        return False
+
+    output_dir = get_phase4_output_dir(phase4_dir, pipeline_json, resolved_id)
+    missing_paths: List[str] = []
+    zero_paths: List[str] = []
+    for path_str in chunk_audio_paths:
+        path = Path(path_str)
+        if not path.is_absolute():
+            path = (output_dir / path).resolve()
+        if not path.exists():
+            missing_paths.append(str(path))
+        elif path.stat().st_size == 0:
+            zero_paths.append(str(path))
+
+    failed_chunks = [
+        key for key, value in entry.items() if isinstance(value, dict) and value.get("status") == "failed"
+    ]
+    if failed_chunks:
+        logger.error("Chunk integrity failed: %d failed chunks remain: %s", len(failed_chunks), failed_chunks)
+        return False
+
+    if missing_paths or zero_paths:
+        if missing_paths:
+            logger.error("Chunk integrity failed: missing files:\n%s", "\n".join(missing_paths))
+        if zero_paths:
+            logger.error("Chunk integrity failed: zero-byte files:\n%s", "\n".join(zero_paths))
+        return False
+
+    logger.info("Phase 4 chunk integrity check passed for %s", resolved_id)
+    return True
+
+
+def mark_phase_skipped(pipeline_json: Path, phase_num: int) -> None:
+    """Mark a phase as skipped due to global budget exhaustion."""
+    try:
+        state = PipelineState(pipeline_json, validate_on_read=False)
+        with state.transaction() as txn:
+            phase_key = f"phase{phase_num}"
+            entry = txn.data.get(phase_key) or {}
+            if not isinstance(entry, dict):
+                entry = {}
+            entry.setdefault("status", "failed")
+            errors = entry.get("errors") or []
+            errors.append("Global time budget exceeded")
+            entry["errors"] = errors
+            entry["skipped"] = True
+            txn.data[phase_key] = entry
+    except Exception as exc:
+        logger.warning("Unable to mark Phase %s as skipped: %s", phase_num, exc)
+
 
 def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: Path) -> bool:
     """
@@ -1175,6 +1541,107 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
         return False
 
 
+def _timestamp_to_seconds(timestamp: str, separator: str = ",") -> float:
+    """Convert SRT/VTT timestamp to seconds."""
+    hms, ms = timestamp.split(separator)
+    hours, minutes, seconds = hms.split(":")
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds) + int(ms) / (1000 if separator == "," else 1000)
+
+
+def _seconds_to_timestamp(seconds: float, separator: str = ",") -> str:
+    millis = int(round(seconds * 1000))
+    hours, remainder = divmod(millis, 3600 * 1000)
+    minutes, remainder = divmod(remainder, 60 * 1000)
+    secs, millis = divmod(remainder, 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}{separator}{millis:03d}"
+
+
+def rescale_subtitle_file(path: Path, audio_duration: float, separator: str = ",") -> bool:
+    """Stretch subtitle timestamps linearly to match the target audio duration."""
+    if not path.exists() or audio_duration <= 0:
+        return False
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    new_lines: List[str] = []
+    last_end = 0.0
+    timestamp_pattern = re.compile(r"(\\d\\d:\\d\\d:\\d\\d[\\,\\.]\\d\\d\\d)\\s+-->\\s+(\\d\\d:\\d\\d:\\d\\d[\\,\\.]\\d\\d\\d)")
+    for line in lines:
+        match = timestamp_pattern.search(line)
+        if match:
+            start = _timestamp_to_seconds(match.group(1), separator=separator)
+            end = _timestamp_to_seconds(match.group(2), separator=separator)
+            last_end = max(last_end, end)
+    if last_end <= 0:
+        return False
+    scale = audio_duration / last_end
+    for line in lines:
+        match = timestamp_pattern.search(line)
+        if match:
+            start = _timestamp_to_seconds(match.group(1), separator=separator) * scale
+            end = _timestamp_to_seconds(match.group(2), separator=separator) * scale
+            line = timestamp_pattern.sub(
+                f"{_seconds_to_timestamp(start, separator=separator)} --> {_seconds_to_timestamp(end, separator=separator)}",
+                line,
+            )
+        new_lines.append(line)
+    path.write_text("\n".join(new_lines), encoding="utf-8")
+    return True
+
+
+def get_audio_duration_seconds(audio_path: Path) -> Optional[float]:
+    """Return audio duration using ffprobe if available."""
+    if not audio_path.exists():
+        return None
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(audio_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return float(result.stdout.strip())
+    except Exception:
+        return None
+
+
+def maybe_backup_align_subtitles(
+    audio_path: Path,
+    srt_path: Path,
+    vtt_path: Path,
+    metrics: Dict[str, Any],
+    config: SubtitleConfig,
+) -> bool:
+    """Apply a simple rescaling alignment if primary alignment quality is low."""
+    if not config.enable_backup_align:
+        return False
+
+    coverage = metrics.get("coverage") or metrics.get("coverage_ratio")
+    drift = metrics.get("drift_seconds") or metrics.get("max_drift")
+    if coverage is not None and coverage >= config.min_coverage_ratio and (drift is None or abs(drift) <= config.max_drift_sec):
+        return False
+
+    audio_duration = get_audio_duration_seconds(audio_path)
+    if not audio_duration:
+        return False
+
+    success = False
+    if srt_path.exists():
+        success = rescale_subtitle_file(srt_path, audio_duration, separator=",") or success
+    if vtt_path.exists():
+        success = rescale_subtitle_file(vtt_path, audio_duration, separator=".") or success
+    if success:
+        logger.info("Using backup subtitle alignment for %s", audio_path.stem)
+    return success
+
+
 def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, enable_subtitles: bool = False) -> bool:
     """
     Phase 5.5: Generate subtitles (optional).
@@ -1294,6 +1761,18 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
         if metrics_path.exists():
             with open(metrics_path, 'r') as f:
                 metrics = json.load(f)
+
+        # Backup alignment if coverage/drift are weak
+        backup_used = maybe_backup_align_subtitles(
+            audiobook_path,
+            srt_path,
+            vtt_path,
+            metrics,
+            get_orchestrator_config().subtitles,
+        )
+        if backup_used:
+            RUN_SUMMARY["backup_subtitles_used"] = True
+            metrics["backup_alignment"] = True
 
         # Update pipeline.json with success atomically
         with state.transaction() as txn:
@@ -1493,11 +1972,21 @@ def run_pipeline(
         pipeline_json = Path(pipeline_json).resolve()
 
     if phases is None:
-        phases = [1, 2, 3, 4, 5]
+        phases = orchestrator_config.phases_to_run
 
     # Load orchestrator config and update if needed
     orchestrator_config = get_orchestrator_config()
-    pipeline_mode = orchestrator_config.get("pipeline_mode", "personal").lower()
+    pipeline_mode = orchestrator_config.pipeline_mode.lower()
+    RUN_SUMMARY.update(
+        {
+            "phase4_reused": False,
+            "per_chunk_fallback_used": False,
+            "tts_workers_used": None,
+            "chunk_integrity_passed": None,
+            "backup_subtitles_used": False,
+            "budget_exceeded": False,
+        }
+    )
 
     # Load pipeline.json (skip if no_resume is True)
     pipeline_data = {} if no_resume else load_pipeline_json(pipeline_json)
@@ -1622,8 +2111,8 @@ Examples:
     parser.add_argument(
         "--pipeline-json",
         type=Path,
-        default=Path("../pipeline.json"),
-        help="Path to pipeline.json (default: ../pipeline.json)"
+        default=None,
+        help="Path to pipeline.json (default: from config.yaml or ../pipeline.json)"
     )
     parser.add_argument(
         "--phases",
@@ -1662,7 +2151,17 @@ Examples:
     args = parser.parse_args()
 
     orchestrator_config = get_orchestrator_config()
-    pipeline_mode = orchestrator_config.get("pipeline_mode", "commercial").lower()
+    pipeline_mode = orchestrator_config.pipeline_mode.lower()
+    RUN_SUMMARY.update(
+        {
+            "phase4_reused": False,
+            "per_chunk_fallback_used": False,
+            "tts_workers_used": None,
+            "chunk_integrity_passed": None,
+            "backup_subtitles_used": False,
+            "budget_exceeded": False,
+        }
+    )
     
     # Validate input file (resolve path first)
     file_path = args.file.resolve()
@@ -1672,10 +2171,11 @@ Examples:
     file_id = file_path.stem
     
     # Resolve pipeline.json path
-    pipeline_json = args.pipeline_json.resolve()
+    pipeline_json = (args.pipeline_json or orchestrator_config.pipeline_path).resolve()
     
     # Display header (use -> instead of → for Windows compatibility)
-    phase_display = ' -> '.join(map(str, args.phases))
+    phases_to_run = args.phases or orchestrator_config.phases_to_run
+    phase_display = ' -> '.join(map(str, phases_to_run))
     header = f"""
 Audiobook Pipeline - Phase 6 Orchestrator
 
@@ -1701,14 +2201,24 @@ Pipeline Mode: {pipeline_mode}
     
     # Run phases
     overall_start = time.perf_counter()
+    global_start = time.time()
+    budget_limit = orchestrator_config.global_time_budget_sec
     completed_phases = []
     
     # Log voice configuration if specified
     if args.voice:
         print_status(f"[cyan]Voice Override: {args.voice}[/cyan]")
     
-    for phase_num in args.phases:
+    for phase_idx, phase_num in enumerate(phases_to_run):
         phase_name = f"Phase {phase_num}"
+
+        if budget_limit is not None and (time.time() - global_start) > budget_limit:
+            RUN_SUMMARY["budget_exceeded"] = True
+            logger.warning("Global time budget exceeded, stopping execution.")
+            remaining = phases_to_run[phase_idx:]
+            for phase_to_skip in remaining:
+                mark_phase_skipped(pipeline_json, phase_to_skip)
+            break
         
         # Check resume status
         if not args.no_resume:
@@ -1751,7 +2261,16 @@ Pipeline Mode: {pipeline_mode}
             archive_final_audiobook(file_id, pipeline_json)
         completed_phases.append(phase_num)
 
-    auto_subtitles = orchestrator_config.get("auto_subtitles", False)
+    if RUN_SUMMARY["budget_exceeded"]:
+        print_panel(
+            "Global time budget exceeded, stopping execution.",
+            "TIME BUDGET",
+            "bold yellow",
+        )
+        summarize_results(pipeline_json)
+        return 1
+
+    auto_subtitles = getattr(orchestrator_config, "auto_subtitles", False)
     if pipeline_mode == "personal":
         subtitles_enabled = args.enable_subtitles
         if auto_subtitles and not subtitles_enabled:
@@ -1785,6 +2304,12 @@ Pipeline completed successfully!
 
 Phases Completed: {phases_display}
 Total Duration:   {duration:.1f}s ({duration/60:.1f} minutes)
+Phase 4 reuse:    {"reused" if RUN_SUMMARY.get("phase4_reused") else "rerun"}
+Per-chunk fallback used: { "yes" if RUN_SUMMARY.get("per_chunk_fallback_used") else "no"}
+TTS workers used: {RUN_SUMMARY.get("tts_workers_used") or 1}
+Chunk integrity:  { "passed" if RUN_SUMMARY.get("chunk_integrity_passed") else "skipped" if RUN_SUMMARY.get("chunk_integrity_passed") is None else "failed"}
+Backup subtitles: { "yes" if RUN_SUMMARY.get("backup_subtitles_used") else "no"}
+Time budget hit:  { "yes" if RUN_SUMMARY.get("budget_exceeded") else "no"}
 
 Output Location:
 - Chunks: phase3-chunking/chunks/

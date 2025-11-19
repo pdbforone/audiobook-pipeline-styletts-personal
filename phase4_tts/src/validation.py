@@ -46,6 +46,7 @@ class ValidationConfig:
     whisper_first_n: int = 10  # Always validate first 10 chunks
     whisper_last_n: int = 10  # Always validate last 10 chunks
     max_wer: float = 0.10  # Max Word Error Rate (10%)
+    chars_per_minute: int = 1050  # Shared speaking rate assumption
     
     # Known error phrases to detect
     error_phrases: list = None
@@ -94,18 +95,20 @@ def get_audio_duration(audio_path: str) -> float:
         return 0.0
 
 
-def predict_expected_duration(text: str, chars_per_minute: int = 750) -> float:
+def predict_expected_duration(text: str, chars_per_minute: int = 1050) -> float:
     """
     Predict expected speech duration from text.
     
     Args:
         text: Input text
-        chars_per_minute: Average speaking rate (750 = normal pace)
+        chars_per_minute: Average speaking rate (characters per minute)
     
     Returns:
         Expected duration in seconds
     """
     if not text:
+        return 0.0
+    if chars_per_minute <= 0:
         return 0.0
     
     char_count = len(text)
@@ -245,7 +248,8 @@ def has_error_phrase_pattern(audio_path: str, error_phrases: list) -> Tuple[bool
 def tier1_validate(
     chunk_text: str, 
     audio_path: str, 
-    config: ValidationConfig
+    config: ValidationConfig,
+    chars_per_minute: Optional[int] = None,
 ) -> ValidationResult:
     """
     Tier 1: Fast validation checks (duration, silence, amplitude).
@@ -263,7 +267,10 @@ def tier1_validate(
     start = time.perf_counter()
     
     # 1. Duration sanity check
-    expected_duration = predict_expected_duration(chunk_text)
+    effective_cpm = (
+        chars_per_minute if chars_per_minute and chars_per_minute > 0 else config.chars_per_minute
+    )
+    expected_duration = predict_expected_duration(chunk_text, chars_per_minute=effective_cpm)
     actual_duration = get_audio_duration(audio_path)
     
     duration_diff = abs(expected_duration - actual_duration)
@@ -275,9 +282,9 @@ def tier1_validate(
             tier=1,
             reason="duration_mismatch",
             details={
-                "expected_duration": expected_duration,
-                "actual_duration": actual_duration,
-                "difference": duration_diff,
+                "expected_duration": float(expected_duration),
+                "actual_duration": float(actual_duration),
+                "difference": float(duration_diff),
             },
             duration_sec=elapsed
         )
@@ -292,8 +299,8 @@ def tier1_validate(
             tier=1,
             reason="silence_gap",
             details={
-                "max_gap_duration": max_gap,
-                "threshold": config.silence_threshold_sec,
+                "max_gap_duration": float(max_gap),
+                "threshold": float(config.silence_threshold_sec),
             },
             duration_sec=elapsed
         )
@@ -308,8 +315,8 @@ def tier1_validate(
             tier=1,
             reason="too_quiet",
             details={
-                "mean_amplitude_db": mean_db,
-                "threshold_db": config.min_amplitude_db,
+                "mean_amplitude_db": float(mean_db),
+                "threshold_db": float(config.min_amplitude_db),
             },
             duration_sec=elapsed
         )
@@ -336,10 +343,10 @@ def tier1_validate(
         tier=1,
         reason="valid",
         details={
-            "expected_duration": expected_duration,
-            "actual_duration": actual_duration,
-            "max_silence_gap": max_gap,
-            "mean_amplitude_db": mean_db,
+            "expected_duration": float(expected_duration),
+            "actual_duration": float(actual_duration),
+            "max_silence_gap": float(max_gap),
+            "mean_amplitude_db": float(mean_db),
         },
         duration_sec=elapsed
     )
@@ -449,7 +456,7 @@ def tier2_validate(
                 tier=2,
                 reason="error_phrase_detected",
                 details={
-                    "wer": wer,
+                    "wer": float(wer),
                     "transcription": transcription,
                     "detected_phrase": detected_phrase,
                     "reference_text": chunk_text[:200],
@@ -463,10 +470,10 @@ def tier2_validate(
                 tier=2,
                 reason="high_wer",
                 details={
-                    "wer": wer,
+                    "wer": float(wer),
                     "transcription": transcription,
                     "reference_text": chunk_text[:200],
-                    "max_allowed_wer": config.max_wer,
+                    "max_allowed_wer": float(config.max_wer),
                 },
                 duration_sec=elapsed
             )
@@ -477,7 +484,7 @@ def tier2_validate(
             tier=2,
             reason="valid",
             details={
-                "wer": wer,
+                "wer": float(wer),
                 "transcription_length": len(transcription),
             },
             duration_sec=elapsed
@@ -559,7 +566,7 @@ def validate_audio_chunk(
         (tier1_result, tier2_result or None)
     """
     # Tier 1: Always run
-    tier1_result = tier1_validate(chunk_text, audio_path, config)
+    tier1_result = tier1_validate(chunk_text, audio_path, config, chars_per_minute=config.chars_per_minute)
     
     logger.info(
         f"Tier 1 validation: {'✅ PASS' if tier1_result.is_valid else '❌ FAIL'} "

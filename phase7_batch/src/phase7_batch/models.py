@@ -1,171 +1,158 @@
-from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional, Dict, Any
+from __future__ import annotations
+
+import os
+from datetime import datetime, timezone
 from pathlib import Path
-import json
-import time
+from typing import Any, Dict, List, Optional
+
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+
+
+def _default_max_workers() -> int:
+    """Choose a conservative default that keeps one core free."""
+    return max(1, (os.cpu_count() or 2) - 1)
+
+
+def _iso_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 class BatchConfig(BaseModel):
-    """Configuration for batch processing"""
+    """Configuration for the Phase 7 batch runner."""
 
-    pipeline_json: str = Field(
-        default="../pipeline.json", description="Path to pipeline.json"
-    )
-    input_dir: str = Field(
-        default="inputs", description="Input directory for batch files"
-    )
-    log_file: str = Field(default="batch.log", description="Log file path")
-    max_workers: int = Field(default=4, ge=1, le=16, description="Max parallel workers")
-    cpu_threshold: int = Field(
-        default=80, ge=50, le=100, description="CPU utilization threshold %"
-    )
-    throttle_delay: float = Field(
-        default=1.0, ge=0.1, le=5.0, description="Throttle sleep seconds"
-    )
-    resume_enabled: bool = Field(
-        default=True, description="Enable resume from checkpoints"
-    )
-    phases_to_run: List[int] = Field(
-        default=[1, 2, 3, 4, 5], description="Phases to execute"
-    )
-    batch_size: Optional[int] = Field(
-        default=None, ge=1, description="Max files per batch"
-    )
-    log_level: str = Field(
-        default="INFO", pattern=r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$"
-    )
-    phase_timeout: int = Field(
-        default=300, ge=30, le=3600, description="Timeout per phase in seconds"
-    )
+    model_config = ConfigDict(validate_assignment=True, extra="ignore", populate_by_name=True)
 
-    @field_validator("input_dir")
+    pipeline_json: str = Field(default="../pipeline.json")
+    input_dir: str = Field(default="../input")
+    log_file: str = Field(default="batch.log")
+    log_level: str = Field(default="INFO")
+    max_workers: int = Field(default_factory=_default_max_workers, ge=1)
+    cpu_threshold: float = Field(default=85.0, ge=0, le=100)
+    throttle_delay: float = Field(default=1.0, ge=0)
+    resume: bool = Field(default=True, validation_alias=AliasChoices("resume", "resume_enabled"))
+    phases: List[int] = Field(default_factory=list, validation_alias=AliasChoices("phases", "phases_to_run"))
+    batch_size: Optional[int] = Field(default=None, ge=1)
+    phase_timeout: int = Field(default=600, ge=1)
+    dry_run: bool = Field(default=False)
+
+    @field_validator("pipeline_json", "input_dir", "log_file", mode="before")
     @classmethod
-    def validate_directories(cls, v: str) -> str:
-        path = Path(v)
-        path.mkdir(parents=True, exist_ok=True)
-        return str(path)
+    def _normalize_path(cls, value: str) -> str:
+        return Path(value).as_posix()
 
-    @field_validator("pipeline_json")
+    @field_validator("log_level")
     @classmethod
-    def validate_json(cls, v: str) -> str:
-        path = Path(v)
-        if not path.exists():
-            # Create initial structure
-            initial_data = {
-                "version": "1.0",
-                "created": time.time(),
-                "batch": {"status": "initialized", "files": {}, "metrics": {}},
-            }
-            with open(path, "w") as f:
-                json.dump(initial_data, f, indent=2)
-        return str(path)
+    def _upper_log_level(cls, value: str) -> str:
+        return value.upper()
+
+    @field_validator("phases", mode="before")
+    @classmethod
+    def _normalize_phases(cls, value: Any) -> List[int]:
+        if value is None:
+            return []
+        if isinstance(value, (str, int)):
+            return [int(value)]
+        return [int(v) for v in value]
+
+    @property
+    def phases_argument(self) -> List[str]:
+        return [str(p) for p in self.phases]
 
 
-class PhaseMetric(BaseModel):
-    """Metrics for a single phase execution"""
+class Phase6Result(BaseModel):
+    """Structured capture of the Phase 6 subprocess output."""
 
-    phase: int
-    duration: float
-    error: Optional[str] = None
-    start_time: float
-    end_time: float
+    exit_code: Optional[int] = None
+    stdout_tail: Optional[str] = None
+    stderr_tail: Optional[str] = None
+    metrics: Dict[str, Any] = Field(default_factory=dict)
 
 
 class BatchMetadata(BaseModel):
-    """Metadata for individual file processing"""
+    """Metadata captured per input file."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     file_id: str
-    status: str = "pending"  # pending|running|success|failed|partial
-    phases_completed: List[int] = []
-    chunks_ids: List[int] = []
+    status: str = "pending"
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    duration_sec: Optional[float] = None
+    was_skipped: bool = False
     error_message: Optional[str] = None
-    errors: List[str] = []  # List of error messages
-    duration: Optional[float] = None
-    phase_metrics: List[PhaseMetric] = []
-    start_time: Optional[float] = None
-    end_time: Optional[float] = None
+    errors: List[str] = Field(default_factory=list)
+    source_path: Optional[str] = None
+    phase6: Phase6Result = Field(default_factory=Phase6Result)
+    cpu_avg: Optional[float] = None
 
-    def add_phase_metric(
-        self, phase: int, duration: float, error: Optional[str] = None
-    ):
-        """Add a phase execution metric"""
-        now = time.time()
-        metric = PhaseMetric(
-            phase=phase,
-            duration=duration,
-            error=error,
-            start_time=now - duration,
-            end_time=now,
-        )
-        self.phase_metrics.append(metric)
-
-    def mark_started(self):
-        """Mark processing as started"""
-        self.status = "running"
-        self.start_time = time.time()
-
-    def mark_completed(self):
-        """Mark processing as completed"""
-        if self.start_time:
-            self.end_time = time.time()
-            self.duration = self.end_time - self.start_time
-
-        # Determine final status
-        total_phases = len(set(self.phases_completed))
-        if self.error_message:
-            self.status = "partial" if total_phases > 0 else "failed"
-        else:
-            self.status = "success"
+    def to_pipeline_dict(self) -> Dict[str, Any]:
+        """Serialize with noise removed for pipeline.json."""
+        return self.model_dump(exclude_none=True, exclude={"file_id"})
 
 
 class BatchSummary(BaseModel):
-    """Summary of entire batch processing"""
+    """Summary of the batch run."""
 
-    status: str  # success|partial|failed
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    status: str
     total_files: int
     successful_files: int
-    partial_files: int
     failed_files: int
-    total_duration: float
+    skipped_files: int
+    duration_sec: float
     avg_cpu_usage: Optional[float] = None
-    errors: List[str] = []
-    artifacts: List[str] = []
-    timestamps: Dict[str, float] = {}
+    errors: List[str] = Field(default_factory=list)
+    artifacts: List[str] = Field(default_factory=list)
+    started_at: str
+    completed_at: str
 
     @classmethod
     def from_metadata_list(
         cls,
         metadata_list: List[BatchMetadata],
-        total_duration: float,
+        started_at: datetime,
+        completed_at: datetime,
         avg_cpu: Optional[float] = None,
-    ):
-        """Create summary from list of metadata"""
-        successful = sum(1 for m in metadata_list if m.status == "success")
-        partial = sum(1 for m in metadata_list if m.status == "partial")
-        failed = len(metadata_list) - successful - partial
+        status_override: Optional[str] = None,
+    ) -> "BatchSummary":
+        successes = sum(1 for m in metadata_list if m.status == "success")
+        failed = sum(1 for m in metadata_list if m.status == "failed")
+        skipped = sum(1 for m in metadata_list if m.status == "skipped")
+        total = len(metadata_list)
 
-        errors = [m.error_message for m in metadata_list if m.error_message]
-
-        # Overall status determination
-        if failed == 0 and partial == 0:
-            status = "success"
-        elif successful > 0:
+        if status_override:
+            status = status_override
+        elif failed > 0 and successes > 0:
             status = "partial"
+        elif failed > 0:
+            status = "failed"
+        elif successes > 0 and skipped > 0:
+            status = "partial"
+        elif successes > 0 and failed == 0:
+            status = "success"
+        elif skipped == total:
+            status = "skipped"
         else:
             status = "failed"
 
+        errors: List[str] = []
+        for m in metadata_list:
+            if m.error_message:
+                errors.append(m.error_message)
+            errors.extend(m.errors)
+
+        duration_sec = max(0.0, (completed_at - started_at).total_seconds())
+
         return cls(
             status=status,
-            total_files=len(metadata_list),
-            successful_files=successful,
-            partial_files=partial,
+            total_files=total,
+            successful_files=successes,
             failed_files=failed,
-            total_duration=total_duration,
+            skipped_files=skipped,
+            duration_sec=duration_sec,
             avg_cpu_usage=avg_cpu,
             errors=errors,
-            timestamps={
-                "start": time.time() - total_duration,
-                "end": time.time(),
-                "duration": total_duration,
-            },
+            started_at=started_at.isoformat(),
+            completed_at=completed_at.isoformat(),
         )

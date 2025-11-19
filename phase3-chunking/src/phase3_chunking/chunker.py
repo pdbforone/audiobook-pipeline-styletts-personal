@@ -21,6 +21,8 @@ try:
     from .profiles import get_profile, list_profiles, get_profile_info
     from .detect import detect_genre, get_genre_from_metadata, validate_genre
     from .voice_selection import select_voice, get_voice_params
+    from .main import run_phase3, load_pipeline_state
+    from .models import Phase3Config
     from .utils import (
         clean_text,
         detect_sentences,
@@ -34,6 +36,8 @@ except ImportError:
     from profiles import get_profile, list_profiles, get_profile_info
     from detect import detect_genre, get_genre_from_metadata, validate_genre
     from voice_selection import select_voice, get_voice_params
+    from main import run_phase3, load_pipeline_state
+    from models import Phase3Config
     from utils import (
         clean_text,
         detect_sentences,
@@ -153,127 +157,18 @@ def process_genre_aware_chunking(
     pipeline_path: str = "pipeline.json",
     config: Optional[ValidationConfig] = None,
 ) -> ChunkRecord:
-    """
-    Process text with genre-aware chunking.
-    
-    Args:
-        text_path: Path to cleaned text file
-        chunks_dir: Output directory for chunks
-        file_id: File identifier
-        profile_name: Genre profile to use ('auto' for detection)
-        pipeline_path: Path to pipeline.json
-        config: Optional validation config
-        
-    Returns:
-        ChunkRecord with chunking results
-    """
-    start_time = perf_counter()
-    
-    # Load text
-    text_path_obj = Path(text_path).resolve()
-    if not text_path_obj.exists():
-        raise FileNotFoundError(f"Text file not found: {text_path}")
-    
-    logger.info(f"Reading text from: {text_path_obj}")
-    with open(text_path_obj, 'r', encoding='utf-8') as f:
-        text = f.read()
-    
-    if not text or not text.strip():
-        raise ValueError("Text file is empty")
-    
-    logger.info(f"Text length: {len(text)} characters")
-    
-    # Clean text
-    cleaned = clean_text(text)
-    if not cleaned:
-        raise ValueError("Text became empty after cleaning")
-    
-    # Load metadata from Phase 2
-    pipeline_path_obj = Path(pipeline_path).resolve()
-    metadata = load_metadata_from_phase2(file_id, pipeline_path_obj)
-    
-    # Check for explicit genre hint from Phase 2
-    explicit_genre = get_genre_from_metadata(metadata)
-    if explicit_genre and validate_genre(explicit_genre):
-        logger.info(f"Using genre hint from Phase 2: {explicit_genre}")
-        profile_name = explicit_genre
-    
-    # Chunk with profile
-    chunks, coherence, embeddings, applied_profile, genre_confidence = chunk_with_profile(
-        cleaned,
-        profile_name,
-        metadata
-    )
-    
-    # Calculate metrics
-    chunk_metrics = calculate_chunk_metrics(chunks)
-    logger.info(f"Average chunk: {chunk_metrics['avg_char_length']:.0f} chars, "
-                f"{chunk_metrics['avg_word_count']:.0f} words, "
-                f"{chunk_metrics['avg_duration']:.1f}s duration")
-    
-    # Assess readability
-    readability = assess_readability(chunks)
-    
-    # Calculate averages
-    avg_coherence = sum(coherence) / len(coherence) if coherence else 0.0
-    avg_flesch = sum(readability) / len(readability) if readability else 0.0
-    
-    logger.info(f"Average coherence: {avg_coherence:.4f}")
-    logger.info(f"Average Flesch score: {avg_flesch:.2f}")
-    
-    # Select voice based on genre
-    voice_id = select_voice(applied_profile, pipeline_data=None)  # Can pass pipeline data for override
-    logger.info(f"Selected voice: {voice_id}")
-    
-    # Validate results
-    config = config or ValidationConfig()
-    errors = []
-    
-    if avg_coherence < config.coherence_threshold:
-        errors.append(f"Low coherence: {avg_coherence:.4f} < {config.coherence_threshold}")
-    if avg_flesch < config.flesch_threshold:
-        errors.append(f"Low readability: {avg_flesch:.2f} < {config.flesch_threshold}")
-    if chunk_metrics['max_duration'] > config.max_chunk_duration:
-        errors.append(
-            f"Some chunks exceed {config.max_chunk_duration}s duration "
-            f"(max: {chunk_metrics['max_duration']:.1f}s)"
-        )
-    
-    status = "success" if not errors else "partial"
-    
-    # Save chunks
-    try:
-        chunk_paths = save_chunks(str(text_path_obj), chunks, chunks_dir)
-    except Exception as e:
-        logger.error(f"Failed to save chunks: {e}")
-        errors.append(f"Save error: {str(e)}")
-        status = "failed"
-        chunk_paths = []
-    
-    end_time = perf_counter()
-    duration = end_time - start_time
-    
-    logger.info(f"Total processing time: {duration:.2f}s")
-    
-    # Create record with enhanced metadata
-    record = ChunkRecord(
-        text_path=str(text_path_obj),
-        chunk_paths=chunk_paths,
-        coherence_scores=coherence,
-        readability_scores=readability,
-        embeddings=embeddings,
-        status=status,
-        errors=errors,
-        timestamps={"start": start_time, "end": end_time, "duration": duration},
-        chunk_metrics=chunk_metrics,
-    )
-    
-    # Add genre-specific metadata
-    record.applied_profile = applied_profile
-    record.genre_confidence = genre_confidence
-    record.suggested_voice = voice_id
-    
-    return record
+    """Delegate genre-aware processing to the unified Phase 3 runner."""
+    cfg = config or Phase3Config()
+    if not isinstance(cfg, Phase3Config):
+        payload = cfg.model_dump() if hasattr(cfg, 'model_dump') else cfg.dict()
+        cfg = Phase3Config(**payload)
+    cfg.json_path = pipeline_path
+    cfg.chunks_dir = chunks_dir
+    cfg.genre_profile = profile_name
+    cfg.text_path_override = text_path
+
+    pipeline = load_pipeline_state(pipeline_path)
+    return run_phase3(file_id=file_id, pipeline=pipeline, config=cfg)
 
 
 def main():

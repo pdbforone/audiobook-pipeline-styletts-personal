@@ -9,3 +9,17 @@ log_file: "orchestrator.log"
 # Runtime switches
 pipeline_mode: "personal"
 tts_engine: "xtts"       # xtts | kokoro
+tts_engines:
+  primary: "xtts"
+  secondary: "kokoro"
+per_chunk_fallback: true
+phase4_reuse_enabled: true
+min_mos_for_reuse: null
+max_tts_workers: 1
+strict_chunk_integrity: true
+prefer_shell_tts_execution: false
+global_time_budget_sec: null
+subtitles:
+  enable_backup_align: true
+  max_drift_sec: 2.0
+  min_coverage_ratio: 0.95

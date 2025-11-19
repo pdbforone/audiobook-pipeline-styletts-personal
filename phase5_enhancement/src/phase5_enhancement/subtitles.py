@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import argparse
 import tempfile
+from functools import lru_cache
 
 from faster_whisper import WhisperModel
 from pydub import AudioSegment
@@ -22,6 +23,12 @@ from .subtitle_validator import calculate_wer, validate_coverage, format_srt, fo
 from .subtitle_karaoke import KaraokeGenerator
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=3)
+def _load_whisper_model(model_size: str, device: str, compute_type: str) -> WhisperModel:
+    """Cache Whisper models to avoid repeated downloads/initialization."""
+    return WhisperModel(model_size, device=device, compute_type=compute_type)
 
 
 class SubtitleGenerator:
@@ -41,10 +48,10 @@ class SubtitleGenerator:
         start = time.perf_counter()
 
         # Load Whisper model
-        self.model = WhisperModel(
+        self.model = _load_whisper_model(
             self.config.model_size,
-            device=self.config.device,
-            compute_type=self.config.compute_type
+            self.config.device,
+            self.config.compute_type,
         )
 
         load_time = time.perf_counter() - start

@@ -7,7 +7,7 @@ Each profile defines:
 - TTS priorities (clarity, pacing, emotion)
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 
 
@@ -22,6 +22,7 @@ class ChunkProfile:
     rules: Dict[str, bool]
     description: str
     tts_priority: str
+    genre_duration_overrides: Dict[str, Dict[str, int]] = field(default_factory=dict)
     
     def get_rule(self, rule_name: str, default: bool = False) -> bool:
         """Safely get a rule value with default fallback."""
@@ -29,6 +30,12 @@ class ChunkProfile:
 
 
 # Genre-specific chunking profiles
+GENRE_DURATION_OVERRIDES: Dict[str, Dict[str, int]] = {
+    "philosophy": {"min_duration": 12, "target_duration": 18, "max_duration": 28},
+    "fiction": {"min_duration": 10, "target_duration": 15, "max_duration": 22},
+    "technical": {"min_duration": 8, "target_duration": 12, "max_duration": 18},
+}
+
 PROFILES: Dict[str, ChunkProfile] = {
     'philosophy': ChunkProfile(
         name='philosophy',
@@ -43,7 +50,8 @@ PROFILES: Dict[str, ChunkProfile] = {
             'no_mid_argument_splits': True,    # Keep reasoning chains intact
         },
         description="Measured tone for philosophical texts with complex arguments",
-        tts_priority="clarity"
+        tts_priority="clarity",
+        genre_duration_overrides=GENRE_DURATION_OVERRIDES,
     ),
     
     'fiction': ChunkProfile(
@@ -59,7 +67,8 @@ PROFILES: Dict[str, ChunkProfile] = {
             'preserve_speaker_tags': True,     # Keep "he said" with dialogue
         },
         description="Warm, engaging for fiction with dialogue preservation",
-        tts_priority="emotional_pacing"
+        tts_priority="emotional_pacing",
+        genre_duration_overrides=GENRE_DURATION_OVERRIDES,
     ),
     
     'academic': ChunkProfile(
@@ -75,7 +84,8 @@ PROFILES: Dict[str, ChunkProfile] = {
             'no_mid_list_splits': True,        # Keep list items together
         },
         description="Clear, impartial for technical/academic content",
-        tts_priority="precision"
+        tts_priority="precision",
+        genre_duration_overrides=GENRE_DURATION_OVERRIDES,
     ),
     
     'memoir': ChunkProfile(
@@ -90,7 +100,8 @@ PROFILES: Dict[str, ChunkProfile] = {
             'emotional_breaks': True,          # Allow breaks at emotional shifts
         },
         description="Conversational pacing for memoirs and self-help",
-        tts_priority="conversational"
+        tts_priority="conversational",
+        genre_duration_overrides=GENRE_DURATION_OVERRIDES,
     ),
     
     'technical': ChunkProfile(
@@ -106,7 +117,8 @@ PROFILES: Dict[str, ChunkProfile] = {
             'tag_warnings': True,              # Mark warnings/cautions
         },
         description="Precise for technical manuals and how-to content",
-        tts_priority="precision"
+        tts_priority="precision",
+        genre_duration_overrides=GENRE_DURATION_OVERRIDES,
     ),
     
     'auto': ChunkProfile(
@@ -120,7 +132,8 @@ PROFILES: Dict[str, ChunkProfile] = {
             'adaptive_sizing': True,           # Adjust based on content
         },
         description="Heuristic detection with balanced approach",
-        tts_priority="balanced"
+        tts_priority="balanced",
+        genre_duration_overrides=GENRE_DURATION_OVERRIDES,
     ),
 }
 

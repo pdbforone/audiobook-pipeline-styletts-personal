@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Optional, List, Literal
+from pydantic import BaseModel, Field, field_validator, model_validator, PrivateAttr
+from typing import Optional, List, Literal, Set
 from pathlib import Path
 from dataclasses import dataclass, field as dataclass_field
 import os
@@ -8,6 +8,12 @@ import json
 
 class EnhancementConfig(BaseModel):
     """Configuration for audio enhancement pipeline"""
+
+    # Mastering profile presets
+    profile: Literal["auto", "laptop_safe", "full_master"] = Field(
+        default="auto",
+        description="Preset profile that tunes CPU usage, models, and mastering defaults",
+    )
 
     # Input/Output Paths
     input_dir: str = Field(
@@ -174,6 +180,15 @@ class EnhancementConfig(BaseModel):
     enable_phrase_cleanup: bool = Field(
         default=True, description="Enable automatic phrase removal before enhancement"
     )
+    cleanup_scope: Literal["none", "first_n_chunks", "all", "final_only"] = Field(
+        default="all",
+        description="Controls which chunks run Whisper cleanup to save CPU",
+    )
+    cleanup_first_n: int = Field(
+        default=3,
+        ge=1,
+        description="Number of chunks to clean when cleanup_scope=first_n_chunks",
+    )
     cleanup_target_phrases: List[str] = Field(
         default=[
             "You need to add some text for me to talk",
@@ -212,6 +227,9 @@ class EnhancementConfig(BaseModel):
         description="Maximum audio length for Matchering processing in seconds"
     )
 
+    # Track user-specified overrides so profiles don't clobber them
+    _user_overrides: Set[str] = PrivateAttr(default_factory=set)
+
     @field_validator("input_dir", "output_dir", "temp_dir")
     @classmethod
     def validate_directories(cls, v: str) -> str:
@@ -223,12 +241,58 @@ class EnhancementConfig(BaseModel):
     @model_validator(mode="after")
     def validate_paths_exist(self):
         """Additional validation for critical paths"""
+        # Capture which fields the user explicitly set so profiles can respect overrides
+        self._user_overrides = set(getattr(self, "model_fields_set", set()))
+        self._apply_profile_defaults()
+
         path = Path(self.pipeline_json)
         if not path.exists():
             # Create empty pipeline.json if missing
             with open(path, "w") as f:
                 json.dump({"phase5": {}}, f)
         return self
+
+    def _apply_profile_defaults(self) -> None:
+        """Apply profile-tuned defaults without overwriting user overrides."""
+        cores = os.cpu_count() or 2
+        cleanup_scope_overridden = "cleanup_scope" in self._user_overrides
+
+        def set_if_missing(field_name: str, value):
+            if field_name not in self._user_overrides:
+                setattr(self, field_name, value)
+
+        if self.profile == "laptop_safe":
+            set_if_missing("max_workers", 1 if cores <= 4 else 2)
+            set_if_missing("enable_rnnoise", True)
+            set_if_missing("enable_silero_vad", True)
+            set_if_missing("enable_deepfilternet", False)
+            set_if_missing("enable_matchering", False)
+            set_if_missing("cleanup_whisper_model", "tiny")
+            set_if_missing("lufs_target", -23.0)
+            if "enable_phrase_cleanup" not in self._user_overrides:
+                # Default to skipping cleanup on constrained machines unless user opts in
+                set_if_missing("enable_phrase_cleanup", cleanup_scope_overridden)
+            if not cleanup_scope_overridden:
+                set_if_missing("cleanup_scope", "none")
+        elif self.profile == "full_master":
+            set_if_missing("enable_rnnoise", False)
+            set_if_missing("enable_deepfilternet", True)
+            set_if_missing("enable_matchering", True)
+            set_if_missing("max_workers", max(1, cores - 1))
+            set_if_missing("cleanup_whisper_model", "base")
+            set_if_missing("lufs_target", -19.0)
+            set_if_missing("enable_phrase_cleanup", True)
+        else:
+            # auto profile - prefer modest parallelism and lighter models when heavy processors are enabled
+            if "max_workers" not in self._user_overrides:
+                default_workers = 1 if self.enable_deepfilternet or self.enable_matchering else min(4, cores)
+                set_if_missing("max_workers", default_workers)
+            if "cleanup_whisper_model" not in self._user_overrides:
+                set_if_missing("cleanup_whisper_model", "small")
+
+    def is_user_override(self, field_name: str) -> bool:
+        """Return True if a config value was provided explicitly by the user."""
+        return field_name in self._user_overrides
 
     class Config:
         validate_assignment = True

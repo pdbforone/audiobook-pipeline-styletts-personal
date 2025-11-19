@@ -1,18 +1,23 @@
-"""Phase 6: Single-File Orchestrator - Runs phases 1-5 sequentially"""
+"""Phase 6: Single-File Orchestrator entrypoint.
 
-import argparse
-import json
-import logging
-import subprocess
-import sys
-import time
+This thin wrapper imports the production orchestrator module that lives at
+phase6_orchestrator/orchestrator.py while keeping the existing CLI entrypoint.
+"""
+
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+import sys
 
-import yaml
-from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-console = Console()
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from phase6_orchestrator import orchestrator  # noqa: E402
+
+
+def main() -> int:
+    return orchestrator.main()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

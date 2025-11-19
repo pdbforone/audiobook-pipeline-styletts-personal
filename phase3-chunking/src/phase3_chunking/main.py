@@ -9,6 +9,7 @@ import os
 import sys
 import warnings
 import hashlib
+from typing import List, Tuple, Optional
 
 try:
     from filelock import FileLock
@@ -17,8 +18,10 @@ except ImportError:
 
 # Smart import: works both as script and as module
 try:
-    from .models import ChunkRecord, ValidationConfig
+    from .models import ChunkRecord, ValidationConfig, Phase3Config
     from .voice_selection import select_voice, validate_voice_id
+    from .detect import detect_genre, get_genre_from_metadata, validate_genre
+    from .profiles import get_profile
     from .utils import (
         clean_text,
         detect_sentences,
@@ -30,8 +33,10 @@ try:
     )
     from .structure_chunking import chunk_by_structure, should_use_structure_chunking
 except ImportError:
-    from models import ChunkRecord, ValidationConfig
+    from models import ChunkRecord, ValidationConfig, Phase3Config
     from voice_selection import select_voice, validate_voice_id
+    from detect import detect_genre, get_genre_from_metadata, validate_genre
+    from profiles import get_profile
     from utils import (
         clean_text,
         detect_sentences,
@@ -121,6 +126,131 @@ def derive_chunk_id_from_path(path: Path, index: int) -> str:
     return f"chunk_{index:04d}"
 
 
+def hash_text_content(text: str) -> str:
+    """Hash cleaned text for reuse detection."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def load_pipeline_state(json_path: str) -> dict:
+    """Load pipeline.json contents if available."""
+    json_path_abs = Path(json_path).absolute()
+    try:
+        with open(json_path_abs, "r") as handle:
+            return json.load(handle)
+    except FileNotFoundError:
+        logger.info(f"Pipeline JSON not found at {json_path_abs}, starting fresh.")
+        return {}
+    except json.JSONDecodeError as exc:
+        logger.error(f"Failed to decode pipeline JSON ({exc}); starting with empty state.")
+        return {}
+
+
+def persist_phase3_result(
+    json_path: str,
+    pipeline_data: dict,
+    file_id: str,
+    record: ChunkRecord,
+    chunk_ids: List[str],
+    detected_genre: str,
+    applied_profile: str,
+    sentence_model: str,
+    embeddings_enabled: bool,
+    text_hash: str,
+    structure_mode_used: bool,
+    fallback_used: bool = False,
+    fallback_message: str = "",
+) -> dict:
+    """Write phase3 results back to pipeline.json with locking."""
+    json_path_abs = Path(json_path).absolute()
+    lock_file = str(json_path_abs) + ".lock"
+
+    def _write(data: dict):
+        if not data and pipeline_data:
+            data = dict(pipeline_data)
+        data.setdefault("phase3", {"files": {}, "errors": [], "metrics": {}})
+        phase3 = data["phase3"]
+
+        entry = {}
+        try:
+            entry.update(record.model_dump())
+        except AttributeError:
+            entry.update(record.dict())
+
+        chunk_metrics = record.chunk_metrics or {}
+        avg_coherence = (
+            sum(record.coherence_scores) / len(record.coherence_scores)
+            if record.coherence_scores
+            else None
+        )
+        avg_readability = (
+            sum(record.readability_scores) / len(record.readability_scores)
+            if record.readability_scores
+            else 0.0
+        )
+
+        entry.update(
+            {
+                "chunks": chunk_ids,
+                "genre": detected_genre,
+                "profile": applied_profile,
+                "sentence_model": sentence_model,
+                "embeddings_enabled": embeddings_enabled,
+                "avg_chunk_chars": int(chunk_metrics.get("avg_char_length", 0) or 0),
+                "avg_chunk_words": int(chunk_metrics.get("avg_word_count", 0) or 0),
+                "avg_chunk_duration_sec": float(chunk_metrics.get("avg_duration", 0.0) or 0.0),
+                "avg_coherence": None if avg_coherence is None else float(avg_coherence),
+                "avg_readability": float(avg_readability),
+                "structure_mode_used": bool(structure_mode_used),
+                "text_hash": text_hash,
+            }
+        )
+        entry.setdefault("chunk_paths", record.chunk_paths)
+        entry["source_hash"] = entry.get("source_hash") or text_hash
+        entry["status"] = record.status
+
+        phase3["files"][file_id] = entry
+
+        if fallback_used:
+            error_entry = {
+                "file_id": file_id,
+                "type": "Phase2Desync",
+                "message": fallback_message
+                or "Fallback used due to missing/invalid Phase 2 data",
+                "timestamp": record.timestamps.get("start", 0),
+            }
+            phase3.setdefault("errors", []).append(error_entry)
+
+        all_files = phase3.get("files", {})
+        if all_files:
+            phase3["metrics"] = {
+                "total_files": len(all_files),
+                "successful": sum(
+                    1 for f in all_files.values() if f.get("status") == "success"
+                ),
+                "partial": sum(
+                    1 for f in all_files.values() if f.get("status") == "partial"
+                ),
+                "failed": sum(
+                    1 for f in all_files.values() if f.get("status") == "failed"
+                ),
+                "total_chunks": sum(
+                    len(f.get("chunk_paths", [])) for f in all_files.values()
+                ),
+            }
+
+        with open(json_path_abs, "w") as handle:
+            json.dump(data, handle, indent=2)
+        logger.info(f"Updated pipeline JSON: {json_path_abs}")
+        return data
+
+    if FileLock:
+        with FileLock(lock_file, timeout=10):
+            on_disk = load_pipeline_state(json_path_abs)
+            return _write(on_disk)
+    on_disk = load_pipeline_state(json_path_abs)
+    return _write(on_disk)
+
+
 def load_structure_from_json(json_path: str, file_id: str):
     """Load document structure from Phase 2 if available."""
     try:
@@ -145,160 +275,255 @@ def load_structure_from_json(json_path: str, file_id: str):
         logger.warning(f"Could not load structure from Phase 2: {e}")
         return None
 
-
-def process_chunking(
-    text_path: str,
-    chunks_dir: str,
-    config: ValidationConfig,
-    json_path: str = "pipeline.json",
-    file_id: str = None,
-    cli_voice_override: str = None,
-) -> ChunkRecord:
-    """Process a text file into semantic chunks with character-based optimization."""
+def run_phase3(file_id: str, pipeline: dict, config: Phase3Config) -> ChunkRecord:
+    """Canonical Phase 3 execution entry point."""
     start_time = perf_counter()
-    text_path_abs = Path(text_path).resolve()
-    
-    if not text_path_abs.exists():
-        logger.error(f"Text file not found: {text_path_abs}")
-        raise FileNotFoundError(f"Text file not found: {text_path_abs}")
-    
-    logger.info(f"Reading text from: {text_path_abs}")
-    try:
-        with open(text_path_abs, "r", encoding="utf-8") as f:
-            text = f.read()
-    except Exception as e:
-        logger.error(f"Failed to read text file: {e}")
-        raise
-    
-    # Compute hash for reuse checks
-    try:
-        current_hash = compute_sha256(text_path_abs)
-    except Exception as exc:
-        logger.warning(f"Phase 3: could not hash source text ({exc}); will continue.")
-        current_hash = None
-    
-    # Early reuse check: if phase3 has a success with matching hash and chunk files exist, skip work
-    existing_phase3 = None
-    try:
-        with open(Path(json_path).absolute(), "r") as f:
-            existing_data = json.load(f)
-        existing_phase3 = existing_data.get("phase3", {}).get("files", {}).get(file_id or text_path_abs.stem, {})
-    except Exception as exc:
-        logger.debug(f"Phase 3 reuse: could not load pipeline.json ({exc}); proceeding.")
-    
-    if existing_phase3 and existing_phase3.get("status") == "success":
-        existing_hash = existing_phase3.get("source_hash")
-        chunk_paths_existing = existing_phase3.get("chunk_paths") or []
-        if chunk_paths_existing and all(Path(p).exists() for p in chunk_paths_existing):
-            if current_hash is None or not existing_hash or existing_hash == current_hash:
-                logger.info("Phase 3: existing chunks found with matching hash; skipping chunking.")
-                try:
-                    return ChunkRecord(**existing_phase3)
-                except Exception as exc:
-                    logger.warning(f"Phase 3 reuse: failed to hydrate existing record ({exc}); regenerating.")
+    json_path = getattr(config, "json_path", "pipeline.json")
+    chunks_dir = getattr(config, "chunks_dir", "chunks")
+    pipeline_data = pipeline or {}
+    fallback_used = False
+    fallback_message = ""
 
-    if not text or not text.strip():
+    phase2_entry = pipeline_data.get("phase2", {}).get("files", {}).get(file_id, {})
+    metadata = phase2_entry.get("metadata", {})
+    text_path = getattr(config, "text_path_override", None) or phase2_entry.get("extracted_text_path")
+    structure_nodes = phase2_entry.get("structure") or []
+
+    if not text_path:
+        try:
+            text_path = _fallback_find_text(file_id)
+            fallback_used = True
+            fallback_message = "Used fallback text discovery (phase2 missing)"
+        except Exception as exc:
+            raise FileNotFoundError(f"No text path found for {file_id}: {exc}")
+
+    text_path_abs = Path(text_path).resolve()
+    if not text_path_abs.exists():
+        raise FileNotFoundError(f"Text file not found: {text_path_abs}")
+
+    logger.info(f"Processing Phase 3 for {file_id} with profile={config.phase3_profile}")
+
+    with open(text_path_abs, "r", encoding="utf-8") as handle:
+        raw_text = handle.read()
+    if not raw_text.strip():
         raise ValueError(f"Text file is empty: {text_path_abs}")
-    
-    logger.info(f"Text length: {len(text)} characters")
-    
-    cleaned = clean_text(text)
-    if not cleaned:
-        raise ValueError("Text became empty after cleaning")
-    
-    structure = None
-    if file_id:
-        structure = load_structure_from_json(json_path, file_id)
-    
-    sentences = detect_sentences(cleaned)
-    if not sentences:
-        raise ValueError("No sentences detected in text")
-    
-    logger.info(f"Detected {len(sentences)} sentences")
-    
-    # Form chunks with character optimization
-    # ALWAYS use semantic chunking (structure chunking creates huge chunks)
-    logger.info("Using semantic chunking with character optimization")
-    chunk_kwargs = {
-        "min_chars": getattr(config, "min_chunk_chars", 1000),
-        "max_duration": getattr(config, "max_chunk_duration", 25.0),
-    }
-    if hasattr(config, "soft_chunk_chars"):
-        chunk_kwargs["soft_limit"] = config.soft_chunk_chars
-    if hasattr(config, "hard_chunk_chars"):
-        chunk_kwargs["hard_limit"] = config.hard_chunk_chars
-    if hasattr(config, "emergency_chunk_chars"):
-        chunk_kwargs["emergency_limit"] = config.emergency_chunk_chars
-    if hasattr(config, "emergency_chunk_duration"):
-        chunk_kwargs["emergency_duration"] = config.emergency_chunk_duration
-    
-    chunks, coherence, embeddings = form_semantic_chunks(
-        sentences,
-        **chunk_kwargs
+
+    cleaned = clean_text(raw_text)
+    text_hash = hash_text_content(cleaned)
+
+    # Reuse check
+    existing_phase3 = pipeline_data.get("phase3", {}).get("files", {}).get(file_id, {})
+    existing_hash = existing_phase3.get("text_hash") or existing_phase3.get("source_hash")
+    existing_paths = existing_phase3.get("chunk_paths") or []
+    if (
+        existing_phase3
+        and existing_hash
+        and existing_hash == text_hash
+        and existing_paths
+        and all(Path(p).exists() for p in existing_paths)
+    ):
+        logger.info("Phase 3 reuse: text hash matched, reusing chunks.")
+        try:
+            record = ChunkRecord(**existing_phase3)
+        except Exception:
+            record = ChunkRecord(
+                text_path=str(text_path_abs),
+                chunk_paths=existing_paths,
+                coherence_scores=existing_phase3.get("coherence_scores", []),
+                readability_scores=existing_phase3.get("readability_scores", []),
+                embeddings=existing_phase3.get("embeddings", []),
+                status=existing_phase3.get("status", "success"),
+                errors=existing_phase3.get("errors", []),
+                timestamps=existing_phase3.get("timestamps", {}),
+                chunk_metrics=existing_phase3.get("chunk_metrics", {}),
+                suggested_voice=existing_phase3.get("suggested_voice"),
+                applied_profile=existing_phase3.get("applied_profile"),
+                genre_confidence=existing_phase3.get("genre_confidence"),
+                coherence_threshold=getattr(config, "coherence_threshold", None),
+                flesch_threshold=getattr(config, "flesch_threshold", None),
+                source_hash=existing_hash,
+                text_hash=existing_hash,
+                structure_mode_used=existing_phase3.get("structure_mode_used", False),
+                chunk_voice_overrides=existing_phase3.get("chunk_voice_overrides", {}),
+            )
+        record.text_hash = text_hash
+        chunk_ids = [derive_chunk_id_from_path(Path(p), idx) for idx, p in enumerate(existing_paths)]
+        persist_phase3_result(
+            json_path,
+            pipeline_data,
+            file_id,
+            record,
+            chunk_ids,
+            existing_phase3.get("genre") or config.genre_profile,
+            existing_phase3.get("profile") or config.genre_profile,
+            existing_phase3.get("sentence_model", "spacy_lg"),
+            bool(existing_phase3.get("embeddings_enabled", True)),
+            text_hash,
+            existing_phase3.get("structure_mode_used", False),
+            fallback_used=False,
+        )
+        return record
+
+    # Genre detection
+    detected_genre = get_genre_from_metadata(metadata)
+    genre_confidence = 1.0 if detected_genre else 0.0
+    if not detected_genre and config.genre_profile and config.genre_profile != "auto":
+        detected_genre = config.genre_profile
+        genre_confidence = 1.0
+
+    if not detected_genre or detected_genre == "auto":
+        detected_genre, genre_confidence, _ = detect_genre(cleaned, metadata)
+        if genre_confidence < 0.55:
+            logger.warning(
+                f"Low genre detection confidence ({genre_confidence:.2f}) for {file_id}"
+            )
+
+    if not validate_genre(detected_genre):
+        logger.warning(f"Invalid genre '{detected_genre}', defaulting to auto profile")
+        detected_genre = "auto"
+
+    chunk_profile = get_profile(detected_genre)
+    profile_overrides = (
+        chunk_profile.genre_duration_overrides.get(detected_genre, {})
+        or chunk_profile.genre_duration_overrides.get(chunk_profile.name, {})
     )
-    
+
+    phase3_profile = (config.phase3_profile or "full").lower()
+    embeddings_enabled = phase3_profile == "full"
+    lightweight = phase3_profile == "fast_cpu"
+    sentence_preference = "lg" if phase3_profile in {"full", "no_embeddings"} else "sm"
+    sentence_model_label = f"spacy_{sentence_preference}" if sentence_preference in {"lg", "sm"} else "pysbd"
+
+    # Apply duration overrides and profile-specific caps
+    target_duration = float(
+        profile_overrides.get(
+            "target_duration",
+            getattr(config, "max_chunk_duration", 20.0),
+        )
+    )
+    emergency_duration = float(
+        profile_overrides.get(
+            "max_duration",
+            getattr(config, "emergency_chunk_duration", max(target_duration + 5.0, 24.0)),
+        )
+    )
+    min_duration = profile_overrides.get("min_duration")
+    if phase3_profile == "fast_cpu":
+        target_duration = min(target_duration, getattr(config, "max_chunk_duration", target_duration), 16.0)
+        emergency_duration = min(emergency_duration, max(target_duration + 4.0, target_duration))
+
+    min_chars = max(getattr(config, "min_chunk_chars", 420), chunk_profile.min_chars)
+    hard_limit = min(getattr(config, "hard_chunk_chars", chunk_profile.max_chars), chunk_profile.max_chars)
+    soft_limit = max(
+        min_chars,
+        min(getattr(config, "soft_chunk_chars", hard_limit), hard_limit),
+    )
+    emergency_limit = max(getattr(config, "emergency_chunk_chars", hard_limit + 200), hard_limit + 1)
+
+    logger.info(
+        f"Profile '{detected_genre}' with execution '{phase3_profile}': "
+        f"soft={soft_limit}, hard={hard_limit}, emergency={emergency_limit}, "
+        f"target_dur={target_duration}s, emergency_dur={emergency_duration}s, "
+        f"embeddings={'on' if embeddings_enabled else 'off'}"
+    )
+
+    timers = {"sentence_detection": 0.0, "chunking": 0.0, "embeddings": 0.0, "structure": 0.0}
+    sentence_engine_used = sentence_model_label
+    structure_mode_used = False
+
+    # Structure-aware chunking if permitted
+    chunks: List[str] = []
+    coherence: List[float] = []
+    embeddings: List[List[float]] = []
+
+    if (
+        config.use_structure_chunking
+        and structure_nodes
+        and should_use_structure_chunking(structure_nodes, config.min_structure_nodes)
+    ):
+        structure_mode_used = True
+        structure_start = perf_counter()
+        chunks, coherence, embeddings = chunk_by_structure(
+            cleaned,
+            structure_nodes,
+            chunk_profile,
+            max_chunk_words=chunk_profile.max_words,
+            target_sec=target_duration,
+            soft_merge_sec=max(4.0, target_duration / 2),
+            words_per_minute=150.0,
+            use_embeddings=embeddings_enabled,
+        )
+        timers["structure"] = perf_counter() - structure_start
+        if embeddings_enabled:
+            timers["embeddings"] = timers["structure"]
+    else:
+        sentence_start = perf_counter()
+        sentences, detected_engine = detect_sentences(
+            cleaned,
+            model_preference=sentence_preference,
+            allow_pysbd=True,
+            return_model=True,
+        )
+        timers["sentence_detection"] = perf_counter() - sentence_start
+        sentence_engine_used = detected_engine
+
+        if not sentences:
+            raise ValueError("No sentences detected in text")
+
+        chunk_start = perf_counter()
+        chunks, coherence, embeddings = form_semantic_chunks(
+            sentences,
+            min_chars=min_chars,
+            soft_limit=soft_limit,
+            hard_limit=hard_limit,
+            emergency_limit=emergency_limit,
+            max_duration=target_duration,
+            emergency_duration=emergency_duration,
+            enable_embeddings=embeddings_enabled,
+            lightweight=lightweight,
+            min_duration=min_duration,
+        )
+        timers["chunking"] = perf_counter() - chunk_start
+        if embeddings_enabled:
+            timers["embeddings"] = timers["chunking"]
+
     if not chunks:
         raise ValueError("No chunks created from text")
-    
-    # Select voice for TTS synthesis
-    pipeline_data = None
-    try:
-        json_path_abs = Path(json_path).absolute()
-        if json_path_abs.exists():
-            with open(json_path_abs, 'r') as f:
-                pipeline_data = json.load(f)
-    except Exception as e:
-        logger.warning(f"Could not load pipeline.json for voice selection: {e}")
-    
-    # Determine genre profile (from config or detect from structure)
-    profile = config.genre_profile if hasattr(config, 'genre_profile') else 'auto'
-    
-    # Select voice using priority cascade
+
+    chunk_paths = save_chunks(str(text_path_abs), chunks, chunks_dir)
+    chunk_ids = [derive_chunk_id_from_path(Path(p), idx) for idx, p in enumerate(chunk_paths)]
+
+    readability = assess_readability(chunks)
+    chunk_metrics = calculate_chunk_metrics(chunks, config)
+
+    avg_coherence = sum(coherence) / len(coherence) if coherence else None
+    avg_flesch = sum(readability) / len(readability) if readability else 0.0
+
+    if avg_coherence is not None and avg_coherence < getattr(config, "coherence_threshold", 0.0):
+        logger.warning(
+            f"Average coherence {avg_coherence:.3f} below threshold {config.coherence_threshold}"
+        )
+    if avg_flesch < getattr(config, "flesch_threshold", 0.0):
+        logger.warning(
+            f"Average readability {avg_flesch:.2f} below threshold {config.flesch_threshold}"
+        )
+
+    errors = []
+    max_duration_cap = min(target_duration, getattr(config, "max_chunk_duration", target_duration))
+    if chunk_metrics.get("max_duration", 0) > max_duration_cap:
+        errors.append(
+            f"Some chunks exceed {max_duration_cap}s duration "
+            f"(max: {chunk_metrics.get('max_duration', 0):.1f}s)"
+        )
+
+    status = "success" if not errors else "partial"
+
     selected_voice = select_voice(
-        profile_name=profile,
+        profile_name=detected_genre,
         file_id=file_id,
         pipeline_data=pipeline_data,
-        cli_override=cli_voice_override
+        cli_override=getattr(config, "voice_override", None),
     )
-    logger.info(f"Selected voice for TTS: {selected_voice}")
-    
-    # Calculate chunk metrics
-    chunk_metrics = calculate_chunk_metrics(chunks, config)
-    chunk_metrics['selected_voice'] = selected_voice
-    logger.info(f"Average chunk: {chunk_metrics['avg_char_length']:.0f} chars, "
-                f"{chunk_metrics['avg_word_count']:.0f} words, "
-                f"{chunk_metrics['avg_duration']:.1f}s duration")
-    
-    readability = assess_readability(chunks)
-    
-    avg_coherence = sum(coherence) / len(coherence) if coherence else 0.0
-    avg_flesch = sum(readability) / len(readability) if readability else 0.0
-    
-    logger.info(f"Chunking complete: {len(chunks)} chunks created")
-    logger.info(f"Average coherence: {avg_coherence:.4f}")
-    logger.info(f"Average Flesch score: {avg_flesch:.2f}")
-    
-    errors = []
-    if chunk_metrics['max_duration'] > config.max_chunk_duration:
-        errors.append(f"Some chunks exceed {config.max_chunk_duration}s duration (max: {chunk_metrics['max_duration']:.1f}s)")
-    
-    status = "success" if not errors else "partial"
-    
-    try:
-        chunk_paths = save_chunks(str(text_path_abs), chunks, chunks_dir)
-    except Exception as e:
-        logger.error(f"Failed to save chunks: {e}")
-        errors.append(f"Save error: {str(e)}")
-        status = "failed"
-        chunk_paths = []
-    
-    log_chunk_times(chunks, config)
-    
-    end_time = perf_counter()
-    duration = end_time - start_time
-    
-    logger.info(f"Total processing time: {duration:.2f}s")
-
     chunk_voice_overrides = {}
     if selected_voice:
         for idx, chunk_path_str in enumerate(chunk_paths):
@@ -307,7 +532,10 @@ def process_chunking(
                 chunk_voice_overrides[cid] = selected_voice
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to derive chunk_id for %s: %s", chunk_path_str, exc)
-    
+
+    end_time = perf_counter()
+    duration = end_time - start_time
+
     record = ChunkRecord(
         text_path=str(text_path_abs),
         chunk_paths=chunk_paths,
@@ -319,14 +547,64 @@ def process_chunking(
         timestamps={"start": start_time, "end": end_time, "duration": duration},
         chunk_metrics=chunk_metrics,
         suggested_voice=selected_voice,
-        applied_profile=None if profile == "auto" else profile,
+        applied_profile=None if detected_genre == "auto" else detected_genre,
+        genre_confidence=genre_confidence,
         coherence_threshold=getattr(config, "coherence_threshold", None),
         flesch_threshold=getattr(config, "flesch_threshold", None),
-        source_hash=current_hash,
+        source_hash=text_hash,
+        text_hash=text_hash,
         chunk_voice_overrides=chunk_voice_overrides,
+        structure_mode_used=structure_mode_used,
     )
-    
+
+    persist_phase3_result(
+        json_path,
+        pipeline_data,
+        file_id,
+        record,
+        chunk_ids,
+        detected_genre,
+        record.applied_profile or detected_genre,
+        sentence_engine_used,
+        embeddings_enabled,
+        text_hash,
+        structure_mode_used,
+        fallback_used=fallback_used,
+        fallback_message=fallback_message,
+    )
+
+    logger.info(
+        f"Timers - sentence detection: {timers['sentence_detection']:.2f}s, "
+        f"chunking: {timers['chunking']:.2f}s, embeddings: {timers['embeddings']:.2f}s, "
+        f"structure: {timers['structure']:.2f}s"
+    )
+
     return record
+
+
+def process_chunking(
+    text_path: str,
+    chunks_dir: str,
+    config: ValidationConfig,
+    json_path: str = "pipeline.json",
+    file_id: str = None,
+    cli_voice_override: str = None,
+) -> ChunkRecord:
+    """Backward-compatible wrapper that delegates to run_phase3."""
+    if isinstance(config, Phase3Config):
+        cfg = config
+    else:
+        cfg_payload = config.model_dump() if hasattr(config, "model_dump") else config.dict()
+        cfg = Phase3Config(**cfg_payload)
+    cfg.json_path = json_path
+    cfg.chunks_dir = chunks_dir
+    cfg.voice_override = cli_voice_override
+    cfg.text_path_override = text_path
+    if not file_id:
+        file_id = derive_file_id_from_path(Path(text_path))
+
+    pipeline = load_pipeline_state(json_path)
+    return run_phase3(file_id=file_id, pipeline=pipeline, config=cfg)
 
 
 def load_from_json(json_path: str, file_id: str, strict: bool = False) -> str:
@@ -521,7 +799,7 @@ def _merge_to_json_impl(record: ChunkRecord, json_path_abs: Path, file_id: str, 
         raise
 
 
-def load_config(config_path: str) -> ValidationConfig:
+def load_config(config_path: str) -> Phase3Config:
     """Load configuration from YAML file."""
     config_path_abs = Path(config_path).resolve()
     
@@ -598,7 +876,7 @@ def load_config(config_path: str) -> ValidationConfig:
     if emergency_duration <= max_duration:
         emergency_duration = max(max_duration + 1.0, 38.0)
     
-    return ValidationConfig(
+    return Phase3Config(
         chunk_min_words=config_data.get("chunk_min_words", config_data.get("min_chunk_words", 200)),
         max_chunk_words=config_data.get("chunk_max_words", config_data.get("max_chunk_words", 400)),
         coherence_threshold=config_data.get("coherence_threshold", 0.87),
@@ -611,18 +889,23 @@ def load_config(config_path: str) -> ValidationConfig:
         emergency_chunk_chars=emergency_chars,
         emergency_chunk_duration=emergency_duration,
         genre_profile=config_data.get("genre_profile", config_data.get("profile", "auto")),
+        json_path=config_data.get("json_path", "pipeline.json"),
+        chunks_dir=config_data.get("chunks_dir", "chunks"),
+        phase3_profile=config_data.get("phase3_profile", "full"),
+        use_structure_chunking=config_data.get("use_structure_chunking", True),
+        min_structure_nodes=int(config_data.get("min_structure_nodes", 10) or 10),
     )
 
 
 def main():
     """Main entry point for Phase 3 chunking."""
     logger.info(f"Starting Phase 3 from cwd: {os.getcwd()}")
-    
+
     parser = argparse.ArgumentParser(
         description="Phase 3: Semantic Chunking for TTS",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    
+
     parser.add_argument("--file-id", "--file_id", dest="file_id", help="File ID from Phase 2")
     parser.add_argument("--text-path", "--text_path", "--text-file", dest="text_path",
                         help="Direct path to text file (bypasses Phase 2 lookup)")
@@ -640,17 +923,16 @@ def main():
         action="store_true",
         help="Silence astromech notifications (beeps are ON by default)",
     )
-    
+
     args = parser.parse_args()
-    
+
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
         logger.setLevel(logging.DEBUG)
 
     if not args.silence_notifications:
         logger.info("Astromech notifications: ON (use --silence_notifications to mute).")
-    
-    # Validate voice override if provided
+
     if args.voice:
         if not validate_voice_id(args.voice):
             logger.error(f"Invalid voice ID: {args.voice}")
@@ -659,7 +941,7 @@ def main():
                 play_alert_beep(silence_mode=False)
             sys.exit(1)
         logger.info(f"Using CLI voice override: {args.voice}")
-    
+
     if args.config:
         config = load_config(args.config)
     else:
@@ -668,24 +950,30 @@ def main():
             logger.info(f"No config supplied; using default {default_config_path}")
             config = load_config(str(default_config_path))
         else:
-            config = ValidationConfig()
-    
+            config = Phase3Config()
+
     if args.profile:
         try:
             config = config.model_copy(update={"genre_profile": args.profile})
         except AttributeError:
-            setattr(config, "genre_profile", args.profile)  # Fallback for older pydantic versions
+            setattr(config, "genre_profile", args.profile)
         logger.info(f"Using CLI profile override: {args.profile}")
     elif getattr(config, "genre_profile", None):
         logger.info(f"Using configured profile: {config.genre_profile}")
-    
-    logger.info(f"Configuration: {config.model_dump()}")
-    
-    fallback_used = False
-    fallback_message = ""
-    text_path = None
+
+    config.json_path = args.json_path
+    config.chunks_dir = args.chunks_dir
+    config.voice_override = args.voice
+
+    try:
+        config_dump = config.model_dump()
+    except AttributeError:
+        config_dump = config.dict() if hasattr(config, "dict") else {}
+    logger.info(f"Configuration: {config_dump}")
+
     file_id = args.file_id
-    
+    pipeline_data = load_pipeline_state(args.json_path)
+
     if args.text_path:
         text_path_obj = Path(args.text_path).expanduser()
         if not text_path_obj.exists():
@@ -694,9 +982,8 @@ def main():
                 play_alert_beep(silence_mode=False)
             sys.exit(1)
         text_path_obj = text_path_obj.resolve()
-        text_path = str(text_path_obj)
-        logger.info(f"Using directly specified text file: {text_path}")
-        
+        config.text_path_override = str(text_path_obj)
+        logger.info(f"Using directly specified text file: {config.text_path_override}")
         if not file_id:
             file_id = derive_file_id_from_path(text_path_obj)
         else:
@@ -707,62 +994,58 @@ def main():
             if not args.silence_notifications:
                 play_alert_beep(silence_mode=False)
             sys.exit(2)
-        try:
-            text_path = load_from_json(args.json_path, file_id, args.strict)
-        except Exception as e:
-            fallback_used = True
-            fallback_message = f"Failed to load from Phase 2: {str(e)}"
-            logger.error(fallback_message)
-            
-            if args.strict:
-                logger.error("Strict mode enabled, exiting")
-                if not args.silence_notifications:
-                    play_alert_beep(silence_mode=False)
-                sys.exit(1)
-            
-            logger.error("Both primary and fallback methods failed")
-            if not args.silence_notifications:
-                play_alert_beep(silence_mode=False)
-            sys.exit(1)
-    
+        if not pipeline_data.get('phase2', {}).get('files', {}).get(file_id):
+            try:
+                config.text_path_override = load_from_json(args.json_path, file_id, args.strict)
+            except Exception as exc:
+                if args.strict:
+                    logger.error(f"Strict mode: could not locate text for {file_id}: {exc}")
+                    if not args.silence_notifications:
+                        play_alert_beep(silence_mode=False)
+                    sys.exit(1)
+                logger.warning(f"Phase2 lookup failed; runner will attempt fallback: {exc}")
+
     if not file_id:
         logger.error("Unable to determine file_id after processing inputs")
         if not args.silence_notifications:
             play_alert_beep(silence_mode=False)
         sys.exit(2)
-    
+
     try:
         logger.info(f"Processing file: {file_id}")
-        record = process_chunking(
-            text_path, args.chunks_dir, config, 
-            json_path=args.json_path, file_id=file_id,
-            cli_voice_override=args.voice
+        record = run_phase3(
+            file_id=file_id,
+            pipeline=pipeline_data,
+            config=config,
         )
-        
+
         logger.info(f"Chunking completed with status: {record.status}")
-        
-        merge_to_json(record, args.json_path, file_id, fallback_used, fallback_message)
-        
+
         metrics = record.get_metrics()
+        avg_coh = metrics.get('avg_coherence')
+        coherence_display = f"{avg_coh:.4f}" if avg_coh is not None else 'n/a'
+
         print("\n" + "="*60)
         print("PHASE 3 CHUNKING SUMMARY")
         print("="*60)
         print(f"File ID: {file_id}")
+        print(f"Profile: {record.applied_profile or config.genre_profile}")
+        print(f"Structure chunking: {getattr(record, 'structure_mode_used', False)}")
         print(f"Status: {record.status}")
         print(f"Chunks created: {metrics['num_chunks']}")
-        print(f"Average coherence: {metrics['avg_coherence']:.4f}")
+        print(f"Average coherence: {coherence_display}")
         print(f"Average Flesch score: {metrics['avg_flesch']:.2f}")
         print(f"Average chunk size: {metrics.get('avg_char_length', 0):.0f} chars, {metrics.get('avg_word_count', 0):.0f} words")
         print(f"Average duration: {metrics.get('avg_chunk_duration', 0):.1f}s (max: {metrics.get('max_chunk_duration', 0):.1f}s)")
         print(f"Processing time: {metrics['duration']:.2f}s")
-        
+
         if record.errors:
             print(f"\nWarnings/Errors:")
             for error in record.errors:
                 print(f"  - {error}")
-        
+
         print("="*60 + "\n")
-        
+
         if record.status == "failed":
             exit_code = 1
         elif record.status == "partial":
@@ -777,13 +1060,19 @@ def main():
             else:
                 play_alert_beep(silence_mode=False)
         sys.exit(exit_code)
-            
+
     except Exception as e:
         logger.error(f"Fatal error during chunking: {e}", exc_info=True)
-        
         try:
+            failure_hash = ""
+            if getattr(config, "text_path_override", None):
+                try:
+                    raw_text = Path(config.text_path_override).read_text(encoding="utf-8")
+                    failure_hash = hash_text_content(clean_text(raw_text))
+                except Exception:
+                    failure_hash = ""
             failed_record = ChunkRecord(
-                text_path=text_path or "unknown",
+                text_path=config.text_path_override or "unknown",
                 chunk_paths=[],
                 coherence_scores=[],
                 readability_scores=[],
@@ -791,11 +1080,23 @@ def main():
                 status="failed",
                 errors=[f"Fatal error: {str(e)}"],
                 timestamps={"start": perf_counter(), "end": perf_counter(), "duration": 0},
+                text_hash=failure_hash or None,
             )
-            merge_to_json(failed_record, args.json_path, file_id, fallback_used, fallback_message)
-        except Exception as merge_error:
-            logger.error(f"Could not record failure in JSON: {merge_error}")
-        
+            persist_phase3_result(
+                args.json_path,
+                pipeline_data,
+                file_id or "unknown",
+                failed_record,
+                [],
+                getattr(config, "genre_profile", "auto"),
+                getattr(config, "genre_profile", "auto"),
+                "unknown",
+                embeddings_enabled=False,
+                text_hash=failure_hash or "",
+                structure_mode_used=False,
+            )
+        except Exception as persist_exc:
+            logger.error(f"Could not record failure in pipeline.json: {persist_exc}")
         if not args.silence_notifications:
             play_alert_beep(silence_mode=False)
         sys.exit(1)
@@ -803,3 +1104,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

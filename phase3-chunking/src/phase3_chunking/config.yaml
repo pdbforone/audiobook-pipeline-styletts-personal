@@ -1,3 +1,6 @@
+phase3_profile: full  # options: full | no_embeddings | fast_cpu
+use_structure_chunking: true
+min_structure_nodes: 10
 json_path: pipeline.json
 chunks_dir: chunks
 chunk_min_words: 30   # ~9-12s floor on Ryzen 5500U

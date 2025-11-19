@@ -3,6 +3,7 @@ audiobook_title: Owl Creek Bridge
 backup_original: false
 chunk_size_seconds: 30
 cleanup_temp_files: true
+profile: auto
 crossfade_duration: 0.05
 crossfade_max_sec: 0.1
 crossfade_silence_guard_sec: 0.2
@@ -37,6 +38,8 @@ compressor_threshold_db: -24.0
 compressor_ratio: 4.0
 limiter_ceiling_db: -1.0
 enable_phrase_cleanup: false
+cleanup_scope: all
+cleanup_first_n: 3
 cleanup_target_phrases:
 - You need to add some text for me to talk
 - You need to add some text for me to talk.

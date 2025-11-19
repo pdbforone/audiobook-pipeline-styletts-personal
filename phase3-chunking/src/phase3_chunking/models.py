@@ -25,6 +25,8 @@ class ChunkRecord(BaseModel):
     flesch_threshold: Optional[float] = None
     # Per-chunk voice overrides keyed by chunk_id (e.g., chunk_0001 -> voice_name)
     chunk_voice_overrides: Dict[str, str] = Field(default_factory=dict)
+    structure_mode_used: bool = False  # Indicates structure-aware chunking path
+    text_hash: Optional[str] = None  # Hash of cleaned text for reuse checks
 
     class Config:
         arbitrary_types_allowed = True  # Allow 'any' type for chunk_metrics
@@ -347,3 +349,31 @@ class ValidationConfig(BaseModel):
             )
             self.max_chunk_chars = self.hard_chunk_chars
         return self
+
+
+class Phase3Config(ValidationConfig):
+    """Runtime configuration for Phase 3, including execution profiles."""
+
+    json_path: str = "pipeline.json"
+    chunks_dir: str = "chunks"
+    phase3_profile: str = "full"  # full | no_embeddings | fast_cpu
+    use_structure_chunking: bool = True
+    min_structure_nodes: int = 10
+    text_path_override: Optional[str] = None
+    voice_override: Optional[str] = None
+
+    @field_validator("phase3_profile")
+    @classmethod
+    def validate_phase3_profile(cls, v: str) -> str:
+        allowed = {"full", "no_embeddings", "fast_cpu"}
+        value = (v or "full").lower()
+        if value not in allowed:
+            raise ValueError(f"phase3_profile must be one of {allowed}, got {v}")
+        return value
+
+    @field_validator("min_structure_nodes")
+    @classmethod
+    def validate_min_structure_nodes(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("min_structure_nodes must be >= 1")
+        return v

@@ -50,6 +50,12 @@ def state_manager(state_path):
     return PipelineState(state_path, validate_on_read=False)
 
 
+@pytest.fixture
+def relaxed_state_manager(state_path):
+    """PipelineState with structural validation disabled (for legacy writes)."""
+    return PipelineState(state_path, validate_on_read=False, structural_validation=False)
+
+
 class TestBasicOperations:
     """Test basic read/write operations"""
 
@@ -214,6 +220,13 @@ class TestBackups:
 class TestValidation:
     """Test schema validation"""
 
+    def test_structural_validation_on_read(self, state_manager, state_path):
+        """Non-dict top-level structures are rejected"""
+        state_path.write_text('[]')
+
+        with pytest.raises(StateValidationError):
+            state_manager.read()
+
     def test_validation_on_write(self, state_manager):
         """Invalid data rejected on write"""
         invalid_data = {
@@ -223,15 +236,15 @@ class TestValidation:
         with pytest.raises(StateValidationError):
             state_manager.write(invalid_data, validate=True)
 
-    def test_validation_disabled(self, state_manager):
-        """Can disable validation if needed"""
+    def test_validation_disabled(self, relaxed_state_manager):
+        """Validation can be relaxed for legacy callers when requested"""
         invalid_data = {"phase1": "wrong type"}
 
-        # Should not raise with validate=False
-        state_manager.write(invalid_data, validate=False)
+        # Should not raise with validate=False in relaxed mode
+        relaxed_state_manager.write(invalid_data, validate=False)
 
         # Verify data was written
-        data = state_manager.read()
+        data = relaxed_state_manager.read(validate=False)
         assert data['phase1'] == "wrong type"
 
     def test_valid_schema_accepted(self, state_manager):
@@ -360,16 +373,51 @@ class TestTransactionLog:
         history = state_manager.get_transaction_history()
         assert len(history) > 0
 
-        # Check log structure
-        record = history[0]
-        assert 'timestamp' in record
-        assert 'operation' in record
-        assert 'success' in record
+
+class TestHelpers:
+    """UI/service helper methods"""
+
+    def test_status_summary_and_chunk_helpers(self, state_manager):
+        """Summary and chunk helpers are read-only and informative"""
+        state_manager.write(
+            {
+                "file_id": "book123",
+                "phase1": {"status": "success"},
+                "phase3": {
+                    "status": "partial",
+                    "chunks": [
+                        {"id": 1, "path": "/tmp/chunk1.txt"},
+                        {"id": 2, "path": "/tmp/chunk2.txt"},
+                    ],
+                },
+            },
+            validate=False,
+        )
+
+        summary = state_manager.get_status_summary()
+        assert summary["phases"]["phase1"] == "success"
+        assert "phase2" in summary["phases"]  # unknown phases still reported
+        assert "phase3" in summary["in_progress"]
+
+        chunks = state_manager.get_chunks("phase3")
+        assert len(chunks) == 2
+
+        first_chunk = state_manager.get_chunk_metadata(1, "phase3")
+        assert first_chunk is not None
+        assert first_chunk["path"].endswith("chunk1.txt")
+
+        history = state_manager.get_transaction_history()
+        if history:
+            record = history[0]
+            assert 'timestamp' in record
+            assert 'operation' in record
+            assert 'success' in record
 
     def test_log_records_transaction_commits(self, state_manager):
         """Transaction commits are logged"""
         with state_manager.transaction() as txn:
-            txn.data['test'] = 'value'
+            txn.data['phase1'] = {'status': 'success'}
+            txn.data['file_id'] = 'abc'
 
         history = state_manager.get_transaction_history()
         commit_records = [r for r in history if r['operation'] == 'commit']
@@ -416,6 +464,8 @@ class TestErrorRecovery:
         """Can recover from partial writes using backup"""
         # Write initial state
         state_manager.write({'version': 1}, validate=False)
+        # Force a backup snapshot
+        state_manager.backup_manager.create_backup()
 
         # Simulate crash during write by writing corrupted data directly
         with open(state_path, 'w') as f:

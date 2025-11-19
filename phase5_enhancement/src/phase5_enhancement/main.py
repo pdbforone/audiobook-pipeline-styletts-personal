@@ -28,7 +28,7 @@ import tempfile
 import shutil
 import threading
 import subprocess
-from typing import Optional
+from typing import Callable, Optional
 try:
     from rnnoise import RNNoise  # CPU RNNoise wrapper
 except ImportError:
@@ -92,13 +92,44 @@ def setup_logging(config: EnhancementConfig):
     logging.getLogger().addHandler(file_handler)
 
 
-def monitor_resources(stop_event: threading.Event):
-    """Monitor CPU/memory in background; throttle if high"""
+def monitor_resources(
+    stop_event: threading.Event,
+    throttle_event: threading.Event,
+    high_threshold: int = 80,
+    low_threshold: int = 60,
+    recovery_checks: int = 3,
+) -> None:
+    """
+    Monitor CPU usage and signal when workers should pause.
+
+    The throttle flag stays raised until CPU remains below `low_threshold`
+    for `recovery_checks` consecutive samples.
+    """
+    recovery_counter = 0
     while not stop_event.is_set():
         cpu_percent = psutil.cpu_percent(interval=1)
-        if cpu_percent > 80:
-            logger.warning(f"CPU >80% ({cpu_percent}%); throttling")
-            time.sleep(1)  # Simple throttle
+        if cpu_percent >= high_threshold:
+            throttle_event.set()
+            recovery_counter = 0
+            logger.warning(f"CPU >{high_threshold}% ({cpu_percent}%). Throttling workers...")
+        elif throttle_event.is_set():
+            if cpu_percent < low_threshold:
+                recovery_counter += 1
+                if recovery_counter >= recovery_checks:
+                    throttle_event.clear()
+                    logger.info("CPU load recovered; resuming workers.")
+            else:
+                recovery_counter = 0
+
+
+def wait_for_throttle(throttle_event: Optional[threading.Event], chunk_label: str = "") -> None:
+    """Block processing while the throttle flag is raised."""
+    if not throttle_event:
+        return
+    while throttle_event.is_set():
+        if chunk_label:
+            logger.debug("Pausing chunk %s due to CPU throttle", chunk_label)
+        time.sleep(0.5)
 
 
 def normalize_volume(
@@ -473,7 +504,9 @@ def enhance_chunk(
     metadata: AudioMetadata,
     config: EnhancementConfig,
     temp_dir: str,
-    phrase_cleaner: PhraseCleaner = None
+    phrase_cleaner: PhraseCleaner = None,
+    throttle_event: Optional[threading.Event] = None,
+    chunk_index: Optional[int] = None
 ) -> tuple[AudioMetadata, np.ndarray]:
     """
     Enhance audio chunk with optional phrase cleaning, noise reduction, and normalization.
@@ -485,11 +518,14 @@ def enhance_chunk(
         config: Enhancement configuration
         temp_dir: Temporary directory for backups
         phrase_cleaner: Optional PhraseCleaner instance
+        throttle_event: Shared throttle flag set by resource monitor
+        chunk_index: 1-based ordering of the chunk (used for cleanup scope)
     
     Returns:
         Tuple of (metadata, enhanced_audio_array)
     """
     start_time = time.perf_counter()
+    wait_for_throttle(throttle_event, str(metadata.chunk_id))
     wav_path = Path(metadata.wav_path)
     enhanced = None
     
@@ -497,13 +533,16 @@ def enhance_chunk(
         # ===== STEP 1: PHRASE CLEANUP (NEW) =====
         if phrase_cleaner and config.enable_phrase_cleanup:
             logger.info(f"[CLEANUP] Running phrase cleanup on chunk {metadata.chunk_id}...")
-            cleaned_audio, sr, cleanup_meta = phrase_cleaner.clean_audio(wav_path)
-            
+            wait_for_throttle(throttle_event, f"{metadata.chunk_id}-cleanup")
+            cleaned_audio, sr, cleanup_meta = phrase_cleaner.clean_audio(
+                wav_path, chunk_index=chunk_index, is_final_pass=False
+            )
+
             # Update metadata with cleanup results
-            metadata.cleanup_status = cleanup_meta.get('status', 'unknown')
-            metadata.phrases_removed = cleanup_meta.get('phrases_removed', 0)
-            metadata.cleanup_processing_time = cleanup_meta.get('processing_time', 0.0)
-            
+            metadata.cleanup_status = cleanup_meta.get("status", "unknown")
+            metadata.phrases_removed = cleanup_meta.get("phrases_removed", 0)
+            metadata.cleanup_processing_time = cleanup_meta.get("processing_time", 0.0)
+
             if cleaned_audio is not None:
                 # Phrase was removed - use cleaned audio
                 logger.info(
@@ -515,7 +554,7 @@ def enhance_chunk(
                     config.sample_rate = sr
             else:
                 # No phrase found or error - load original audio
-                if cleanup_meta['status'] == 'error':
+                if metadata.cleanup_status == "error":
                     logger.warning(
                         f"Phrase cleanup error for chunk {metadata.chunk_id}: "
                         f"{cleanup_meta.get('error', 'Unknown error')}"
@@ -573,10 +612,16 @@ def enhance_chunk(
             backup_path = Path(temp_dir) / f"backup_{Path(wav_path).name}"
             shutil.copy(wav_path, backup_path)
 
+        already_denoised = "enhanced" in wav_path.stem or "denoise" in wav_path.stem
+
         # ===== STEP 6: ENHANCEMENT LOOP =====
         for attempt in range(config.retries + 1):
+            wait_for_throttle(throttle_event, f"{metadata.chunk_id}-enhance")
             # Noise reduction - choose between DeepFilterNet or noisereduce
-            if config.enable_deepfilternet:
+            if already_denoised:
+                enhanced = audio.copy()
+                logger.debug("Chunk %s appears already denoised; skipping heavy NR", metadata.chunk_id)
+            elif config.enable_deepfilternet:
                 # Use DeepFilterNet (professional, MIT licensed)
                 if len(audio) / sr > config.chunk_size_seconds:
                     enhanced = process_large_chunk(
@@ -893,16 +938,30 @@ def get_audio_chunks_from_json(config: EnhancementConfig) -> list[AudioMetadata]
         return []
 
 
+def safe_update_json(path: str, updater: Callable[[dict], None]) -> None:
+    """
+    Safely update a JSON document using PipelineState transactions.
+
+    Args:
+        path: Path to the JSON file.
+        updater: Callable that mutates the loaded JSON dict in-place.
+    """
+    state = PipelineState(path, validate_on_read=False)
+    with state.transaction() as txn:
+        updater(txn.data)
+
+
 def update_pipeline_json(config: EnhancementConfig, file_id: str, phase5_data: dict):
     """
     Persist Phase 5 results atomically under phase5 -> files -> file_id.
     """
     try:
-        state = PipelineState(config.pipeline_json, validate_on_read=False)
-        with state.transaction() as txn:
-            phase5 = txn.data.setdefault("phase5", {"files": {}})
+        def _update(data: dict) -> None:
+            phase5 = data.setdefault("phase5", {"files": {}})
             files = phase5.setdefault("files", {})
             files[file_id] = phase5_data
+
+        safe_update_json(config.pipeline_json, _update)
         logger.info(
             "Updated pipeline.json for %s with phase5 results at %s",
             file_id,
@@ -927,6 +986,12 @@ def main():
     )
     parser.add_argument(
         "--config", type=str, default="config.yaml", help="YAML config path"
+    )
+    parser.add_argument(
+        "--profile",
+        type=str,
+        choices=["auto", "laptop_safe", "full_master"],
+        help="Override enhancement profile (auto = default)",
     )
     parser.add_argument(
         "--pipeline-json", type=str, help="Override pipeline.json path"
@@ -969,6 +1034,9 @@ def main():
         config = load_config(args.config)
         if args.pipeline_json:
             config.pipeline_json = args.pipeline_json
+        if args.profile:
+            config.profile = args.profile
+            config._apply_profile_defaults()
         if args.crossfade_sec is not None:
             config.crossfade_duration = args.crossfade_sec
         if args.crossfade_max_sec is not None:
@@ -1000,7 +1068,7 @@ def main():
 
         # ===== INITIALIZE PHRASE CLEANER (NEW) =====
         phrase_cleaner = None
-        if config.enable_phrase_cleanup:
+        if config.enable_phrase_cleanup and getattr(config, "cleanup_scope", "all") != "none":
             logger.info("Initializing phrase cleaner...")
             cleaner_config = PhraseCleanerConfig(
                 enabled=True,
@@ -1014,12 +1082,13 @@ def main():
             )
             logger.info(f"  Target phrases: {config.cleanup_target_phrases}")
         else:
-            logger.info("Phrase cleanup disabled in configuration")
+            logger.info("Phrase cleanup disabled in configuration or scope set to 'none'")
 
         # ===== START RESOURCE MONITORING =====
+        throttle_event = threading.Event()
         stop_monitor = threading.Event()
         monitor_thread = threading.Thread(
-            target=monitor_resources, args=(stop_monitor,)
+            target=monitor_resources, args=(stop_monitor, throttle_event)
         )
         monitor_thread.start()
 
@@ -1075,10 +1144,31 @@ def main():
                 chunks = [c for c in chunks if c.chunk_id not in existing_all]
                 logger.info(f"Resume enabled: {len(chunks)} chunks remain unprocessed")
 
+            # ===== ADAPTIVE WORKER SELECTION =====
+            physical_cores = psutil.cpu_count(logical=False) or psutil.cpu_count() or 1
+            if not config.is_user_override("max_workers"):
+                if config.profile == "laptop_safe":
+                    config.max_workers = 1
+                elif config.profile == "full_master":
+                    config.max_workers = max(1, physical_cores - 1)
+                else:
+                    heavy_mastering = config.enable_deepfilternet or config.enable_matchering
+                    config.max_workers = 1 if heavy_mastering else min(4, physical_cores)
+            # Ensure we never exceed physical cores
+            config.max_workers = max(1, min(config.max_workers, max(physical_cores, 1)))
+            logger.info(
+                "Worker plan: %s workers (profile=%s, physical_cores=%s)",
+                config.max_workers,
+                getattr(config, "profile", "auto"),
+                physical_cores,
+            )
+
             # ===== PROCESSING =====
             overall_start = time.perf_counter()
             enhanced_paths: list[Path] = []
             processed_metadata = []
+            cleanup_operations = 0
+            final_cleanup_meta = None
 
             logger.info(f"Processing {len(chunks)} audio chunks...")
 
@@ -1086,9 +1176,15 @@ def main():
                 # Submit all chunks with phrase_cleaner
                 futures = {
                     executor.submit(
-                        enhance_chunk, chunk, config, temp_dir, phrase_cleaner
+                        enhance_chunk,
+                        chunk,
+                        config,
+                        temp_dir,
+                        phrase_cleaner,
+                        throttle_event,
+                        idx,
                     ): chunk
-                    for chunk in chunks
+                    for idx, chunk in enumerate(chunks, start=1)
                 }
                 
                 for future in as_completed(futures):
@@ -1104,6 +1200,8 @@ def main():
                         logger.error(f"Timeout for chunk {metadata.chunk_id}")
                     
                     processed_metadata.append(metadata)
+                    if metadata.cleanup_status and metadata.cleanup_status not in {"disabled", "skipped"}:
+                        cleanup_operations += 1
                     
                     # Log cleanup results if applicable
                     if metadata.cleanup_status:
@@ -1241,6 +1339,41 @@ def main():
                                 pass
                         current = merged_out
 
+                    # Optional final-only phrase cleanup on the merged WAV
+                    if (
+                        phrase_cleaner
+                        and config.enable_phrase_cleanup
+                        and config.cleanup_scope == "final_only"
+                    ):
+                        logger.info("Running final-only phrase cleanup on merged audio...")
+                        cleaned_audio, cleaned_sr, final_cleanup_meta = phrase_cleaner.clean_audio(
+                            current, is_final_pass=True
+                        )
+                        if final_cleanup_meta.get("status") not in {"disabled", "skipped"}:
+                            cleanup_operations += 1
+                        if cleaned_audio is not None and cleaned_sr > 0:
+                            cleaned_audio, _ = normalize_lufs(
+                                cleaned_audio, cleaned_sr, config.lufs_target
+                            )
+                            cleaned_path = temp_session / "final_cleaned.wav"
+                            sf.write(
+                                cleaned_path,
+                                cleaned_audio,
+                                cleaned_sr,
+                                format="WAV",
+                                subtype="PCM_24",
+                            )
+                            current = cleaned_path
+                            logger.info(
+                                "Final cleanup removed %s phrase(s); re-normalized and updated merged WAV.",
+                                final_cleanup_meta.get("phrases_removed", 0),
+                            )
+                        elif final_cleanup_meta.get("status") == "error":
+                            logger.warning(
+                                "Final phrase cleanup failed; continuing with unmodified merged audio. Error: %s",
+                                final_cleanup_meta.get("error", "unknown"),
+                            )
+
                     # 3) Encode final MP3
                     mp3_dir = output_dir / "mp3"
                     mp3_dir.mkdir(parents=True, exist_ok=True)
@@ -1302,15 +1435,15 @@ def main():
             snr_improvs = [
                 m.snr_post - m.snr_pre
                 for m in processed_metadata
-                if m.snr_post and m.snr_pre
+                if m.snr_post is not None and m.snr_pre is not None
             ]
-            avg_snr_improv = np.mean(snr_improvs) if snr_improvs else 0.0
+            avg_snr_improv = float(np.mean(snr_improvs)) if snr_improvs else 0.0
             
             # Volume normalization metrics
             vol_norm_deltas = [
                 m.rms_volume_norm_post - m.rms_volume_norm_pre
                 for m in processed_metadata
-                if m.rms_volume_norm_post and m.rms_volume_norm_pre
+                if m.rms_volume_norm_post is not None and m.rms_volume_norm_pre is not None
             ]
             avg_vol_norm_delta = (
                 float(np.mean(vol_norm_deltas)) if vol_norm_deltas else 0.0
@@ -1320,6 +1453,9 @@ def main():
                 for m in processed_metadata
                 if m.rms_volume_norm_post is not None
             )
+
+            chunk_durations = [m.duration for m in processed_metadata if m.duration is not None]
+            avg_chunk_duration = float(np.mean(chunk_durations)) if chunk_durations else 0.0
             
             # Cleanup metrics (NEW)
             phrases_cleaned_total = sum(
@@ -1333,6 +1469,26 @@ def main():
                 1 for m in processed_metadata
                 if m.cleanup_status == 'error'
             )
+
+            if final_cleanup_meta:
+                phrases_cleaned_total += final_cleanup_meta.get("phrases_removed", 0) or 0
+                if final_cleanup_meta.get("status") == "cleaned":
+                    chunks_with_phrases += 1
+                if final_cleanup_meta.get("status") == "error":
+                    cleanup_errors += 1
+
+            summary_block = {
+                "total_chunks": len(processed_metadata),
+                "completed_chunks": successful,
+                "failed_chunks": failed,
+                "total_processing_time_sec": total_duration,
+                "average_chunk_duration_sec": avg_chunk_duration,
+                "average_snr_improvement": avg_snr_improv,
+                "average_snr_delta_db": avg_snr_improv,
+                "phrase_cleanup_runs": cleanup_operations,
+                "profile_used": getattr(config, "profile", "auto"),
+                "cleanup_scope_used": getattr(config, "cleanup_scope", "all"),
+            }
 
             phase5_data = {
                 "status": "success" if successful > 0 else "failed",
@@ -1348,7 +1504,9 @@ def main():
                     "phrases_removed_total": phrases_cleaned_total,
                     "chunks_with_phrases": chunks_with_phrases,
                     "cleanup_errors": cleanup_errors,
+                    "cleanup_runs": cleanup_operations,
                 },
+                "summary": summary_block,
                 "artifacts": [
                     m.enhanced_path for m in processed_metadata if m.enhanced_path
                 ],

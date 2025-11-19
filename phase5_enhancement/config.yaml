@@ -2,6 +2,7 @@ pipeline_json: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pip
 input_dir: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\audio_chunks
 # Enhanced WAVs go here per title; final MP3 will be placed in output_dir/mp3
 output_dir: processed/{file_id}
+profile: auto
 sample_rate: 24000
 lufs_target: -18.0
 snr_threshold: 10.0
@@ -28,6 +29,8 @@ log_file: audio_enhancement.log
 resume_on_failure: true
 backup_original: false
 enable_phrase_cleanup: true
+cleanup_scope: all
+cleanup_first_n: 3
 cleanup_target_phrases:
 - You need to add some text for me to talk
 - You need to add some text for me to talk.

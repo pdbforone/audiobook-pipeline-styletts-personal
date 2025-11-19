@@ -1,170 +1,51 @@
+
 #!/usr/bin/env python3
 """
 🎙️ Personal Audiobook Studio
-Beautiful UI for creating professional audiobooks
 
-A labor of love. Craft, not production.
+Refactored Gradio UI with safe state management, background workers,
+and a clear API boundary to the orchestrator pipeline.
 """
 
-import gradio as gr
-import sys
-import json
+from __future__ import annotations
+
+import atexit
 import logging
 import signal
-import atexit
-import re
-import shutil
-from datetime import datetime
+import sys
 from pathlib import Path
-from typing import Optional, List, Tuple, Dict, Any
-import yaml
-import psutil
+from typing import Any, Dict, List, Optional, Tuple
 
-# Add project root to path
+import gradio as gr
+import yaml
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from phase6_orchestrator.orchestrator import run_pipeline
-from pipeline_common import PipelineState
+from ui.models import FileSystemProgress, IncompleteWork, Phase4Summary, UISettings  # noqa: E402
+from ui.services.pipeline_api import PipelineAPI  # noqa: E402
+from ui.services.settings_manager import SettingsManager  # noqa: E402
+from ui.services.voice_manager import VoiceManager  # noqa: E402
+from ui.services.worker import PipelineWorker  # noqa: E402
+
 
 VOICE_CONFIG_PATH = PROJECT_ROOT / "phase4_tts" / "configs" / "voice_references.json"
 CUSTOM_VOICE_DIR = PROJECT_ROOT / "voice_samples" / "custom"
-ALLOWED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg", ".m4a"}
+SETTINGS_PATH = PROJECT_ROOT / ".pipeline" / "ui_settings.json"
 LOG_FILES = {
     "Phase 4 (XTTS)": PROJECT_ROOT / "xtts_chunk.log",
     "Pipeline (orchestrator)": PROJECT_ROOT / "phase6_orchestrator" / "orchestrator.log",
     "Phase 5 (enhancement)": PROJECT_ROOT / "phase5_enhancement" / "enhancement.log",
 }
 
+ENGINE_MAP = {
+    "XTTS v2 (Expressive)": "xtts",
+    "Kokoro (CPU-Friendly)": "kokoro",
+}
+
 # Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-
-
-# ============================================================================
-# CONFIGURATION & STATE
-# ============================================================================
-
-class StudioState:
-    """Global state management"""
-
-    def __init__(self):
-        self.voices = self._load_voices()
-        self.engines = self._load_engines()
-        self.presets = self._load_presets()
-        self.pipeline_json = PROJECT_ROOT / "pipeline.json"
-        self.cancel_flag = False  # Flag for stopping generation
-        self.file_ids = self._load_file_ids()
-
-    def cancel_generation(self):
-        """Request cancellation of current generation"""
-        self.cancel_flag = True
-        logger.info("⚠️ User requested cancellation")
-
-    def reset_cancel_flag(self):
-        """Reset cancellation flag before starting new generation"""
-        self.cancel_flag = False
-
-    def is_cancelled(self) -> bool:
-        """Check if generation should be cancelled"""
-        return self.cancel_flag
-
-    def check_incomplete_generation(self) -> Optional[Dict]:
-        """Check if there's an incomplete generation that can be resumed"""
-        try:
-            if not self.pipeline_json.exists():
-                return None
-
-            with open(self.pipeline_json, 'r') as f:
-                data = json.load(f)
-
-            # Check for any incomplete books
-            for file_id, book_data in data.items():
-                if file_id == "metadata":
-                    continue
-
-                # Check phase completion
-                phases_complete = []
-                phases_incomplete = []
-
-                for phase in [1, 2, 3, 4, 5]:
-                    phase_key = f"phase{phase}"
-                    if phase_key in book_data:
-                        status = book_data[phase_key].get('status', 'unknown')
-                        if status == 'success':
-                            phases_complete.append(phase)
-                        else:
-                            phases_incomplete.append(phase)
-                    else:
-                        phases_incomplete.append(phase)
-
-                # If some phases complete but not all, offer resume
-                if phases_complete and phases_incomplete:
-                    return {
-                        'file_id': file_id,
-                        'phases_complete': phases_complete,
-                        'phases_incomplete': phases_incomplete,
-                        'last_phase': max(phases_complete) if phases_complete else 0
-                    }
-
-            return None
-        except Exception as e:
-            logger.error(f"Error checking for incomplete generation: {e}")
-            return None
-
-    def _load_file_ids(self) -> List[str]:
-        """List known files from pipeline.json (phase1 files)."""
-        if not self.pipeline_json.exists():
-            return []
-        try:
-            with open(self.pipeline_json, "r") as f:
-                data = json.load(f)
-            phase1 = data.get("phase1", {}).get("files", {}) or {}
-            return sorted(list(phase1.keys()))
-        except Exception as exc:
-            logger.error(f"Failed to list file ids: {exc}")
-            return []
-
-    def _load_voices(self) -> Dict:
-        """Load voice library"""
-        try:
-            with open(VOICE_CONFIG_PATH, 'r') as f:
-                data = json.load(f)
-            return data.get('voice_references', {})
-        except Exception as e:
-            logger.error(f"Failed to load voices: {e}")
-            return {}
-
-    def _load_engines(self) -> List[str]:
-        """Get available TTS engines"""
-        return [
-            "XTTS v2 (Expressive)",
-            "Kokoro (CPU-Friendly)"
-        ]
-
-    def _load_presets(self) -> List[str]:
-        """Load mastering presets"""
-        presets_path = PROJECT_ROOT / "phase5_enhancement" / "presets" / "mastering_presets.yaml"
-        try:
-            with open(presets_path, 'r') as f:
-                data = yaml.safe_load(f)
-            return list(data.get('presets', {}).keys())
-        except:
-            return ["audiobook_intimate", "audiobook_dynamic", "podcast_standard"]
-
-    def get_voice_list(self) -> List[str]:
-        """Get formatted voice list for dropdown"""
-        return [
-            f"{voice_id}: {meta.get('narrator_name', 'Unknown')} ({', '.join(meta.get('preferred_profiles', []))})"
-            for voice_id, meta in self.voices.items()
-        ]
-
-
-# Initialize state
-state = StudioState()
 
 
 # ============================================================================
@@ -218,25 +99,12 @@ CUSTOM_CSS = """
     margin-bottom: 1.5rem;
 }
 
-.tab-nav button {
-    font-size: 1.05rem;
-    padding: 0.75rem 1.5rem;
-    transition: all 0.2s;
-}
-
-.tab-nav button.selected {
-    border-bottom: 3px solid var(--secondary-color);
-    color: var(--secondary-color);
-    font-weight: 700;
-}
-
-/* Button styling */
+/* Buttons */
 .primary-button {
-    background: var(--secondary-color) !important;
-    color: #0b1d3a !important;
-    font-weight: 700;
-    padding: 0.8rem 2rem;
-    border-radius: 10px;
+    background: var(--bg-gradient) !important;
+    color: white !important;
+    border: none !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
     transition: all 0.2s;
 }
 
@@ -285,23 +153,121 @@ CUSTOM_CSS = """
 
 """
 
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
+class StudioUI:
+    """Main UI orchestrator with explicit state injection."""
 
-def check_for_incomplete_work() -> Tuple[bool, str]:
-    """Check for incomplete generation and return status message"""
-    incomplete = state.check_incomplete_generation()
+    def __init__(self) -> None:
+        self.voice_manager = VoiceManager(VOICE_CONFIG_PATH, CUSTOM_VOICE_DIR)
+        self.settings_manager = SettingsManager(SETTINGS_PATH, PROJECT_ROOT)
+        self.settings: UISettings = self.settings_manager.load()
+        self.pipeline_api = PipelineAPI(PROJECT_ROOT, log_files=LOG_FILES)
+        self.worker = PipelineWorker()
+        self.presets = self._load_presets()
 
-    if incomplete:
-        file_id = incomplete['file_id']
-        complete = ', '.join(map(str, incomplete['phases_complete']))
-        pending = ', '.join(map(str, incomplete['phases_incomplete']))
+    # ------------------------------------------------------------------ #
+    # Utility helpers
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _show_stop_button():
+        return gr.update(visible=True)
 
+    @staticmethod
+    def _hide_stop_button():
+        return gr.update(visible=False)
+
+    def _build_voice_gallery_html(self) -> str:
+        html = '<div style="display: grid; gap: 1rem;">'
+        voices = self.voice_manager.refresh()
+        for voice_id, meta in list(voices.items())[:10]:
+            profiles = ", ".join(meta.preferred_profiles)
+            html += f"""
+            <div class="voice-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong style="font-size: 1.1rem;">{meta.narrator_name}</strong>
+                        <p style="margin: 0.25rem 0; opacity: 0.7; font-size: 0.9rem;">{profiles}</p>
+                        <p style="margin: 0.25rem 0; opacity: 0.5; font-size: 0.85rem;">{voice_id}</p>
+                    </div>
+                    <div>
+                        <button style="padding: 0.5rem; margin: 0 0.25rem; cursor: pointer;">🎧</button>
+                        <button style="padding: 0.5rem; margin: 0 0.25rem; cursor: pointer;">✏️</button>
+                    </div>
+                </div>
+            </div>
+            """
+        html += "</div>"
+        return html
+
+    def _load_presets(self) -> List[str]:
+        presets_path = PROJECT_ROOT / "phase5_enhancement" / "presets" / "mastering_presets.yaml"
+        try:
+            with open(presets_path, "r", encoding="utf-8") as handle:
+                data = yaml.safe_load(handle) or {}
+            presets = list((data.get("presets") or {}).keys())
+            return presets or ["audiobook_intimate", "audiobook_dynamic", "podcast_standard"]
+        except Exception as exc:
+            logger.warning("Failed to load mastering presets: %s", exc)
+            return ["audiobook_intimate", "audiobook_dynamic", "podcast_standard"]
+
+    def _format_status(self, file_id: Optional[str]) -> str:
+        status = self.pipeline_api.get_status(file_id)
+        if not status:
+            return "Select a file to view pipeline status."
+
+        phase_lines = [f"- Phase {p.phase}: **{p.status}**" for p in status.phases]
+        fs: FileSystemProgress = status.fs_progress
+        process_view = "\n".join(status.processes) if status.processes else "- No active pipeline processes detected"
+
+        return f"""
+### Pipeline Status for `{status.file_id}`
+
+**Phases**
+{chr(10).join(phase_lines)}
+
+**File System Progress (live)**
+- Phase 3 chunks (txt): {fs.chunk_txt}
+- Phase 4 audio chunks (wav): {fs.phase4_wav}
+- Phase 5 enhanced (wav): {fs.phase5_wav}
+- Final MP3 present: {"yes" if fs.mp3_exists else "no"}
+
+**Active Processes**
+{process_view}
+"""
+
+    def _format_phase4_summary(self, summary: Optional[Phase4Summary]) -> str:
+        if not summary:
+            return "Select a file to view Phase 4 summary."
+
+        chunk_section = []
+        for chunk in summary.chunks:
+            rt = f"{chunk.rt_factor:.2f}x" if isinstance(chunk.rt_factor, (int, float)) else "-"
+            chunk_section.append(
+                f"- `{chunk.chunk_id}` | engine={chunk.engine} | rt={rt} | status={chunk.status} | {chunk.audio_path}"
+            )
+
+        header_lines = [
+            f"### Phase 4 Summary for `{summary.file_id}`",
+            f"- Requested engine: **{summary.requested_engine}**",
+            f"- Chunks: {summary.completed} completed / {summary.failed} failed / total {summary.total_chunks}",
+        ]
+        if isinstance(summary.duration_seconds, (int, float)):
+            header_lines.append(f"- Duration: {summary.duration_seconds:.1f}s")
+
+        pagination = f"**Page {summary.page}/{summary.total_pages} (showing {len(summary.chunks)} rows)**"
+        chunk_text = "\n".join(chunk_section) if chunk_section else "- No chunk rows in this page."
+        return f"{chr(10).join(header_lines)}\n{pagination}\n\n{chunk_text}"
+
+    def _resume_message(self) -> Tuple[bool, str]:
+        incomplete = self.pipeline_api.check_incomplete_work()
+        if not incomplete:
+            return False, ""
+
+        complete = ", ".join(map(str, incomplete.phases_complete))
+        pending = ", ".join(map(str, incomplete.phases_incomplete))
         message = f"""
 ## 🔄 Incomplete Generation Found
 
-**Book:** `{file_id}`
+**Book:** `{incomplete.file_id}`
 
 **Completed phases:** {complete}
 **Pending phases:** {pending}
@@ -309,155 +275,109 @@ def check_for_incomplete_work() -> Tuple[bool, str]:
 You can:
 1. **Resume** by enabling "Resume from checkpoint" and running pending phases
 2. **Start fresh** by disabling resume and running all phases
-        """
+"""
         return True, message
 
-    return False, ""
+    # ------------------------------------------------------------------ #
+    # Callbacks
+    # ------------------------------------------------------------------ #
+    def handle_cancel(self) -> str:
+        self.pipeline_api.request_cancel()
+        self.worker.cancel()
+        return "⚠️ **Cancellation requested.** The pipeline will stop after the current step."
+    async def handle_create_audiobook(
+        self,
+        book_file: str,
+        voice_selection: str,
+        engine_selection: str,
+        mastering_preset: str,
+        enable_resume: bool,
+        max_retries: float,
+        generate_subtitles: bool,
+        concat_only: bool,
+        phase1: bool,
+        phase2: bool,
+        phase3: bool,
+        phase4: bool,
+        phase5: bool,
+        progress=gr.Progress(track_tqdm=True),
+    ) -> Tuple[Optional[str], str]:
+        if not book_file:
+            return None, "❌ Please upload a book file."
 
+        if self.worker.is_running:
+            return None, "⚠️ Another pipeline run is already in progress."
 
-def cancel_generation_fn() -> str:
-    """Handle stop button click"""
-    state.cancel_generation()
-    return "⚠️ **Cancellation requested.** Generation will stop after current phase completes."
+        voice_meta = self.voice_manager.get_voice(voice_selection)
+        if not voice_meta:
+            return None, "❌ Please select a voice."
 
-
-# ============================================================================
-# CORE FUNCTIONS
-# ============================================================================
-
-def create_audiobook(
-    book_file,
-    voice_selection: str,
-    engine_selection: str,
-    mastering_preset: str,
-    enable_resume: bool,
-    max_retries: int,
-    generate_subtitles: bool,
-    phase1: bool,
-    phase2: bool,
-    phase3: bool,
-    phase4: bool,
-    phase5: bool,
-    progress=gr.Progress()
-) -> Tuple[Optional[str], str]:
-    """
-    Main audiobook generation function
-
-    Args:
-        book_file: Uploaded book file
-        voice_selection: Selected voice from dropdown
-        engine_selection: TTS engine choice
-        mastering_preset: Audio mastering preset
-        enable_resume: Enable resume from checkpoint
-        max_retries: Maximum retry attempts per phase
-        generate_subtitles: Generate subtitle files
-        phase1-5: Which phases to run
-        progress: Gradio progress tracker
-
-    Returns:
-        Tuple of (audio_path, status_message)
-    """
-    if book_file is None:
-        return None, "❌ Please upload a book file"
-
-    # Reset cancellation flag at start of new generation
-    state.reset_cancel_flag()
-
-    try:
-        # Extract voice ID from selection
-        voice_id = voice_selection.split(":")[0].strip()
-
-        # Map engine selection to engine name
-        engine_map = {
-            "XTTS v2 (Expressive)": "xtts",
-            "Kokoro (CPU-Friendly)": "kokoro",
-        }
-        engine = engine_map.get(engine_selection, "xtts")  # Default to XTTS
-
-        # Build phases list from checkboxes
-        phases = []
-        if phase1:
-            phases.append(1)
-        if phase2:
-            phases.append(2)
-        if phase3:
-            phases.append(3)
-        if phase4:
-            phases.append(4)
-        if phase5:
-            phases.append(5)
-
+        phases = [p for p, enabled in zip([1, 2, 3, 4, 5], [phase1, phase2, phase3, phase4, phase5]) if enabled]
         if not phases:
-            return None, "❌ Please select at least one phase to run"
+            return None, "❌ Please select at least one phase to run."
 
-        logger.info(f"Starting audiobook generation: {book_file.name}")
-        logger.info(f"Voice: {voice_id}, Engine: {engine}, Preset: {mastering_preset}")
-        logger.info(f"Options: Resume={enable_resume}, Retries={max_retries}, Subtitles={generate_subtitles}, ConcatOnly={concat_only}")
-        logger.info(f"Phases: {phases}")
+        engine = ENGINE_MAP.get(engine_selection, "xtts")
+        file_path = Path(book_file)
+        retries = int(max_retries)
+        no_resume = not bool(enable_resume)
 
-        # Progress callback with cancellation check
-        def update_progress(phase: int, percentage: float, message: str):
-            # Check for cancellation
-            if state.is_cancelled():
-                raise KeyboardInterrupt("Generation cancelled by user")
+        async def runner(cancel_event, update_progress):
+            def progress_hook(value: float, desc: Optional[str] = None):
+                update_progress(value, desc)
+                try:
+                    progress(value, desc=desc)
+                except Exception:
+                    logger.debug("Progress update failed", exc_info=True)
 
-            phase_names = [
-                "Validation",
-                "Text Extraction",
-                "Semantic Chunking",
-                "TTS Synthesis",
-                "Audio Mastering",
-                "Final Assembly"
-            ]
-
-            phase_name = phase_names[phase - 1] if phase <= len(phase_names) else "Processing"
-            progress(
-                (phase - 1) / 7 + percentage / 700,
-                desc=f"Phase {phase}: {phase_name} - {message}"
+            self.pipeline_api.reset_cancel()
+            result = await self.pipeline_api.run_pipeline_async(
+                file_path=file_path,
+                voice_id=voice_meta.voice_id,
+                tts_engine=engine,
+                mastering_preset=mastering_preset,
+                phases=phases,
+                enable_subtitles=bool(generate_subtitles),
+                max_retries=retries,
+                no_resume=no_resume,
+                concat_only=bool(concat_only),
+                progress_callback=progress_hook,
+                cancel_event=cancel_event,
             )
+            return result
 
-        # Run the actual pipeline
-        result = run_pipeline(
-            file_path=Path(book_file.name),
-            voice_id=voice_id,
-            tts_engine=engine,
-            mastering_preset=mastering_preset,
-            phases=phases,
-            pipeline_json=state.pipeline_json,
-            enable_subtitles=generate_subtitles,
-            max_retries=int(max_retries),
-            no_resume=not enable_resume,
-            concat_only=concat_only,
-            progress_callback=update_progress
-        )
+        try:
+            result = await self.worker.start(runner)
+        except RuntimeError as exc:
+            return None, f"⚠️ {exc}"
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception("Audiobook generation failed")
+            return None, f"❌ Error: {exc}"
 
-        if not result["success"]:
-            return None, f"❌ Error: {result.get('error', 'Unknown error')}"
+        if not result.get("success"):
+            error = result.get("error", "Unknown error")
+            if error == "cancelled":
+                return None, "⚠️ **Generation cancelled.** Partial progress was saved."
+            return None, f"❌ Error: {error}"
 
-        progress(1.0, desc="✅ Complete!")
-
-        # Build success message
         audiobook_path = result.get("audiobook_path", "phase5_enhancement/processed/")
-        metadata = result.get("metadata", {})
-
-        # Build options summary
         options_list = []
-        if not enable_resume:
+        if no_resume:
             options_list.append("Fresh run (no resume)")
-        if max_retries != 2:
-            options_list.append(f"Max retries: {int(max_retries)}")
+        if retries != 2:
+            options_list.append(f"Max retries: {retries}")
         if generate_subtitles:
             options_list.append("Subtitles generated")
         if phases != [1, 2, 3, 4, 5]:
             options_list.append(f"Phases: {', '.join(map(str, phases))}")
+        if concat_only:
+            options_list.append("Concat only (reuse enhanced WAVs when present)")
 
         options_text = "\n- ".join(options_list) if options_list else "Default settings"
-
         return None, f"""
 ✅ Audiobook generated successfully!
 
 **Configuration:**
-- Voice: {voice_id}
+- Voice: {voice_meta.voice_id}
 - Engine: {engine_selection}
 - Mastering: {mastering_preset}
 
@@ -466,1022 +386,565 @@ def create_audiobook(
 
 **Output:**
 - Path: `{audiobook_path}`
-
-**Pipeline Status:**
-- Phases completed: {', '.join(map(str, metadata.get('phases_completed', [])))}
-
-**Next Steps:**
-1. Listen to your audiobook in `phase5_enhancement/processed/`
-2. Check quality and adjust settings if needed
-3. Create more audiobooks!
-
-🎉 Enjoy your audiobook!
-        """
-
-    except KeyboardInterrupt:
-        logger.warning("Generation cancelled by user")
-        state.reset_cancel_flag()
-        return None, """
-⚠️ **Generation Cancelled**
-
-The audiobook generation was stopped by user request.
-
-**What happened:**
-- Processing stopped after the current phase completed
-- Partial progress has been saved to pipeline.json
-
-**Next steps:**
-1. **Resume:** Enable "Resume from checkpoint" and click Generate again
-2. **Start fresh:** Disable resume and regenerate from scratch
-3. **Adjust settings:** Change voice, engine, or mastering preset before resuming
-
-Your progress is saved - you can continue anytime! 🔄
-        """
-
-    except Exception as e:
-        logger.error(f"Audiobook generation failed: {e}")
-        state.reset_cancel_flag()
-        return None, f"❌ Error: {str(e)}"
-
-
-def create_batch_audiobooks(
-    book_files,
-    voice_selection: str,
-    engine_selection: str,
-    mastering_preset: str,
-    enable_resume: bool,
-    max_retries: int,
-    generate_subtitles: bool,
-    phase1: bool,
-    phase2: bool,
-    phase3: bool,
-    phase4: bool,
-    phase5: bool,
-    concat_only: bool = False,
-    progress=gr.Progress()
-) -> str:
-    """Process multiple books sequentially with shared settings."""
-    if not book_files:
-        return "❌ Please upload one or more book files."
-
-    try:
-        voice_id = voice_selection.split(":")[0].strip()
-    except Exception:
-        return "❌ Please select a voice."
-
-    engine_map = {
-        "XTTS v2 (Expressive)": "xtts",
-        "Kokoro (CPU-Friendly)": "kokoro",
-    }
-    engine = engine_map.get(engine_selection, "xtts")
-
-    phases = []
-    if phase1:
-        phases.append(1)
-    if phase2:
-        phases.append(2)
-    if phase3:
-        phases.append(3)
-    if phase4:
-        phases.append(4)
-    if phase5:
-        phases.append(5)
-
-    if not phases:
-        return "❌ Please select at least one phase to run."
-
-    results = []
-    total = len(book_files)
-
-    for idx, book in enumerate(book_files, start=1):
-        if state.is_cancelled():
-            results.append(f"- ❌ Cancelled before processing `{Path(book.name).name}`")
-            break
-
-        book_path = Path(book.name)
-        logger.info(f"[Batch] Starting {book_path.name} ({idx}/{total})")
-
-        progress(((idx - 1) / total), desc=f"Batch {idx}/{total}: {book_path.name}")
-
-        inner_progress = gr.Progress(track_tqdm=True)
-
-        res = run_pipeline(
-            file_path=book_path,
-            voice_id=voice_id,
-            tts_engine=engine,
-            mastering_preset=mastering_preset,
-            phases=phases,
-            pipeline_json=state.pipeline_json,
-            enable_subtitles=generate_subtitles,
-            max_retries=int(max_retries),
-            no_resume=not enable_resume,
-            progress_callback=lambda phase, pct, msg: inner_progress(
-                ((idx - 1) / total) + (pct / 1000), desc=f"{book_path.name} | Phase {phase}: {msg}"
-            ),
-        )
-
-        if res.get("success"):
-            out_path = res.get("audiobook_path", "phase5_enhancement/processed/")
-            results.append(f"- ✅ `{book_path.name}` → `{out_path}`")
-        else:
-            results.append(f"- ❌ `{book_path.name}` failed: {res.get('error','unknown error')}")
-
-    progress(1.0, desc="Batch complete")
-    return "\n".join(results)
-
-
-def _normalize_voice_id(raw_id: str) -> str:
-    """Normalize user-provided voice ID into snake_case."""
-    slug = re.sub(r"[^a-z0-9_]+", "_", (raw_id or "").strip().lower())
-    slug = re.sub(r"_+", "_", slug)
-    return slug.strip("_")
-
-
-def _resolve_audio_source(upload: Any) -> Optional[Path]:
-    """Best-effort conversion of a Gradio upload payload into a Path."""
-
-    def _candidate_path(value: Optional[str]) -> Optional[Path]:
-        if not value:
-            return None
-        path = Path(value)
-        return path if path.exists() else None
-
-    if not upload:
-        return None
-
-    if isinstance(upload, (str, Path)):
-        return _candidate_path(str(upload))
-
-    if isinstance(upload, dict):
-        for key in ("path", "name"):
-            candidate = _candidate_path(upload.get(key))
-            if candidate:
-                return candidate
-        return None
-
-    for attr in ("name", "path"):
-        if hasattr(upload, attr):
-            candidate = _candidate_path(getattr(upload, attr))
-            if candidate:
-                return candidate
-
-    if isinstance(upload, (list, tuple)):
-        for item in upload:
-            candidate = _resolve_audio_source(item)
-            if candidate:
-                return candidate
-
-    return None
-
-
-
-
-def add_voice(
-    voice_name: str,
-    voice_file,
-    narrator_name: str,
-    genre_tags: str
-) -> Tuple[str, str, gr.Dropdown, gr.Dropdown]:
-    """Add a new voice to the library with robust path handling and metadata."""
-
-    def _build_response(message: str, select_choice: Optional[str] = None):
-        choices = state.get_voice_list()
-        dropdown_kwargs: Dict[str, Any] = {"choices": choices}
-        if select_choice and select_choice in choices:
-            dropdown_kwargs["value"] = select_choice
-
-        gallery_html = _generate_voice_gallery_html(state.voices)
-        return (
-            message,
-            gallery_html,
-            gr.Dropdown.update(**dropdown_kwargs),
-            gr.Dropdown.update(**dropdown_kwargs),
-        )
-
-    if not voice_name or not voice_file:
-        return _build_response("❌ Please provide a voice ID and audio sample")
-
-    voice_id = _normalize_voice_id(voice_name)
-    if not voice_id:
-        return _build_response("❌ Voice ID must contain letters or numbers")
-
-    source_path = _resolve_audio_source(voice_file)
-    if not source_path or not source_path.exists():
-        return _build_response("❌ Uploaded audio file could not be found on disk")
-
-    extension = (source_path.suffix or "").lower() or ".wav"
-    if extension not in ALLOWED_AUDIO_EXTENSIONS:
-        allowed = ", ".join(sorted(ALLOWED_AUDIO_EXTENSIONS))
-        return _build_response(f"❌ Unsupported audio type '{extension}'. Please upload one of: {allowed}")
-
-    if not VOICE_CONFIG_PATH.exists():
-        return _build_response("❌ Voice reference configuration is missing")
-
-    try:
-        with open(VOICE_CONFIG_PATH, "r", encoding="utf-8") as f:
-            config = json.load(f)
-    except json.JSONDecodeError as exc:
-        return _build_response(f"❌ Unable to parse voice configuration: {exc}")
-    except Exception as exc:
-        return _build_response(f"❌ Failed to read voice configuration: {exc}")
-
-    voice_refs = config.setdefault("voice_references", {})
-    if voice_id in voice_refs:
-        return _build_response(f"❌ Voice ID '{voice_id}' already exists")
-
-    CUSTOM_VOICE_DIR.mkdir(parents=True, exist_ok=True)
-    destination = CUSTOM_VOICE_DIR / f"{voice_id}{extension}"
-
-    try:
-        shutil.copy2(source_path, destination)
-    except Exception as exc:
-        logger.exception("Failed to copy new voice sample")
-        return _build_response(f"❌ Failed to store audio sample: {exc}")
-
-    tags = [tag.strip() for tag in (genre_tags or "").split(",") if tag.strip()]
-    narrator = (narrator_name or "").strip() or voice_id.replace("_", " ").title()
-    description = f"Custom voice for {', '.join(tags)}" if tags else "Custom voice added via UI"
-    notes = f"Added via UI on {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"
-    local_path = destination.relative_to(PROJECT_ROOT).as_posix()
-
-    voice_refs[voice_id] = {
-        "local_path": local_path,
-        "narrator_name": narrator,
-        "preferred_profiles": tags or ["custom"],
-        "description": description,
-        "notes": notes,
-    }
-    config["voice_references"] = dict(sorted(voice_refs.items()))
-
-    try:
-        with open(VOICE_CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
-            f.write("\n")
-    except Exception as exc:
-        logger.exception("Failed to update voice configuration")
-        return _build_response(f"❌ Could not save voice configuration: {exc}")
-
-    state.voices = state._load_voices()
-    refreshed_meta = state.voices.get(voice_id, voice_refs[voice_id])
-    profiles_preview = ", ".join(refreshed_meta.get("preferred_profiles", []))
-    dropdown_choice = f"{voice_id}: {refreshed_meta.get('narrator_name', 'Unknown')} ({profiles_preview})"
-
-    message = (
-        f"✅ Voice '{voice_id}' added successfully!"
-        f"\n\nNarrator: {narrator}\nStored at: {local_path}"
-    )
-    return _build_response(message, dropdown_choice)
-
-
-def get_voice_details(voice_selection: str) -> str:
-    """Get detailed information about a voice"""
-    if not voice_selection:
-        return "Select a voice to see details"
-
-    voice_id = voice_selection.split(":")[0].strip()
-    voice_data = state.voices.get(voice_id, {})
-
-    narrator = voice_data.get('narrator_name', 'Unknown')
-    profiles = ', '.join(voice_data.get('preferred_profiles', []))
-    description = voice_data.get('description', 'No description')
-    notes = voice_data.get('notes', 'No notes')
-
-    return f"""
-    ## 🎤 {narrator}
-
-    **Voice ID:** {voice_id}
-
-    **Best for:** {profiles}
-
-    **Description:**
-    {description}
-
-    **Notes:**
-    {notes}
-    """
-
-
-# ============================================================================
-# UI CONSTRUCTION
-# ============================================================================
-
-def build_ui():
-    """Build the complete Gradio interface"""
-
-    with gr.Blocks(
-        theme=gr.themes.Soft(
-            primary_hue="blue",
-            secondary_hue="orange"
-        ),
-        css=CUSTOM_CSS,
-        title="🎙️ Personal Audiobook Studio"
-    ) as app:
-
-        # Header
-        gr.HTML("""
-            <div class="header">
-                <h1>🎙️ Personal Audiobook Studio</h1>
-                <p>Craft audiobooks with soul. Not production, but art.</p>
-            </div>
-        """)
-
-        # =================================================================
-        # TAB 0: STATUS / OBSERVABILITY
-        # =================================================================
-        with gr.Tab("📊 Status"):
-            gr.Markdown("## Live Pipeline Status")
-
-            with gr.Row():
-                status_file_dropdown = gr.Dropdown(
-                    choices=state.file_ids,
-                    value=state.file_ids[0] if state.file_ids else None,
-                    label="Tracked File (from pipeline.json)"
-                )
-                refresh_status_btn = gr.Button("🔄 Refresh", variant="secondary")
-
-            status_markdown = gr.Markdown(
-                build_status_report(state.file_ids[0]) if state.file_ids else "Select a file to view pipeline status."
-            )
-
-            def _refresh_status(file_id):
-                return build_status_report(file_id)
-
-            status_file_dropdown.change(_refresh_status, inputs=status_file_dropdown, outputs=status_markdown)
-            refresh_status_btn.click(_refresh_status, inputs=status_file_dropdown, outputs=status_markdown)
-
-            with gr.Accordion("Phase 4 Summary (paged)", open=False):
-                with gr.Row():
-                    phase4_page = gr.Slider(1, 200, value=1, step=1, label="Chunk page")
-                    phase4_page_size = gr.Slider(5, 50, value=20, step=1, label="Rows per page")
-                phase4_summary_md = gr.Markdown("Select a file to view Phase 4 summary.")
-
-                def _refresh_phase4(file_id, page, page_size):
-                    return build_phase4_summary(file_id, page, page_size)
-
-                status_file_dropdown.change(
-                    _refresh_phase4,
-                    inputs=[status_file_dropdown, phase4_page, phase4_page_size],
-                    outputs=phase4_summary_md,
-                )
-                phase4_page.change(
-                    _refresh_phase4,
-                    inputs=[status_file_dropdown, phase4_page, phase4_page_size],
-                    outputs=phase4_summary_md,
-                )
-                phase4_page_size.change(
-                    _refresh_phase4,
-                    inputs=[status_file_dropdown, phase4_page, phase4_page_size],
-                    outputs=phase4_summary_md,
+"""
+    async def handle_batch_audiobooks(
+        self,
+        book_files: List[str],
+        voice_selection: str,
+        engine_selection: str,
+        mastering_preset: str,
+        enable_resume: bool,
+        max_retries: float,
+        generate_subtitles: bool,
+        phase1: bool,
+        phase2: bool,
+        phase3: bool,
+        phase4: bool,
+        phase5: bool,
+        progress=gr.Progress(track_tqdm=True),
+    ) -> str:
+        if not book_files:
+            return "❌ Please upload one or more book files."
+        if self.worker.is_running:
+            return "⚠️ Another pipeline run is already in progress."
+
+        voice_meta = self.voice_manager.get_voice(voice_selection)
+        if not voice_meta:
+            return "❌ Please select a voice."
+
+        phases = [p for p, enabled in zip([1, 2, 3, 4, 5], [phase1, phase2, phase3, phase4, phase5]) if enabled]
+        if not phases:
+            return "❌ Please select at least one phase to run."
+
+        engine = ENGINE_MAP.get(engine_selection, "xtts")
+        retries = int(max_retries)
+        no_resume = not bool(enable_resume)
+
+        async def runner(cancel_event, update_progress):
+            results = []
+            total = len(book_files)
+            for idx, book in enumerate(book_files, start=1):
+                if cancel_event.is_set():
+                    results.append(f"- ❌ Cancelled before processing `{Path(book).name}`")
+                    break
+
+                file_path = Path(book)
+                progress((idx - 1) / total, desc=f"Batch {idx}/{total}: {file_path.name}")
+                update_progress((idx - 1) / total, f"Starting {file_path.name}")
+
+                inner_progress = gr.Progress(track_tqdm=True)
+
+                def progress_hook(value: float, desc: Optional[str] = None):
+                    update_progress(value, desc)
+                    try:
+                        inner_progress(value, desc=desc)
+                    except Exception:
+                        logger.debug("Batch progress update failed", exc_info=True)
+
+                res = await self.pipeline_api.run_pipeline_async(
+                    file_path=file_path,
+                    voice_id=voice_meta.voice_id,
+                    tts_engine=engine,
+                    mastering_preset=mastering_preset,
+                    phases=phases,
+                    enable_subtitles=bool(generate_subtitles),
+                    max_retries=retries,
+                    no_resume=no_resume,
+                    concat_only=False,
+                    progress_callback=progress_hook,
+                    cancel_event=cancel_event,
                 )
 
-            with gr.Accordion("Log tail (CPU-safe monitoring)", open=False):
-                with gr.Row():
-                    log_dropdown = gr.Dropdown(
-                        choices=list(LOG_FILES.keys()),
-                        value=next(iter(LOG_FILES.keys())) if LOG_FILES else None,
-                        label="Log file",
-                    )
-                    log_refresh = gr.Button("🔄 Refresh", variant="secondary")
-                log_viewer = gr.Textbox(label="Last 200 lines", lines=12, value="")
-
-                def _refresh_log(log_key):
-                    path = LOG_FILES.get(log_key)
-                    if not path:
-                        return "Select a log file."
-                    return _tail_log(path)
-
-                log_dropdown.change(_refresh_log, inputs=log_dropdown, outputs=log_viewer)
-                log_refresh.click(_refresh_log, inputs=log_dropdown, outputs=log_viewer)
-
-        # =================================================================
-        # TAB 1: SINGLE BOOK
-        # =================================================================
-        with gr.Tab("📖 Single Book"):
-            gr.Markdown("## Create a Single Audiobook")
-
-            # Resume detection section
-            incomplete_detected, incomplete_msg = check_for_incomplete_work()
-            if incomplete_detected:
-                with gr.Accordion("🔄 Resume Previous Generation", open=True):
-                    gr.Markdown(incomplete_msg)
-                    gr.Markdown("**Tip:** Enable 'Resume from checkpoint' in Advanced Options below")
-
-            with gr.Row():
-                with gr.Column(scale=2):
-                    book_input = gr.File(
-                        label="📚 Upload Book",
-                        file_types=[".epub", ".pdf", ".txt", ".mobi"],
-                        type="filepath"
-                    )
-
-                    with gr.Row():
-                        voice_dropdown = gr.Dropdown(
-                            choices=state.get_voice_list(),
-                            label="🎤 Voice",
-                            info="Select narrator voice for this book"
-                        )
-
-                        engine_dropdown = gr.Dropdown(
-                            choices=state.engines,
-                            value="XTTS v2 (Expressive)",
-                            label="🤖 TTS Engine",
-                            info="Choose synthesis engine (XTTS=quality, Kokoro=speed)"
-                        )
-
-                    with gr.Row():
-                        preset_dropdown = gr.Dropdown(
-                            choices=state.presets,
-                            value="audiobook_intimate",
-                            label="🎚️ Mastering Preset",
-                            info="Audio processing style"
-                        )
-
-                    # Advanced Options
-                    with gr.Accordion("⚙️ Advanced Options", open=False):
-                        with gr.Row():
-                            enable_resume = gr.Checkbox(
-                                label="Enable Resume",
-                                value=True,
-                                info="Resume from checkpoint if interrupted"
-                            )
-
-                            max_retries = gr.Slider(
-                                minimum=0,
-                                maximum=5,
-                                value=2,
-                                step=1,
-                                label="Max Retries",
-                                info="Retry attempts per phase"
-                            )
-
-                        with gr.Row():
-                            generate_subtitles = gr.Checkbox(
-                                label="Generate Subtitles",
-                                value=False,
-                                info="Create .srt and .vtt subtitle files"
-                            )
-                            concat_only = gr.Checkbox(
-                                label="Concat Only (reuse enhanced WAVs if present)",
-                                value=False,
-                                info="Skip re-enhancement when enhanced WAVs already exist"
-                            )
-
-                        gr.Markdown(
-                            "Tip: When launching from CLI, use `--phase5-concat-only` to reuse enhanced WAVs without reprocessing.",
-                            elem_classes=["text-sm"],
-                        )
-
-                        gr.Markdown("**Phases to Run:**")
-                        with gr.Row():
-                            phase1_check = gr.Checkbox(label="Phase 1: Validation", value=True)
-                            phase2_check = gr.Checkbox(label="Phase 2: Extraction", value=True)
-                            phase3_check = gr.Checkbox(label="Phase 3: Chunking", value=True)
-
-                        with gr.Row():
-                            phase4_check = gr.Checkbox(label="Phase 4: TTS", value=True)
-                            phase5_check = gr.Checkbox(label="Phase 5: Enhancement", value=True)
-
-                    with gr.Row():
-                        generate_btn = gr.Button(
-                            "🎬 Generate Audiobook",
-                            variant="primary",
-                            size="lg",
-                            scale=2
-                        )
-
-                        stop_btn = gr.Button(
-                            "🛑 Stop",
-                            variant="stop",
-                            size="lg",
-                            visible=False,
-                            scale=1
-                        )
-
-                with gr.Column(scale=1):
-                    voice_details = gr.Markdown(
-                        "Select a voice to see details",
-                        label="Voice Information"
-                    )
-
-            # Output section
-            with gr.Row():
-                audio_output = gr.Audio(label="🎧 Generated Audiobook")
-                status_output = gr.Markdown(label="Status")
-
-            # Stop button output
-            stop_status = gr.Markdown(visible=False)
-
-            # Event handlers
-            generate_click = generate_btn.click(
-                fn=create_audiobook,
-                inputs=[
-                    book_input,
-                    voice_dropdown,
-                    engine_dropdown,
-                    preset_dropdown,
-                    enable_resume,
-                    max_retries,
-                    generate_subtitles,
-                    concat_only,
-                    phase1_check,
-                    phase2_check,
-                    phase3_check,
-                    phase4_check,
-                    phase5_check
-                ],
-                outputs=[audio_output, status_output]
-            )
-
-            # Show stop button when generation starts
-            generate_btn.click(
-                fn=lambda: gr.update(visible=True),
-                inputs=None,
-                outputs=[stop_btn]
-            )
-
-            # Hide stop button and show status when generation completes
-            generate_click.then(
-                fn=lambda: gr.update(visible=False),
-                inputs=None,
-                outputs=[stop_btn]
-            )
-
-            # Stop button handler
-            stop_btn.click(
-                fn=cancel_generation_fn,
-                inputs=None,
-                outputs=[stop_status],
-                cancels=[generate_click]
-            )
-
-            # Show stop status
-            stop_btn.click(
-                fn=lambda: gr.update(visible=True),
-                inputs=None,
-                outputs=[stop_status]
-            )
-
-            voice_dropdown.change(
-                fn=get_voice_details,
-                inputs=[voice_dropdown],
-                outputs=[voice_details]
-            )
-
-        # =================================================================
-        # TAB 2: BATCH QUEUE
-        # =================================================================
-        with gr.Tab("📦 Batch Queue"):
-            gr.Markdown("## Process Multiple Books")
-
-            with gr.Row():
-                with gr.Column(scale=2):
-                    batch_files = gr.File(
-                        label="📚 Upload Books (multiple)",
-                        file_types=[".epub", ".pdf", ".txt", ".mobi"],
-                        file_count="multiple",
-                        type="filepath"
-                    )
-
-                    with gr.Row():
-                        batch_voice = gr.Dropdown(
-                            choices=state.get_voice_list(),
-                            label="🎤 Voice",
-                            info="Select narrator voice for all books"
-                        )
-
-                        batch_engine = gr.Dropdown(
-                            choices=state.engines,
-                            value="Kokoro (CPU-Friendly)",
-                            label="🤖 TTS Engine",
-                            info="Choose synthesis engine"
-                        )
-
-                    batch_preset = gr.Dropdown(
-                        choices=state.presets,
-                        value="audiobook_intimate",
-                        label="🎛️ Mastering Preset",
-                        info="Audio processing style"
-                    )
-
-                    with gr.Accordion("⚙️ Batch Options", open=False):
-                        batch_enable_resume = gr.Checkbox(
-                            label="Enable Resume",
-                            value=True,
-                            info="Resume from checkpoint if interrupted"
-                        )
-                        batch_max_retries = gr.Slider(
-                            minimum=0,
-                            maximum=5,
-                            value=1,
-                            step=1,
-                            label="Max Retries",
-                            info="Retry attempts per phase"
-                        )
-                        batch_generate_subtitles = gr.Checkbox(
-                            label="Generate Subtitles",
-                            value=False,
-                            info="Create .srt and .vtt subtitle files"
-                        )
-
-                        gr.Markdown("**Phases to Run:**")
-                        with gr.Row():
-                            b_phase1 = gr.Checkbox(label="Phase 1: Validation", value=True)
-                            b_phase2 = gr.Checkbox(label="Phase 2: Extraction", value=True)
-                            b_phase3 = gr.Checkbox(label="Phase 3: Chunking", value=True)
-                        with gr.Row():
-                            b_phase4 = gr.Checkbox(label="Phase 4: TTS", value=True)
-                            b_phase5 = gr.Checkbox(label="Phase 5: Enhancement", value=True)
-
-                with gr.Column():
-                    gr.Markdown("### Batch Controls")
-                    batch_run_btn = gr.Button("🚀 Run Batch", variant="primary")
-                    batch_status = gr.Markdown("Waiting to start...")
-
-            batch_run_btn.click(
-                fn=create_batch_audiobooks,
-                inputs=[
-                    batch_files,
-                    batch_voice,
-                    batch_engine,
-                    batch_preset,
-                    batch_enable_resume,
-                    batch_max_retries,
-                    batch_generate_subtitles,
-                    b_phase1,
-                    b_phase2,
-                    b_phase3,
-                    b_phase4,
-                    b_phase5,
-                ],
-                outputs=[batch_status],
-            )
-
-        # =================================================================
-        # TAB 3: VOICE LIBRARY
-        # =================================================================
-        with gr.Tab("🎤 Voice Library"):
-            gr.Markdown("## Manage Your Voice Collection")
-
-            with gr.Row():
-                with gr.Column():
-                    gr.Markdown("### Add New Voice")
-
-                    new_voice_name = gr.Textbox(
-                        label="Voice ID",
-                        placeholder="e.g., morgan_freeman"
-                    )
-
-                    new_voice_file = gr.Audio(
-                        label="Voice Sample (10-30 seconds)",
-                        type="filepath",
-                        sources=["upload"]
-                    )
-
-                    new_narrator_name = gr.Textbox(
-                        label="Narrator Name",
-                        placeholder="e.g., Morgan Freeman"
-                    )
-
-                    new_genre_tags = gr.Textbox(
-                        label="Genre Tags (comma-separated)",
-                        placeholder="e.g., philosophy, documentary, narrative"
-                    )
-
-                    add_voice_btn = gr.Button("➕ Add Voice", variant="primary")
-
-                    add_voice_status = gr.Markdown()
-
-                with gr.Column():
-                    gr.Markdown("### Existing Voices")
-
-                    # Display voice cards
-                    voice_gallery = gr.HTML(
-                        _generate_voice_gallery_html(state.voices)
-                    )
-
-            # Event handler
-            add_voice_btn.click(
-                fn=add_voice,
-                inputs=[
-                    new_voice_name,
-                    new_voice_file,
-                    new_narrator_name,
-                    new_genre_tags
-                ],
-                outputs=[add_voice_status, voice_gallery, voice_dropdown, batch_voice]
-            )
-
-        # =================================================================
-        # TAB 4: SETTINGS
-        # =================================================================
-        with gr.Tab("⚙️ Settings"):
-            gr.Markdown("## Configuration")
-
-            with gr.Accordion("Audio Quality", open=True):
-                sample_rate = gr.Slider(
-                    24000, 48000, value=48000, step=1000,
-                    label="Sample Rate (Hz)"
-                )
-
-                lufs_target = gr.Slider(
-                    -30, -10, value=-23, step=1,
-                    label="Target LUFS"
-                )
-
-            with gr.Accordion("Performance"):
-                max_workers = gr.Slider(
-                    1, 16, value=4, step=1,
-                    label="Maximum Parallel Workers"
-                )
-
-                enable_gpu = gr.Checkbox(
-                    label="Use GPU (if available)",
-                    value=False
-                )
-
-            with gr.Accordion("Paths"):
-                input_dir = gr.Textbox(
-                    label="Input Directory",
-                    value=str(PROJECT_ROOT / "input")
-                )
-
-                output_dir = gr.Textbox(
-                    label="Output Directory",
-                    value=str(PROJECT_ROOT / "phase5_enhancement" / "processed")
-                )
-
-            save_settings_btn = gr.Button("💾 Save Settings", variant="primary")
-            settings_status = gr.Markdown()
-
-            save_settings_btn.click(
-                lambda: "✅ Settings saved successfully!",
-                outputs=[settings_status]
-            )
-
-        # =================================================================
-        # FOOTER
-        # =================================================================
-        gr.HTML("""
-            <div style="text-align: center; padding: 2rem; opacity: 0.7;">
-                <p>Made with ❤️ for the craft of audiobook creation</p>
-                <p><em>"Insanely great, because good enough isn't."</em></p>
-            </div>
-        """)
-
-    return app
-
-
-def _generate_voice_gallery_html(voices: Dict) -> str:
-    """Generate HTML for voice gallery"""
-    html = '<div style="display: grid; gap: 1rem;">'
-
-    for voice_id, meta in list(voices.items())[:10]:  # Show first 10
-        narrator = meta.get('narrator_name', 'Unknown')
-        profiles = ', '.join(meta.get('preferred_profiles', []))
-
-        html += f"""
-        <div class="voice-card">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <strong style="font-size: 1.1rem;">{narrator}</strong>
-                    <p style="margin: 0.25rem 0; opacity: 0.7; font-size: 0.9rem;">{profiles}</p>
-                    <p style="margin: 0.25rem 0; opacity: 0.5; font-size: 0.85rem;">{voice_id}</p>
-                </div>
-                <div>
-                    <button style="padding: 0.5rem; margin: 0 0.25rem; cursor: pointer;">🎧</button>
-                    <button style="padding: 0.5rem; margin: 0 0.25rem; cursor: pointer;">✏️</button>
-                </div>
-            </div>
-        </div>
-        """
-
-    html += '</div>'
-    return html
-
-
-# ============================================================================
-# STATUS HELPERS
-# ============================================================================
-
-
-def _load_pipeline_data() -> Dict:
-    if not state.pipeline_json.exists():
-        return {}
-    try:
-        with open(state.pipeline_json, "r") as f:
-            return json.load(f)
-    except Exception as exc:
-        logger.error(f"Failed to read pipeline.json: {exc}")
-        return {}
-
-
-def _phase_status(data: Dict, file_id: str, phase_num: int) -> str:
-    phase_key = f"phase{phase_num}"
-    try:
-        phase = data.get(phase_key, {})
-        files = phase.get("files", {}) or {}
-        entry = files.get(file_id, {})
-        return entry.get("status") or phase.get("status") or "missing"
-    except Exception:
-        return "unknown"
-
-
-def _process_snapshot() -> str:
-    lines = []
-    try:
-        for proc in psutil.process_iter(["pid", "name", "cmdline", "cpu_percent", "memory_info"]):
-            cmd = " ".join(proc.info.get("cmdline") or [])[:120]
-            name = proc.info.get("name") or ""
-            if any(key in cmd for key in ["phase4", "phase5", "orchestrator.py"]):
-                mem_info = proc.info.get("memory_info")
-                mem_mb = (mem_info.rss if mem_info else 0) / (1024 * 1024)
-                lines.append(
-                    f"- PID {proc.pid}: {name} ({cmd}) | CPU {proc.info.get('cpu_percent',0):.1f}% | RAM {mem_mb:.0f} MB"
-                )
-    except Exception as exc:
-        lines.append(f"- (process scan failed: {exc})")
-    return "\n".join(lines) if lines else "- No active pipeline processes detected"
-
-
-def _count_files(pattern: str) -> int:
-    try:
-        return len(list(Path().glob(pattern)))
-    except Exception:
-        return 0
-
-
-def build_status_report(selected_file: Optional[str]) -> str:
-    data = _load_pipeline_data()
-    if not selected_file:
-        return "Select a file to view pipeline status."
-
-    phase_lines = []
-    for p in range(1, 5 + 1):
-        phase_lines.append(f"- Phase {p}: **{_phase_status(data, selected_file, p)}**")
-
-    chunk_txt = _count_files(f"phase3-chunking/chunks/{selected_file}_chunk_*.txt")
-    phase4_wav = _count_files("phase4_tts/audio_chunks/*.wav")
-    phase5_wav = _count_files("phase5_enhancement/processed/enhanced_*.wav")
-    mp3_exists = Path("phase5_enhancement/processed/audiobook.mp3").exists()
-
-    process_view = _process_snapshot()
-
-    return f"""
-### Pipeline Status for `{selected_file}`
-
-**Phases**
-{chr(10).join(phase_lines)}
-
-**File System Progress (live)**
-- Phase 3 chunks (txt): {chunk_txt}
-- Phase 4 audio chunks (wav): {phase4_wav}
-- Phase 5 enhanced (wav): {phase5_wav}
-- Final MP3 present: {"yes" if mp3_exists else "no"}
-
-**Active Processes**
-{process_view}
+                if res.get("success"):
+                    out_path = res.get("audiobook_path", "phase5_enhancement/processed/")
+                    results.append(f"- ✅ `{file_path.name}` → `{out_path}`")
+                else:
+                    results.append(f"- ❌ `{file_path.name}` failed: {res.get('error','unknown error')}")
+
+            progress(1.0, desc="Batch complete")
+            return "\n".join(results)
+
+        try:
+            return await self.worker.start(runner)
+        except RuntimeError as exc:
+            return f"⚠️ {exc}"
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception("Batch processing failed")
+            return f"❌ Error: {exc}"
+
+    def handle_add_voice(
+        self,
+        voice_name: str,
+        voice_file: Any,
+        narrator_name: str,
+        genre_tags: str,
+    ):
+        result = self.voice_manager.add_voice(voice_name, voice_file, narrator_name, genre_tags)
+        choices = self.voice_manager.list_dropdown()
+        dropdown_update = gr.Dropdown.update(choices=choices, value=choices[0] if choices else None)
+        gallery_html = self._build_voice_gallery_html()
+
+        if not result.get("ok"):
+            return result.get("message", "❌ Unable to add voice"), gallery_html, dropdown_update, dropdown_update
+
+        preferred = result.get("metadata")
+        selected_value = preferred.to_dropdown_label() if preferred else dropdown_update["value"]
+        dropdown_update = gr.Dropdown.update(choices=choices, value=selected_value)
+        message = result.get("message", "✅ Voice added")
+        return message, gallery_html, dropdown_update, dropdown_update
+
+    def handle_voice_details(self, voice_selection: str) -> str:
+        voice = self.voice_manager.get_voice(voice_selection)
+        if not voice:
+            return "Select a voice to see details."
+        profiles = ", ".join(voice.preferred_profiles)
+        return f"""
+## 🎤 {voice.narrator_name}
+
+**Voice ID:** {voice.voice_id}
+
+**Best for:** {profiles or 'General'}
+
+**Description:**
+{voice.description or 'No description provided.'}
+
+**Notes:**
+{voice.notes or 'No notes.'}
 """
 
+    def handle_status_refresh(self, file_id: str) -> str:
+        try:
+            return self._format_status(file_id)
+        except Exception as exc:
+            logger.warning("Failed to refresh status: %s", exc)
+            return f"❌ Unable to refresh status: {exc}"
 
-def _tail_log(log_path: Path, lines: int = 200) -> str:
-    """Read the last N lines of a log file safely."""
-    if not log_path.exists():
-        return f"Log not found at {log_path}"
+    def handle_phase4_refresh(self, file_id: str, page: float, page_size: float) -> str:
+        try:
+            summary = self.pipeline_api.get_phase4_summary(file_id, int(page), int(page_size))
+            return self._format_phase4_summary(summary)
+        except Exception as exc:
+            logger.warning("Failed to refresh phase 4 summary: %s", exc)
+            return f"❌ Unable to refresh Phase 4 summary: {exc}"
 
-    try:
-        with open(log_path, "rb") as f:
-            f.seek(0, 2)
-            end = f.tell()
-            block = 4096
-            buffer = b""
-            while len(buffer.splitlines()) <= lines and f.tell() > 0:
-                seek_pos = max(0, f.tell() - block)
-                f.seek(seek_pos)
-                buffer = f.read(end - seek_pos) + buffer
-                f.seek(seek_pos)
-                if seek_pos == 0:
-                    break
-            tail = b"\n".join(buffer.splitlines()[-lines:])
-        return tail.decode("utf-8", errors="replace") or "(empty log)"
-    except Exception as exc:
-        return f"Failed to read log: {exc}"
+    def handle_log_refresh(self, log_key: str) -> str:
+        try:
+            return self.pipeline_api.tail_log(log_key)
+        except Exception as exc:
+            logger.warning("Failed to refresh log: %s", exc)
+            return f"❌ Unable to read log: {exc}"
 
+    def handle_save_settings(
+        self,
+        sample_rate: float,
+        lufs_target: float,
+        max_workers: float,
+        enable_gpu: bool,
+        input_dir: str,
+        output_dir: str,
+    ) -> str:
+        self.settings = UISettings(
+            sample_rate=int(sample_rate),
+            lufs_target=int(lufs_target),
+            max_workers=int(max_workers),
+            enable_gpu=bool(enable_gpu),
+            input_dir=input_dir,
+            output_dir=output_dir,
+        )
+        saved = self.settings_manager.save(self.settings)
+        return "✅ Settings saved successfully!" if saved else "❌ Failed to save settings."
+    # ------------------------------------------------------------------ #
+    # UI builder
+    # ------------------------------------------------------------------ #
+    def build_ui(self):
+        app_theme = gr.themes.Soft(primary_hue="blue", secondary_hue="orange")
+        voice_choices = self.voice_manager.list_dropdown()
+        file_ids = self.pipeline_api.get_file_ids()
+        incomplete_detected, incomplete_msg = self._resume_message()
 
-def build_phase4_summary(selected_file: Optional[str], page: int = 1, page_size: int = 20) -> str:
-    """Summarize Phase 4 metrics without loading all chunk rows at once."""
-    data = _load_pipeline_data()
-    if not selected_file:
-        return "Select a file to view Phase 4 summary."
+        with gr.Blocks(theme=app_theme, css=CUSTOM_CSS, title="🎙️ Personal Audiobook Studio") as app:
+            gr.HTML(
+                """
+                <div class="header">
+                    <h1>🎙️ Personal Audiobook Studio</h1>
+                    <p>Craft audiobooks with soul. Not production, but art.</p>
+                </div>
+                """
+            )
 
-    phase4_files = (data.get("phase4", {}) or {}).get("files", {}) or {}
-    entry = phase4_files.get(selected_file)
-    if not entry:
-        return f"No Phase 4 data for `{selected_file}` (run Phase 4 first)."
+            # STATUS TAB
+            with gr.Tab("📊 Status"):
+                gr.Markdown("## Live Pipeline Status")
+                with gr.Row():
+                    status_file_dropdown = gr.Dropdown(
+                        choices=file_ids,
+                        value=file_ids[0] if file_ids else None,
+                        label="Tracked File (from pipeline.json)",
+                    )
+                    refresh_status_btn = gr.Button("🔄 Refresh", variant="secondary")
 
-    total_chunks = entry.get("total_chunks") or len([k for k in entry.keys() if k.startswith("chunk_")])
-    completed = entry.get("chunks_completed")
-    failed = entry.get("chunks_failed")
-    duration_sec = entry.get("duration_seconds")
-    requested_engine = entry.get("requested_engine") or entry.get("engine") or "unknown"
-    engines_used = entry.get("engines_used") or []
+                status_markdown = gr.Markdown(
+                    self._format_status(file_ids[0]) if file_ids else "Select a file to view pipeline status."
+                )
+                status_file_dropdown.change(self.handle_status_refresh, inputs=status_file_dropdown, outputs=status_markdown)
+                refresh_status_btn.click(self.handle_status_refresh, inputs=status_file_dropdown, outputs=status_markdown)
 
-    chunk_keys = sorted([k for k in entry.keys() if k.startswith("chunk_")])
-    page = max(1, int(page))
-    page_size = max(1, min(100, int(page_size)))
-    start = (page - 1) * page_size
-    end = start + page_size
-    subset = chunk_keys[start:end]
+                with gr.Accordion("Phase 4 Summary (paged)", open=False):
+                    with gr.Row():
+                        phase4_page = gr.Slider(1, 200, value=1, step=1, label="Chunk page")
+                        phase4_page_size = gr.Slider(5, 50, value=20, step=1, label="Rows per page")
+                    phase4_summary_md = gr.Markdown("Select a file to view Phase 4 summary.")
 
-    rows = []
-    for cid in subset:
-        meta = entry.get(cid)
-        status = "-"
-        engine = "-"
-        rt_factor = "-"
-        audio_path = "-"
-        if isinstance(meta, dict):
-            status = meta.get("status") or meta.get("state") or "-"
-            engine = meta.get("engine_used") or meta.get("engine") or "-"
-            rt = meta.get("rt_factor")
-            rt_factor = f"{rt:.2f}x" if isinstance(rt, (int, float)) else "-"
-            audio_path = meta.get("output_path") or meta.get("path") or meta.get("chunk_audio_path") or "-"
-        elif isinstance(meta, list) and meta:
-            audio_path = str(meta[0])
-        elif meta is not None:
-            audio_path = str(meta)
-        rows.append(f"- `{cid}` | engine={engine} | rt={rt_factor} | status={status} | {audio_path}")
+                    status_file_dropdown.change(
+                        self.handle_phase4_refresh,
+                        inputs=[status_file_dropdown, phase4_page, phase4_page_size],
+                        outputs=phase4_summary_md,
+                    )
+                    phase4_page.change(
+                        self.handle_phase4_refresh,
+                        inputs=[status_file_dropdown, phase4_page, phase4_page_size],
+                        outputs=phase4_summary_md,
+                    )
+                    phase4_page_size.change(
+                        self.handle_phase4_refresh,
+                        inputs=[status_file_dropdown, phase4_page, phase4_page_size],
+                        outputs=phase4_summary_md,
+                    )
 
-    total_pages = max(1, (len(chunk_keys) + page_size - 1) // page_size) if chunk_keys else 1
-    header_lines = [
-        f"### Phase 4 Summary for `{selected_file}`",
-        f"- Requested engine: **{requested_engine}** | Engines used: {', '.join(engines_used) if engines_used else 'n/a'}",
-        f"- Chunks: {completed or 0} completed / {failed or 0} failed / total {total_chunks}",
-    ]
-    if isinstance(duration_sec, (int, float)):
-        header_lines.append(f"- Duration: {duration_sec:.1f}s")
-    header = "\n".join(header_lines)
-    pagination = f"**Page {page}/{total_pages} (showing {len(subset)} of {len(chunk_keys)} chunks listed)**"
-    chunk_section = "\n".join(rows) if rows else "- No chunk rows in this page."
-    return f"{header}\n{pagination}\n\n{chunk_section}"
+                with gr.Accordion("Log tail (CPU-safe monitoring)", open=False):
+                    with gr.Row():
+                        log_dropdown = gr.Dropdown(
+                            choices=list(LOG_FILES.keys()),
+                            value=next(iter(LOG_FILES.keys())) if LOG_FILES else None,
+                            label="Log file",
+                        )
+                        log_refresh = gr.Button("🔄 Refresh", variant="secondary")
+                    log_viewer = gr.Textbox(label="Last 200 lines", lines=12, value="")
 
+                    log_dropdown.change(self.handle_log_refresh, inputs=log_dropdown, outputs=log_viewer)
+                    log_refresh.click(self.handle_log_refresh, inputs=log_dropdown, outputs=log_viewer)
+            # SINGLE BOOK TAB
+            with gr.Tab("📖 Single Book"):
+                gr.Markdown("## Create a Single Audiobook")
 
-# ============================================================================
-# MAIN ENTRY POINT
-# ============================================================================
+                if incomplete_detected:
+                    with gr.Accordion("🔄 Resume Previous Generation", open=True):
+                        gr.Markdown(incomplete_msg)
+                        gr.Markdown("**Tip:** Enable 'Resume from checkpoint' in Advanced Options below")
 
-# Global reference to the app for cleanup
-_app_instance = None
+                with gr.Row():
+                    with gr.Column(scale=2):
+                        book_input = gr.File(
+                            label="📚 Upload Book",
+                            file_types=[".epub", ".pdf", ".txt", ".mobi"],
+                            type="filepath",
+                        )
 
-def cleanup_handler():
-    """Clean up resources on exit"""
-    global _app_instance
-    if _app_instance is not None:
+                        with gr.Row():
+                            voice_dropdown = gr.Dropdown(
+                                choices=voice_choices,
+                                label="🎤 Voice",
+                                info="Select narrator voice for this book",
+                            )
+
+                            engine_dropdown = gr.Dropdown(
+                                choices=list(ENGINE_MAP.keys()),
+                                value="XTTS v2 (Expressive)",
+                                label="🤖 TTS Engine",
+                                info="Choose synthesis engine (XTTS=quality, Kokoro=speed)",
+                            )
+
+                        with gr.Row():
+                            preset_dropdown = gr.Dropdown(
+                                choices=self.presets,
+                                value=self.presets[0] if self.presets else "audiobook_intimate",
+                                label="🎚️ Mastering Preset",
+                                info="Audio processing style",
+                            )
+
+                        with gr.Accordion("⚙️ Advanced Options", open=False):
+                            with gr.Row():
+                                enable_resume = gr.Checkbox(
+                                    label="Enable Resume",
+                                    value=True,
+                                    info="Resume from checkpoint if interrupted",
+                                )
+
+                                max_retries = gr.Slider(
+                                    minimum=0,
+                                    maximum=5,
+                                    value=2,
+                                    step=1,
+                                    label="Max Retries",
+                                    info="Retry attempts per phase",
+                                )
+
+                            with gr.Row():
+                                generate_subtitles = gr.Checkbox(
+                                    label="Generate Subtitles",
+                                    value=False,
+                                    info="Create .srt and .vtt subtitle files",
+                                )
+                                concat_only = gr.Checkbox(
+                                    label="Concat Only (reuse enhanced WAVs if present)",
+                                    value=False,
+                                    info="Skip re-enhancement when enhanced WAVs already exist",
+                                )
+
+                            gr.Markdown(
+                                "Tip: When launching from CLI, use `--phase5-concat-only` to reuse enhanced WAVs without reprocessing.",
+                                elem_classes=["text-sm"],
+                            )
+
+                            gr.Markdown("**Phases to Run:**")
+                            with gr.Row():
+                                phase1_check = gr.Checkbox(label="Phase 1: Validation", value=True)
+                                phase2_check = gr.Checkbox(label="Phase 2: Extraction", value=True)
+                                phase3_check = gr.Checkbox(label="Phase 3: Chunking", value=True)
+
+                            with gr.Row():
+                                phase4_check = gr.Checkbox(label="Phase 4: TTS", value=True)
+                                phase5_check = gr.Checkbox(label="Phase 5: Enhancement", value=True)
+
+                        with gr.Row():
+                            generate_btn = gr.Button("🎬 Generate Audiobook", variant="primary", size="lg", scale=2)
+                            stop_btn = gr.Button("🛑 Stop", variant="stop", size="lg", visible=False, scale=1)
+
+                    with gr.Column(scale=1):
+                        voice_details = gr.Markdown("Select a voice to see details", label="Voice Information")
+
+                with gr.Row():
+                    audio_output = gr.Audio(label="🎧 Generated Audiobook")
+                    status_output = gr.Markdown(label="Status")
+
+                stop_status = gr.Markdown(visible=False)
+
+                generate_click = generate_btn.click(
+                    fn=self.handle_create_audiobook,
+                    inputs=[
+                        book_input,
+                        voice_dropdown,
+                        engine_dropdown,
+                        preset_dropdown,
+                        enable_resume,
+                        max_retries,
+                        generate_subtitles,
+                        concat_only,
+                        phase1_check,
+                        phase2_check,
+                        phase3_check,
+                        phase4_check,
+                        phase5_check,
+                    ],
+                    outputs=[audio_output, status_output],
+                )
+
+                generate_btn.click(fn=self._show_stop_button, inputs=None, outputs=[stop_btn])
+                generate_click.then(fn=self._hide_stop_button, inputs=None, outputs=[stop_btn])
+                stop_btn.click(fn=self.handle_cancel, inputs=None, outputs=[stop_status], cancels=[generate_click])
+                stop_btn.click(fn=self._show_stop_button, inputs=None, outputs=[stop_status])
+
+                voice_dropdown.change(fn=self.handle_voice_details, inputs=[voice_dropdown], outputs=[voice_details])
+            # BATCH TAB
+            with gr.Tab("📦 Batch Queue"):
+                gr.Markdown("## Process Multiple Books")
+
+                with gr.Row():
+                    with gr.Column(scale=2):
+                        batch_files = gr.File(
+                            label="📚 Upload Books (multiple)",
+                            file_types=[".epub", ".pdf", ".txt", ".mobi"],
+                            file_count="multiple",
+                            type="filepath",
+                        )
+
+                        with gr.Row():
+                            batch_voice = gr.Dropdown(
+                                choices=voice_choices,
+                                label="🎤 Voice",
+                                info="Select narrator voice for all books",
+                            )
+
+                            batch_engine = gr.Dropdown(
+                                choices=list(ENGINE_MAP.keys()),
+                                value="Kokoro (CPU-Friendly)",
+                                label="🤖 TTS Engine",
+                                info="Choose synthesis engine",
+                            )
+
+                        batch_preset = gr.Dropdown(
+                            choices=self.presets,
+                            value=self.presets[0] if self.presets else "audiobook_intimate",
+                            label="🎛️ Mastering Preset",
+                            info="Audio processing style",
+                        )
+
+                        with gr.Accordion("⚙️ Batch Options", open=False):
+                            batch_enable_resume = gr.Checkbox(
+                                label="Enable Resume",
+                                value=True,
+                                info="Resume from checkpoint if interrupted",
+                            )
+                            batch_max_retries = gr.Slider(
+                                minimum=0,
+                                maximum=5,
+                                value=1,
+                                step=1,
+                                label="Max Retries",
+                                info="Retry attempts per phase",
+                            )
+                            batch_generate_subtitles = gr.Checkbox(
+                                label="Generate Subtitles",
+                                value=False,
+                                info="Create .srt and .vtt subtitle files",
+                            )
+
+                            gr.Markdown("**Phases to Run:**")
+                            with gr.Row():
+                                b_phase1 = gr.Checkbox(label="Phase 1: Validation", value=True)
+                                b_phase2 = gr.Checkbox(label="Phase 2: Extraction", value=True)
+                                b_phase3 = gr.Checkbox(label="Phase 3: Chunking", value=True)
+                            with gr.Row():
+                                b_phase4 = gr.Checkbox(label="Phase 4: TTS", value=True)
+                                b_phase5 = gr.Checkbox(label="Phase 5: Enhancement", value=True)
+
+                    with gr.Column():
+                        gr.Markdown("### Batch Controls")
+                        batch_run_btn = gr.Button("🚀 Run Batch", variant="primary")
+                        batch_status = gr.Markdown("Waiting to start...")
+
+                batch_run_btn.click(
+                    fn=self.handle_batch_audiobooks,
+                    inputs=[
+                        batch_files,
+                        batch_voice,
+                        batch_engine,
+                        batch_preset,
+                        batch_enable_resume,
+                        batch_max_retries,
+                        batch_generate_subtitles,
+                        b_phase1,
+                        b_phase2,
+                        b_phase3,
+                        b_phase4,
+                        b_phase5,
+                    ],
+                    outputs=[batch_status],
+                )
+
+            # VOICE TAB
+            with gr.Tab("🎤 Voice Library"):
+                gr.Markdown("## Manage Your Voice Collection")
+
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("### Add New Voice")
+
+                        new_voice_name = gr.Textbox(label="Voice ID", placeholder="e.g., morgan_freeman")
+                        new_voice_file = gr.Audio(label="Voice Sample (10-30 seconds)", type="filepath", sources=["upload"])
+                        new_narrator_name = gr.Textbox(label="Narrator Name", placeholder="e.g., Morgan Freeman")
+                        new_genre_tags = gr.Textbox(
+                            label="Genre Tags (comma-separated)",
+                            placeholder="e.g., philosophy, documentary, narrative",
+                        )
+                        add_voice_btn = gr.Button("➕ Add Voice", variant="primary")
+                        add_voice_status = gr.Markdown()
+
+                    with gr.Column():
+                        gr.Markdown("### Existing Voices")
+                        voice_gallery = gr.HTML(self._build_voice_gallery_html())
+
+                add_voice_btn.click(
+                    fn=self.handle_add_voice,
+                    inputs=[new_voice_name, new_voice_file, new_narrator_name, new_genre_tags],
+                    outputs=[add_voice_status, voice_gallery, voice_dropdown, batch_voice],
+                )
+
+            # SETTINGS TAB
+            with gr.Tab("⚙️ Settings"):
+                gr.Markdown("## Configuration")
+
+                with gr.Accordion("Audio Quality", open=True):
+                    sample_rate = gr.Slider(24000, 48000, value=self.settings.sample_rate, step=1000, label="Sample Rate (Hz)")
+                    lufs_target = gr.Slider(-30, -10, value=self.settings.lufs_target, step=1, label="Target LUFS")
+
+                with gr.Accordion("Performance"):
+                    max_workers = gr.Slider(1, 16, value=self.settings.max_workers, step=1, label="Maximum Parallel Workers")
+                    enable_gpu = gr.Checkbox(label="Use GPU (if available)", value=self.settings.enable_gpu)
+
+                with gr.Accordion("Paths"):
+                    input_dir = gr.Textbox(label="Input Directory", value=self.settings.input_dir or str(PROJECT_ROOT / "input"))
+                    output_dir = gr.Textbox(
+                        label="Output Directory",
+                        value=self.settings.output_dir or str(PROJECT_ROOT / "phase5_enhancement" / "processed"),
+                    )
+
+                save_settings_btn = gr.Button("💾 Save Settings", variant="primary")
+                settings_status = gr.Markdown()
+                save_settings_btn.click(
+                    fn=self.handle_save_settings,
+                    inputs=[sample_rate, lufs_target, max_workers, enable_gpu, input_dir, output_dir],
+                    outputs=[settings_status],
+                )
+
+            gr.HTML(
+                """
+                <div style="text-align: center; padding: 2rem; opacity: 0.7;">
+                    <p>Made with ❤️ for the craft of audiobook creation</p>
+                    <p><em>"Insanely great, because good enough isn't."</em></p>
+                </div>
+                """
+            )
+
+        return app
+
+def cleanup_handler(app_instance):
+    """Clean up resources on exit."""
+    if app_instance is not None:
         try:
             logger.info("Shutting down studio...")
-            _app_instance.close()
+            app_instance.close()
             logger.info("Studio shutdown complete")
         except Exception as e:
-            logger.error(f"Error during shutdown: {e}")
+            logger.error("Error during shutdown: %s", e)
 
-def signal_handler(signum, frame):
-    """Handle Ctrl+C and other signals"""
-    logger.info("\nReceived shutdown signal, cleaning up...")
-    cleanup_handler()
+
+def signal_handler(signum, frame, app_instance):
+    """Handle Ctrl+C and other signals."""
+    logger.info("Received shutdown signal, cleaning up...")
+    cleanup_handler(app_instance)
     sys.exit(0)
 
-def main():
-    """Launch the studio"""
-    global _app_instance
 
-    # Register cleanup handlers
-    atexit.register(cleanup_handler)
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+def main():
+    """Launch the studio."""
+    ui = StudioUI()
+    app = ui.build_ui()
+
+    atexit.register(lambda: cleanup_handler(app))
+    signal.signal(signal.SIGINT, lambda signum, frame: signal_handler(signum, frame, app))
+    signal.signal(signal.SIGTERM, lambda signum, frame: signal_handler(signum, frame, app))
 
     logger.info("🎙️ Starting Personal Audiobook Studio...")
     logger.info("Press Ctrl+C to stop the server")
 
-    app = build_ui()
-    _app_instance = app
-
     try:
         app.launch(
-            server_name="0.0.0.0",  # Allow network access
+            server_name="0.0.0.0",
             server_port=7860,
-            share=False,  # Set to True for public sharing
+            share=False,
             show_error=True,
             quiet=False,
-            inbrowser=False  # Don't auto-open browser (launcher does this)
+            inbrowser=False,
         )
     except KeyboardInterrupt:
-        logger.info("\nShutting down gracefully...")
+        logger.info("Shutting down gracefully...")
     except Exception as e:
-        logger.error(f"Error running studio: {e}")
+        logger.error("Error running studio: %s", e)
         raise
     finally:
-        cleanup_handler()
+        cleanup_handler(app)
 
 
 if __name__ == "__main__":
     main()
-

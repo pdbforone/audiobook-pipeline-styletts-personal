@@ -16,6 +16,8 @@
 
 sample_rate: 24000  # Matches model default; for high-quality audio
 language: "en"      # Language ID for multilingual model
+engine: "xtts"      # Default engine (xtts, kokoro, auto)
+workers: 2          # Default parallel workers
 ref_url: "https://www.archive.org/download/roughing_it_jg/rough_09_twain.mp3"  # HQ public domain ref; download and trim in code
 exaggeration: 0.5   # Emotion intensity (0.0 neutral, 1.0 dramatic)
 cfg_weight: 0.5     # Pacing/stability (lower for faster speech)
@@ -31,4 +33,17 @@ enable_latency_fallback: true   # Allow auto-switch to Kokoro when RT is too slo
 slow_rt_threshold: 4.0          # Trigger Kokoro when RT factor exceeds this value
 rt_xtts_factor: 3.2             # Estimated RT factor for XTTS on CPU (used for auto-engine planning)
 rt_kokoro_factor: 1.3           # Estimated RT factor for Kokoro-onnx on CPU
-chars_per_minute: 2700          # Character cadence used to estimate total audio duration
+tts_chars_per_minute: 1050      # Shared speaking cadence for throughput + validation (chars/min)
+
+# Validation defaults (used by main_multi_engine.py)
+validation:
+  enable_tier1: true
+  enable_tier2: false
+  duration_tolerance_sec: 5.0
+  silence_threshold_sec: 2.0
+  min_amplitude_db: -40.0
+  whisper_model: "tiny"
+  whisper_sample_rate: 0.02
+  whisper_first_n: 10
+  whisper_last_n: 10
+  max_wer: 0.10

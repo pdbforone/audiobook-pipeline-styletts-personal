@@ -21,7 +21,12 @@ from pathlib import Path
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from pipeline_common import PipelineState, StateValidationError
+from pipeline_common import (
+    PipelineState,
+    StateValidationError,
+    play_alert_beep,
+    play_success_beep,
+)
 
 
 def demo_basic_operations():
@@ -335,11 +340,13 @@ def main():
         print("  ✓ Crash recovery (restore from backup)")
         print("\nYour pipeline state is now bulletproof.")
         print()
+        play_success_beep()
 
     except Exception as e:
         print(f"\n✗ Demo failed: {e}")
         import traceback
         traceback.print_exc()
+        play_alert_beep()
         return 1
 
     return 0

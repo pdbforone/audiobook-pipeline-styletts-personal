@@ -6,7 +6,6 @@ from typing import List, Tuple, Optional, Dict, Any
 import ftfy
 import spacy
 import nltk
-from sentence_transformers import SentenceTransformer, util
 import textstat
 from langdetect import detect, DetectorFactory
 try:
@@ -22,8 +21,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Lazy loading for heavy models
-_nlp = None
+_nlp_cache: Dict[str, Any] = {}
 _model = None
+_model_name: Optional[str] = None
 
 # ✅ FLEXIBLE LIMITS: Three-tier structure tuned for 12–18s CPU chunks
 SOFT_LIMIT_CHARS = 780   # Preferred chunk size (~17s on Ryzen 5 CPU XTTS cadence)
@@ -39,30 +39,55 @@ MAX_DURATION_SECONDS = 18.0  # Target max for preferred chunks
 EMERGENCY_DURATION_SECONDS = 24.0  # Absolute ceiling for completions
 
 
-def get_nlp():
+def get_nlp(model_size: str = "lg"):
     """Lazy load spaCy model with increased max_length for large documents."""
-    global _nlp
-    if _nlp is None:
-        try:
-            _nlp = spacy.load("en_core_web_lg")
-        except OSError:
-            logger.warning("en_core_web_lg not found, trying en_core_web_sm")
-            _nlp = spacy.load("en_core_web_sm")
-        
-        # CRITICAL FIX: Increase max_length for large documents like Systematic Theology (3.9MB)
-        # Default is 1,000,000 chars - increase to 10,000,000 (10MB)
-        _nlp.max_length = 10_000_000
-        logger.info(f"spaCy model loaded with max_length: {_nlp.max_length:,} chars")
-    return _nlp
+    global _nlp_cache
+
+    requested = (model_size or "lg").lower()
+    if requested not in {"lg", "sm"}:
+        requested = "lg"
+
+    if requested in _nlp_cache:
+        return _nlp_cache[requested]
+
+    # If large model already loaded, optionally reuse for small requests to avoid reloads.
+    if requested == "sm" and "lg" in _nlp_cache:
+        logger.info("Reusing loaded spaCy large model for small request")
+        return _nlp_cache["lg"]
+
+    try:
+        preferred_model = "en_core_web_lg" if requested == "lg" else "en_core_web_sm"
+        nlp = spacy.load(preferred_model)
+        logger.info(f"spaCy model loaded: {preferred_model}")
+    except OSError:
+        if requested == "lg":
+            logger.warning("en_core_web_lg not found, falling back to en_core_web_sm")
+            nlp = spacy.load("en_core_web_sm")
+            requested = "sm"
+        else:
+            raise
+
+    # CRITICAL FIX: Increase max_length for large documents like Systematic Theology (3.9MB)
+    # Default is 1,000,000 chars - increase to 10,000,000 (10MB)
+    nlp.max_length = 10_000_000
+    logger.info(f"spaCy model loaded with max_length: {nlp.max_length:,} chars")
+    _nlp_cache[requested] = nlp
+    return nlp
 
 
-def get_sentence_model():
+def get_sentence_model(model_name: str = "all-mpnet-base-v2"):
     """Lazy load sentence transformer."""
-    global _model
-    if _model is None:
-        # 🔧 FIX: Upgraded to all-mpnet-base-v2 for better coherence
-        _model = SentenceTransformer("all-mpnet-base-v2")
-        logger.info("Loaded sentence model: all-mpnet-base-v2")
+    global _model, _model_name
+    if _model is None or _model_name != model_name:
+        try:
+            from sentence_transformers import SentenceTransformer  # Lazy import
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"SentenceTransformer unavailable: {exc}")
+            raise
+
+        _model = SentenceTransformer(model_name)
+        _model_name = model_name
+        logger.info(f"Loaded sentence model: {model_name}")
     return _model
 
 
@@ -114,27 +139,44 @@ def clean_text(text: str) -> str:
     return text.strip()
 
 
-def detect_sentences(text: str) -> List[str]:
+def detect_sentences(
+    text: str,
+    model_preference: str = "lg",
+    allow_pysbd: bool = True,
+    return_model: bool = False,
+) -> List[str] | Tuple[List[str], str]:
     """Detect sentence boundaries using spaCy with pySBD fallback for edge cases."""
     if not text or not text.strip():
         logger.warning("Empty text provided to detect_sentences")
-        return []
+        return ([], "none") if return_model else []
 
     sentences: List[str] = []
+    engine_used = "none"
+
     try:
-        nlp = get_nlp()
-        doc = nlp(text)
-        sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
-    except Exception as exc:
+        if model_preference.lower() != "pysbd":
+            requested = "sm" if model_preference.lower() == "sm" else "lg"
+            nlp = get_nlp(requested)
+            doc = nlp(text)
+            sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
+            engine_used = f"spacy_{requested}"
+    except Exception as exc:  # noqa: BLE001
         logger.warning(f"spaCy sentence detection failed: {exc}")
+        sentences = []
+        engine_used = "none"
 
     # Fallback / refinement: pySBD is strong on abbreviations/bullets and PDF-split text
-    if (not sentences or len(sentences) <= 1) and pysbd:
-        segmenter = pysbd.Segmenter(language="en", clean=True)
-        sentences = [s.strip() for s in segmenter.segment(text) if s and s.strip()]
+    if (not sentences or len(sentences) <= 1) and allow_pysbd:
+        if pysbd:
+            segmenter = pysbd.Segmenter(language="en", clean=True)
+            sentences = [s.strip() for s in segmenter.segment(text) if s and s.strip()]
+            engine_used = "pysbd"
+        elif not sentences:
+            sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+            engine_used = "regex"
 
-    logger.info(f"Detected {len(sentences)} sentences")
-    return sentences
+    logger.info(f"Detected {len(sentences)} sentences using {engine_used}")
+    return (sentences, engine_used) if return_model else sentences
 
 
 def is_complete_chunk(text: str) -> Tuple[bool, str]:
@@ -508,6 +550,56 @@ def merge_short_chunks(
     return merged
 
 
+def enforce_duration_bounds(
+    chunks: List[str],
+    min_duration: Optional[float] = None,
+    max_duration: Optional[float] = None,
+    emergency_limit_chars: int = EMERGENCY_LIMIT_CHARS,
+) -> List[str]:
+    """
+    Ensure chunks respect duration/size boundaries, merging short neighbors when possible.
+    Logs adjustments that are made.
+    """
+    if not chunks:
+        return []
+
+    adjusted: List[str] = []
+    i = 0
+    while i < len(chunks):
+        chunk = chunks[i].strip()
+        if not chunk:
+            i += 1
+            continue
+
+        duration = predict_duration(chunk)
+        length = len(chunk)
+
+        if min_duration and duration < min_duration and i + 1 < len(chunks):
+            merged = f"{chunk} {chunks[i + 1].strip()}".strip()
+            logger.info(
+                f"Merging short chunk {i+1} ({duration:.1f}s) with next to satisfy "
+                f"{min_duration:.1f}s floor"
+            )
+            adjusted.append(merged)
+            i += 2
+            continue
+
+        if max_duration and duration > max_duration:
+            logger.warning(
+                f"Chunk {i+1} predicted at {duration:.1f}s exceeds cap {max_duration:.1f}s"
+            )
+
+        if length > emergency_limit_chars:
+            logger.error(
+                f"Chunk {i+1} length {length} exceeds emergency limit {emergency_limit_chars}"
+            )
+
+        adjusted.append(chunk)
+        i += 1
+
+    return adjusted
+
+
 def _chunk_by_char_count_optimized(
     sentences: List[str], 
     min_chars: int = MIN_CHUNK_CHARS, 
@@ -741,6 +833,60 @@ def validate_chunks(chunks: List[str]) -> List[str]:
     return validated
 
 
+def _simple_chunk_by_length(
+    sentences: List[str],
+    min_chars: int,
+    soft_limit: int,
+    hard_limit: int,
+) -> List[str]:
+    """
+    Lightweight chunker that groups sentences until limits are reached.
+    Uses minimal heuristics for fast CPU profile.
+    """
+    chunks: List[str] = []
+    current: List[str] = []
+
+    for sent in sentences:
+        sent = sent.strip()
+        if not sent:
+            continue
+
+        candidate = " ".join(current + [sent]).strip()
+        if not candidate:
+            continue
+
+        if len(candidate) <= soft_limit:
+            current.append(sent)
+            continue
+
+        if len(candidate) <= hard_limit and not re.search(r"[.!?\"']\s*$", candidate):
+            current.append(sent)
+            continue
+
+        if current:
+            chunk_text = " ".join(current).strip()
+            chunks.append(chunk_text)
+        current = [sent]
+
+    if current:
+        chunks.append(" ".join(current).strip())
+
+    balanced: List[str] = []
+    i = 0
+    while i < len(chunks):
+        chunk = chunks[i]
+        if chunk.count('"') % 2 != 0 and i + 1 < len(chunks):
+            merged = f"{chunk} {chunks[i + 1]}".strip()
+            logger.info("Merged chunks to balance quotes in fast CPU mode")
+            balanced.append(merged)
+            i += 2
+            continue
+        balanced.append(chunk)
+        i += 1
+
+    return [c for c in balanced if c]
+
+
 def form_semantic_chunks(
     sentences: List[str], 
     min_chars: int = MIN_CHUNK_CHARS, 
@@ -749,6 +895,10 @@ def form_semantic_chunks(
     emergency_limit: int = EMERGENCY_LIMIT_CHARS,
     max_duration: float = MAX_DURATION_SECONDS,
     emergency_duration: float = EMERGENCY_DURATION_SECONDS,
+    enable_embeddings: bool = True,
+    lightweight: bool = False,
+    min_duration: Optional[float] = None,
+    model_name: str = "all-mpnet-base-v2",
 ) -> Tuple[List[str], List[float], List[List[float]]]:
     """
     Form semantic chunks with FLEXIBLE LIMITS and AGGRESSIVE COMPLETION.
@@ -771,17 +921,21 @@ def form_semantic_chunks(
         logger.warning(f"Dropped {len(sentences) - len(valid_sentences)} invalid/empty sentences")
 
     # Create chunks with flexible limits
-    chunks = _chunk_by_char_count_optimized(
-        valid_sentences, 
-        min_chars, 
-        soft_limit,
-        hard_limit,
-        emergency_limit,
-        max_duration,
-        emergency_duration
-    )
+    if lightweight:
+        chunks = _simple_chunk_by_length(valid_sentences, min_chars, soft_limit, hard_limit)
+        logger.info("Using lightweight chunker (fast_cpu profile)")
+    else:
+        chunks = _chunk_by_char_count_optimized(
+            valid_sentences, 
+            min_chars, 
+            soft_limit,
+            hard_limit,
+            emergency_limit,
+            max_duration,
+            emergency_duration
+        )
     
-    if chunks:
+    if chunks and not lightweight:
         short_threshold = 500
         char_lengths = [len(c) for c in chunks]
         short_count = sum(1 for length in char_lengths if length < short_threshold)
@@ -801,8 +955,11 @@ def form_semantic_chunks(
                 f"Merged short chunks for pacing: {pre_merge_count} ➜ {len(chunks)} chunks"
             )
     
-    # 🔧 NEW: Final validation pass
-    chunks = validate_chunks(chunks)
+    # 🔧 NEW: Final validation pass (skip heavy heuristics for lightweight runs)
+    if lightweight:
+        chunks = [c for c in chunks if c.strip()]
+    else:
+        chunks = validate_chunks(chunks)
 
     valid_chunks = [c for c in chunks if c.strip() and len(c) >= 50]
     if len(chunks) > len(valid_chunks):
@@ -811,6 +968,13 @@ def form_semantic_chunks(
     if not valid_chunks:
         logger.error("No valid chunks for embedding calculation")
         return [], [], []
+
+    valid_chunks = enforce_duration_bounds(
+        valid_chunks,
+        min_duration=min_duration,
+        max_duration=max_duration,
+        emergency_limit_chars=emergency_limit,
+    )
 
     # Calculate metrics
     char_lengths = [len(c) for c in valid_chunks]
@@ -843,25 +1007,36 @@ def form_semantic_chunks(
                 logger.error(f"   Preview: {chunk[:200]}...{chunk[-200:]}")
     
     # Calculate coherence
-    model = get_sentence_model()
-    embeddings = model.encode(valid_chunks, batch_size=32, show_progress_bar=True)
-    coherence = []
-    for i in range(len(embeddings) - 1):
+    coherence: List[float] = []
+    embeddings: List[List[float]] = []
+    if enable_embeddings:
         try:
-            score = float(util.cos_sim(embeddings[i], embeddings[i+1])[0][0])
-            score = max(0.0, min(1.0, score))
-            coherence.append(score)
-        except Exception as e:
-            logger.warning(f"Failed to compute coherence for chunk pair {i+1}: {e}")
-            coherence.append(0.0)
+            from sentence_transformers import util  # Lazy import only when needed
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"Could not import SentenceTransformer util: {exc}")
+            enable_embeddings = False
 
-    avg_coherence = sum(coherence) / len(coherence) if coherence else 0
-    logger.info(f"Average coherence: {avg_coherence:.4f}")
+    if enable_embeddings:
+        model = get_sentence_model(model_name)
+        embeddings = model.encode(valid_chunks, batch_size=32, show_progress_bar=True)
+        for i in range(len(embeddings) - 1):
+            try:
+                score = float(util.cos_sim(embeddings[i], embeddings[i+1])[0][0])
+                score = max(0.0, min(1.0, score))
+                coherence.append(score)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Failed to compute coherence for chunk pair {i+1}: {e}")
+                coherence.append(0.0)
+
+        avg_coherence = sum(coherence) / len(coherence) if coherence else 0
+        logger.info(f"Average coherence: {avg_coherence:.4f}")
+    else:
+        logger.info("Embeddings disabled; skipping coherence scoring")
 
     elapsed = time.perf_counter() - start
     logger.info(f"Chunking time: {elapsed:.4f}s")
 
-    return valid_chunks, coherence, embeddings.tolist()
+    return valid_chunks, coherence, embeddings.tolist() if embeddings else []
 
 
 def assess_readability(chunks: List[str]) -> List[float]:

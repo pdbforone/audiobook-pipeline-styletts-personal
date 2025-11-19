@@ -11,7 +11,7 @@ from pathlib import Path
 # Add to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from pipeline_common import PipelineState
+from pipeline_common import PipelineState, play_alert_beep, play_success_beep
 
 
 # ============================================================================
@@ -46,6 +46,7 @@ def pattern1_after(pipeline_json):
             'status': 'success',
             'metrics': {'duration': 42.0}
         }
+    play_success_beep()
 
 
 # ============================================================================
@@ -92,6 +93,7 @@ def pattern2_after(pipeline_json):
     except Exception as e:
         # State unchanged - still shows previous status
         print(f"Extraction failed: {e}")
+        play_alert_beep()
 
 
 def run_extraction():

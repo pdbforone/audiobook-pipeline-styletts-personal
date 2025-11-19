@@ -115,6 +115,7 @@ class EngineManager:
                 **kwargs
             )
             elapsed = time.time() - start_time
+            rt_factor = elapsed / est_dur_sec if est_dur_sec else None
             # Optional RTF-based fallback: if primary is unusually slow and fallback allowed, try first fallback engine.
             if (
                 fallback
@@ -122,7 +123,12 @@ class EngineManager:
                 and rtf_fallback_threshold
                 and est_dur_sec > 0
             ):
-                rt_factor = elapsed / est_dur_sec
+                logger.info(
+                    "Engine '%s' RTF %.2f (threshold %.2f)",
+                    engine,
+                    rt_factor,
+                    rtf_fallback_threshold,
+                )
                 if rt_factor > rtf_fallback_threshold:
                     fallback_order = self._get_fallback_order(engine)
                     if fallback_order:
@@ -136,17 +142,36 @@ class EngineManager:
                         )
                         try:
                             fb_engine = self.get_engine(fb)
+                            fb_start = time.time()
                             fb_audio = fb_engine.synthesize(
                                 text=text,
                                 reference_audio=reference_audio,
                                 language=language,
                                 **kwargs
                             )
+                            fb_elapsed = time.time() - fb_start
+                            fb_rt = fb_elapsed / est_dur_sec if est_dur_sec else None
+                            if fb_rt is not None:
+                                logger.info(
+                                    "Fallback '%s' RTF %.2f vs primary %.2f",
+                                    fb,
+                                    fb_rt,
+                                    rt_factor,
+                                )
                             if return_engine:
                                 return fb_audio, fb
                             return fb_audio
                         except Exception as fb_exc:  # noqa: BLE001
                             logger.warning("Fallback '%s' failed after slow RTF on '%s': %s", fb, engine, fb_exc)
+                    else:
+                        logger.info("No fallback engines configured after slow RTF on '%s'.", engine)
+            elif rtf_fallback_threshold and rt_factor is not None:
+                logger.info(
+                    "Engine '%s' RTF %.2f (threshold %.2f)",
+                    engine,
+                    rt_factor,
+                    rtf_fallback_threshold,
+                )
             if return_engine:
                 return audio, engine
             return audio

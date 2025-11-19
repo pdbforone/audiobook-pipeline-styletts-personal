@@ -8,7 +8,7 @@ Falls back to fixed chunking if no structure is available.
 """
 
 import logging
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 # Smart import: works both as script and as module
 try:
@@ -77,8 +77,8 @@ def is_toc_section(node: dict) -> bool:
 def chunk_by_structure(
     text: str,
     structure: List[dict],
-    config: ValidationConfig,
-    max_chunk_words: int = 70,  # Tuned for ~12–18s CPU chunks
+    profile,
+    max_chunk_words: Optional[int] = None,  # Tuned for ~12–18s CPU chunks
     target_sec: float = 15.0,
     soft_merge_sec: float = 8.0,
     words_per_minute: float = 150.0,
@@ -102,11 +102,20 @@ def chunk_by_structure(
     Returns:
         Tuple of (chunks, coherence_scores, embeddings)
     """
-    from sentence_transformers import SentenceTransformer
-    import numpy as np
-    
     chunks = []
     coherence_scores = []
+    target_profile = getattr(profile, "name", "structure")
+    profile_overrides = getattr(profile, "genre_duration_overrides", {}) or {}
+
+    # Apply duration overrides when available
+    if target_profile in profile_overrides:
+        overrides = profile_overrides[target_profile]
+        target_sec = overrides.get("target_duration", target_sec)
+        soft_merge_sec = min(soft_merge_sec, max(4.0, target_sec / 2))
+        logger.info(
+            f"Applying duration overrides for {target_profile}: "
+            f"target={target_sec}s, max={overrides.get('max_duration', 'n/a')}s"
+        )
     
     # Filter out TOC entries to prevent tiny chunks
     filtered_structure = [node for node in structure if not is_toc_section(node)]
@@ -126,10 +135,12 @@ def chunk_by_structure(
     model = None
     if use_embeddings:
         try:
-            model = SentenceTransformer("all-MiniLM-L6-v2")
-        except Exception as e:
-            logger.warning(f"Could not load embedding model: {e}")
+            from sentence_transformers import SentenceTransformer  # Lazy import
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Could not load embedding model: {exc}")
             model = None
+        else:
+            model = SentenceTransformer("all-MiniLM-L6-v2")
     
     for i, node in enumerate(filtered_structure):
         # Extract section text
@@ -146,8 +157,9 @@ def chunk_by_structure(
         level = node.get("level", 1)
         
         logger.info(f"Processing: {title} (Level {level}, {word_count} words)")
+        dynamic_max_words = max_chunk_words or getattr(profile, "max_words", 70)
         
-        if word_count <= max_chunk_words and estimate_duration(section_text) <= target_sec * 1.3:
+        if word_count <= dynamic_max_words and estimate_duration(section_text) <= target_sec * 1.3:
             # Section is small enough - use as-is
             chunks.append(section_text)
             
@@ -228,15 +240,24 @@ def chunk_by_structure(
     embeddings = []
     if model:
         try:
+            import numpy as np  # Lazy import to avoid overhead when not needed
+        except Exception:  # noqa: BLE001
+            np = None
+
+        try:
             embeddings = [model.encode([chunk])[0] for chunk in chunks]
             logger.info(f"Generated embeddings for {len(chunks)} chunks")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(f"Could not generate embeddings: {e}")
-            embeddings = [np.zeros(384) for _ in chunks]  # Placeholder
+            embeddings = [np.zeros(384) for _ in chunks] if np is not None else []
     else:
-        embeddings = [np.zeros(384) for _ in chunks]
+        embeddings = []
     
     logger.info(f"Final result: {len(chunks)} chunks created from structure")
+    if not use_embeddings:
+        coherence_scores = []
+    if embeddings and hasattr(embeddings[0], "tolist"):
+        embeddings = [emb.tolist() for emb in embeddings]
     
     return chunks, coherence_scores, embeddings
 

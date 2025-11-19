@@ -1,39 +1,15 @@
-"""
-Pipeline Common - Shared utilities for the audiobook pipeline
+"""Shared utilities for the audiobook pipeline."""
 
-Provides:
-- Atomic state management for pipeline.json
-- Transaction-based updates with rollback
-- Automatic backups and rotation
-- Schema validation
-- Audit logging
-"""
+from .astromech_notify import play_alert_beep, play_success_beep
+from .state_manager import PipelineState, StateError, StateLockError, StateValidationError
 
-from .state_manager import (
-    PipelineState,
-    StateTransaction,
-    StateError,
-    StateLockError,
-    StateValidationError,
-)
-
-from .models import (
-    PipelineSchema,
-    MinimalPipelineSchema,
-    VALIDATION_STRICT,
-    VALIDATION_LENIENT,
-)
-
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 __all__ = [
     "PipelineState",
-    "StateTransaction",
     "StateError",
     "StateLockError",
     "StateValidationError",
-    "PipelineSchema",
-    "MinimalPipelineSchema",
-    "VALIDATION_STRICT",
-    "VALIDATION_LENIENT",
+    "play_success_beep",
+    "play_alert_beep",
 ]
