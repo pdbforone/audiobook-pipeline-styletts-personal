@@ -61,7 +61,7 @@ def test_normalize_import():
 def test_utils_import():
     """Test that utils module can be imported."""
     from phase2_extraction import utils
-    assert hasattr(utils, 'safe_update_json')
+    assert hasattr(utils, 'merge_phase_state')
     assert hasattr(utils, 'with_retry')
     assert hasattr(utils, 'detect_format')
 

@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # Add parent directory to path for pipeline_common
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from pipeline_common import PipelineState, StateError
+from pipeline_common import PipelineState, StateError, ensure_phase_and_file, ensure_phase_block
 from pydantic import BaseModel, Field, ValidationError, ConfigDict
 
 try:
@@ -499,6 +499,18 @@ def load_pipeline_json(json_path: Path) -> Dict:
     except Exception as e:
         logger.error(f"Failed to load pipeline.json: {e}")
         return {}
+
+
+def collect_file_phase_view(data: Dict[str, Any], file_id: str) -> Dict[str, Any]:
+    """Return a phase-indexed view of the pipeline for a given file_id."""
+    phases = {}
+    for phase_key, block in data.items():
+        if not isinstance(block, dict):
+            continue
+        files = block.get("files") or {}
+        if isinstance(files, dict) and file_id in files:
+            phases[phase_key] = files[file_id]
+    return phases
 
 
 def should_skip_phase2(file_path: Path, file_id: str, pipeline_json: Path) -> bool:
@@ -1738,14 +1750,29 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
             logger.error(f"Phase 5.5 FAILED (exit {result.returncode}) in {duration:.1f}s")
             logger.error(f"Error: {result.stderr[-1000:]}")
 
-            # Update pipeline.json with failure atomically
             try:
-                with state.transaction() as txn:
-                    txn.data['phase5_5'] = {
-                        'status': 'failed',
-                        'error': result.stderr[-500:],
-                        'timestamp': time.time()
-                    }
+                with state.transaction(operation="phase5_5_fail") as txn:
+                    phase_block, file_entry = ensure_phase_and_file(txn.data, "phase5_5", file_id)
+                    file_entry.update(
+                        {
+                            "status": "failed",
+                            "artifacts": {},
+                            "metrics": {},
+                            "errors": [result.stderr[-500:]],
+                            "timestamps": {
+                                "end": time.time(),
+                                "duration": duration,
+                            },
+                        }
+                    )
+                    phase_block["status"] = "partial"
+                    phase_block.setdefault("errors", []).append(
+                        {
+                            "file": file_id,
+                            "message": result.stderr[-200:].strip(),
+                            "phase": "phase5_5",
+                        }
+                    )
             except Exception as e:
                 logger.warning(f"Could not update pipeline.json with failure: {e}")
 
@@ -1774,16 +1801,24 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
             RUN_SUMMARY["backup_subtitles_used"] = True
             metrics["backup_alignment"] = True
 
-        # Update pipeline.json with success atomically
-        with state.transaction() as txn:
-            txn.data['phase5_5'] = {
-                'status': 'success',
-                'srt_file': str(srt_path),
-                'vtt_file': str(vtt_path),
-                'metrics': metrics,
-                'timestamp': time.time(),
-                'duration': duration
-            }
+        with state.transaction(operation="phase5_5_success") as txn:
+            phase_block, file_entry = ensure_phase_and_file(txn.data, "phase5_5", file_id)
+            file_entry.update(
+                {
+                    "status": "success",
+                    "artifacts": {
+                        "srt_file": str(srt_path),
+                        "vtt_file": str(vtt_path),
+                    },
+                    "metrics": metrics,
+                    "errors": [],
+                    "timestamps": {
+                        "end": time.time(),
+                        "duration": duration,
+                    },
+                }
+            )
+            phase_block["status"] = "success"
 
         logger.info(f"Phase 5.5 SUCCESS in {duration:.1f}s")
         logger.info(f"SRT: {srt_path}")
@@ -2070,6 +2105,7 @@ def run_pipeline(
     # Reload pipeline data for metadata
     pipeline_data = load_pipeline_json(pipeline_json)
 
+    file_phase_view = collect_file_phase_view(pipeline_data, file_id)
     return {
         "success": True,
         "audiobook_path": str(audiobook_path) if audiobook_path else None,
@@ -2079,7 +2115,7 @@ def run_pipeline(
             "voice_id": voice_id,
             "tts_engine": tts_engine,
             "mastering_preset": mastering_preset,
-            "pipeline_data": pipeline_data.get(file_id, {})
+            "pipeline_data": file_phase_view,
         },
         "error": None
     }

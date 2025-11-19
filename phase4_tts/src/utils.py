@@ -25,7 +25,20 @@ except ImportError:
     from models import TTSConfig, TTSRecord
 
 logger = logging.getLogger(__name__)
-nltk.download('punkt', quiet=True)  # For splitting
+_PUNKT_READY = False
+
+
+def ensure_punkt_tokenizer() -> None:
+    """Lazily ensure the punkt tokenizer is available without downloading on import."""
+    global _PUNKT_READY
+    if _PUNKT_READY:
+        return
+    try:
+        nltk.data.find("tokenizers/punkt")
+    except LookupError:
+        logger.info("Downloading NLTK punkt tokenizer (one-time setup).")
+        nltk.download("punkt", quiet=True)
+    _PUNKT_READY = True
 
 
 def _slugify(value: Optional[str]) -> str:
@@ -450,6 +463,7 @@ def synthesize_chunk(model, text: str, ref_path: str, output_path: str, config: 
 
     split_threshold = getattr(config, "split_char_limit", 300)
     if config.enable_splitting and len(text) > split_threshold:
+        ensure_punkt_tokenizer()
         sentences = sent_tokenize(text)
         sub_chunks = []
         current = ""
@@ -479,52 +493,4 @@ def evaluate_mos_proxy(audio_path: str, sr: int) -> float:
     centroid = np.mean(librosa.feature.spectral_centroid(y=y, sr=sr))
     return min(centroid / 2000, 5.0)  # Normalize to 0-5 scale (heuristic)
 
-def merge_to_pipeline_json(json_path: str, file_id: str, chunk_id: str, success: bool, audio_path: str, mos: float, metrics: Dict, errors: List, timestamps: Dict, split_metadata: Dict):
-    """Update phase4 in pipeline.json. Why: Single source of truth; append per chunk."""
-    try:
-        with open(json_path, 'r') as f:
-            data = json.load(f)
-    except:
-        data = {}
 
-    if "phase4" not in data:
-        data["phase4"] = {"files": {}, "status": "partial"}
-
-    if file_id not in data["phase4"]["files"]:
-        data["phase4"]["files"][file_id] = {}
-
-    record = {
-        "chunk_id": chunk_id,
-        "audio_path": audio_path,
-        "status": "success" if success else "failed",
-        "mos_score": mos,
-        "metrics": metrics,
-        "errors": errors,
-        "timestamps": timestamps,
-        "split_metadata": split_metadata
-    }
-    data["phase4"]["files"][file_id][chunk_id] = record
-
-    chunk_records = [
-        rec for rec in data["phase4"]["files"][file_id].values()
-        if isinstance(rec, dict) and "status" in rec
-    ]
-
-    if chunk_records:
-        file_status = "success" if all(rec["status"] == "success" for rec in chunk_records) else "partial"
-        data["phase4"]["status"] = file_status
-        data["phase4"]["files"][file_id]["status"] = file_status
-
-        # Maintain convenience fields if present
-        if "total_chunks" in data["phase4"]["files"][file_id]:
-            data["phase4"]["files"][file_id]["total_chunks"] = max(
-                data["phase4"]["files"][file_id].get("total_chunks", 0),
-                len(chunk_records)
-            )
-        if "chunk_audio_paths" in data["phase4"]["files"][file_id]:
-            paths = data["phase4"]["files"][file_id].setdefault("chunk_audio_paths", [])
-            if audio_path not in paths:
-                paths.append(audio_path)
-
-    with open(json_path, 'w') as f:
-        json.dump(data, f, indent=2)

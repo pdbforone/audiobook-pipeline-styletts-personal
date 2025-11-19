@@ -22,6 +22,8 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, Dict, List, Optional, Tuple
 
+from pipeline_common import PipelineState, StateError
+
 # Extractors
 from .extractors import docx, epub, html, ocr, txt
 
@@ -41,7 +43,7 @@ from .utils import (
     format_duration,
     load_config,
     log_error,
-    safe_update_json,
+    merge_phase_state,
     with_retry,
 )
 
@@ -69,15 +71,15 @@ def load_file_metadata(json_path: Path, file_id: str, file_override: Optional[Pa
         FileNotFoundError: If pipeline.json or file not found
         ValueError: If file_id not in pipeline.json
     """
+    state = PipelineState(json_path, validate_on_read=False)
     try:
-        with json_path.open('r', encoding='utf-8') as f:
-            data = json.load(f)
+        data = state.read(validate=False)
     except FileNotFoundError:
         logger.error(f"Pipeline file not found: {json_path}")
         raise
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in {json_path}: {e}")
-        raise
+    except StateError as exc:
+        logger.error(f"Unable to read pipeline state: {exc}")
+        raise RuntimeError("Failed to read pipeline.json") from exc
     
     # Get file data from Phase 1
     phase1_data = data.get("phase1", {})
@@ -247,12 +249,13 @@ def main(
     logger.info("=" * 60)
 
     try:
-        safe_update_json(
+        merge_phase_state(
             json_path,
             "phase2",
-            {"status": "in_progress", "timestamps": {"start": wall_start}},
+            {"status": "running", "timestamps": {"start": wall_start}, "errors": []},
+            operation="phase2_start",
         )
-    except Exception as exc:  # pragma: no cover - defensive
+    except StateError as exc:  # pragma: no cover - defensive
         logger.error(f"Failed to initialize Phase 2 in pipeline.json: {exc}")
         return
 
@@ -288,14 +291,30 @@ def main(
             logger.error(error_msg)
             log_error(json_path, "phase2", file_id, error_msg)
 
-            safe_update_json(
+            failure_timestamps = {
+                "start": wall_start,
+                "end": datetime.utcnow().timestamp(),
+                "duration": perf_counter() - start_time,
+            }
+            merge_phase_state(
                 json_path,
                 "phase2",
                 {
                     "status": "failed",
-                    "files": {file_id: {"error": error_msg, "extraction_metadata": extraction_metadata}},
-                    "timestamps": {"end": datetime.utcnow().timestamp(), "duration": perf_counter() - start_time},
+                    "timestamps": failure_timestamps,
+                    "errors": [error_msg],
+                    "files": {
+                        file_id: {
+                            "status": "failed",
+                            "errors": [error_msg],
+                            "timestamps": failure_timestamps,
+                            "artifacts": {},
+                            "metrics": {},
+                            "extraction_metadata": extraction_metadata,
+                        }
+                    },
                 },
+                operation="phase2_fail_min_text",
             )
             return
 
@@ -368,34 +387,48 @@ def main(
             status = "failed"
 
         file_timestamps = {"start": wall_start, "end": wall_end, "duration": duration}
-        file_entry: Dict[str, Any] = {
-            "extracted_text_path": str(output_path),
-            "tool_used": extraction_metadata.get("tool_used", "unknown"),
-            "score": quality_score,
-            "quality_score": quality_score,
+        file_metrics = {
             "yield_pct": yield_pct,
-            "language": norm_metrics.get("language", "unknown"),
-            "lang_confidence": norm_metrics.get("language_confidence", 0.0),
-            "status": status,
-            "timestamps": file_timestamps,
+            "quality_score": quality_score,
             "word_count": len(normalized_text.split()),
             "char_count": len(normalized_text),
-            "metadata_path": str(meta_path),
-            "detected_format": detected_format,
+        }
+        file_artifacts = {
+            "text": str(output_path),
+            "metadata": str(meta_path),
         }
         if structure_path:
-            file_entry["structure_path"] = str(structure_path)
-            if structure_payload:
-                file_entry["structure"] = structure_payload
+            file_artifacts["structure"] = str(structure_path)
+
+        file_entry: Dict[str, Any] = {
+            "status": status,
+            "timestamps": file_timestamps,
+            "metrics": file_metrics,
+            "artifacts": file_artifacts,
+            "errors": [],
+            "extracted_text_path": str(output_path),
+            "metadata_path": str(meta_path),
+            "detected_format": detected_format,
+            "tool_used": extraction_metadata.get("tool_used", "unknown"),
+            "language": norm_metrics.get("language", "unknown"),
+            "lang_confidence": norm_metrics.get("language_confidence", 0.0),
+            "structure": structure_payload if structure_payload else [],
+        }
+        if yield_pct is not None:
+            file_entry["yield_pct"] = yield_pct
+        if quality_score is not None:
+            file_entry["quality_score"] = quality_score
 
         phase2_data = {
             "status": status,
             "timestamps": file_timestamps,
-            "files": {file_id: file_entry},
+            "artifacts": dict(file_artifacts),
             "metrics": {"yield_pct": yield_pct, "quality_score": quality_score},
+            "errors": [],
+            "files": {file_id: file_entry},
         }
 
-        safe_update_json(json_path, "phase2", phase2_data)
+        merge_phase_state(json_path, "phase2", phase2_data, operation="phase2_complete")
 
         # Final Summary
         logger.info("=" * 60)
@@ -420,10 +453,29 @@ def main(
 
         log_error(json_path, "phase2", file_id, f"{type(exc).__name__}: {exc}")
 
-        safe_update_json(
+        failure_timestamps = {
+            "start": wall_start,
+            "end": datetime.utcnow().timestamp(),
+            "duration": perf_counter() - start_time,
+        }
+        merge_phase_state(
             json_path,
             "phase2",
-            {"status": "failed", "timestamps": {"end": datetime.utcnow().timestamp(), "duration": perf_counter() - start_time}},
+            {
+                "status": "failed",
+                "timestamps": failure_timestamps,
+                "errors": [str(exc)],
+                "files": {
+                    file_id: {
+                        "status": "failed",
+                        "errors": [str(exc)],
+                        "timestamps": failure_timestamps,
+                        "artifacts": {},
+                        "metrics": {},
+                    }
+                },
+            },
+            operation="phase2_unhandled_error",
         )
         raise
 

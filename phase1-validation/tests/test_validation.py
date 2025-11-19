@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from pipeline_common import PipelineState
 from phase1_validation import validation
-from phase1_validation.utils import safe_update_json
 
 
 def _mock_pdf_doc(text_len: int = 600) -> MagicMock:
@@ -64,14 +64,31 @@ def test_validate_pdf_repair_flow(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     assert result.repair_success is True
 
 
-def test_safe_update_json_merges_without_overwrite(tmp_path: Path):
+def test_persist_metadata_updates_pipeline(tmp_path: Path):
     json_path = tmp_path / "pipeline.json"
-    initial = {"phase2": {"status": "done"}, "phase1": {"hashes": ["abc"], "files": {}}}
-    json_path.write_text(json.dumps(initial), encoding="utf-8")
+    metadata = validation.FileMetadata(
+        file_path="sample.pdf",
+        file_type="pdf",
+        classification="text",
+        size_bytes=1234,
+        sha256="def",
+        repair_attempted=False,
+        repair_success=True,
+        errors=[],
+        timestamps={"start": 0.0, "end": 1.0, "duration": 1.0},
+        metrics={"elapsed_time": 1.0},
+    )
 
-    update = {"phase1": {"hashes": ["abc", "def"], "files": {"book": {"sha256": "def"}}}}
-    merged = safe_update_json(json_path, update)
+    validation.persist_metadata(metadata, json_path, "book")
 
-    assert merged["phase2"]["status"] == "done"
-    assert merged["phase1"]["hashes"] == ["abc", "def"]
-    assert "book" in merged["phase1"]["files"]
+    state = PipelineState(json_path, validate_on_read=False).read(validate=False)
+    phase_block = state["phase1"]
+    file_entry = phase_block["files"]["book"]
+    assert file_entry["sha256"] == "def"
+    assert file_entry["status"] == "success"
+    assert file_entry["artifacts"]["source_path"] == "sample.pdf"
+    assert file_entry["artifacts"]["file_type"] == "pdf"
+    assert file_entry["metrics"]["size_bytes"] == 1234
+    assert file_entry["chunks"] == []
+    assert phase_block["artifacts"]["hashes"] == ["def"]
+    assert phase_block["metrics"]["files_processed"] == 1

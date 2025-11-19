@@ -19,6 +19,7 @@ from typing import Any, Awaitable, Callable, List, Optional, Tuple
 
 import gradio as gr
 import yaml
+from pipeline_common import PHASE_KEYS
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -43,6 +44,17 @@ ENGINE_MAP = {
     "XTTS v2 (Expressive)": "xtts",
     "Kokoro (CPU-Friendly)": "kokoro",
 }
+
+PHASE_TITLE_MAP = {
+    1: "Validation",
+    2: "Extraction",
+    3: "Chunking",
+    4: "Text-to-Speech",
+    5: "Enhancement",
+}
+RUNNABLE_PHASES = [phase for phase in sorted(PHASE_TITLE_MAP) if f"phase{phase}" in PHASE_KEYS]
+PHASE_CHOICE_VALUES = [f"{phase}: {PHASE_TITLE_MAP[phase]}" for phase in RUNNABLE_PHASES]
+DEFAULT_PHASE_SELECTION = list(PHASE_CHOICE_VALUES)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -240,6 +252,31 @@ class StudioUI:
         html += "</div>"
         return html
 
+    @staticmethod
+    def _phase_choice_list() -> List[str]:
+        return list(DEFAULT_PHASE_SELECTION) if PHASE_CHOICE_VALUES else []
+
+    @staticmethod
+    def _parse_phase_choices(choices: Optional[List[str]]) -> List[int]:
+        if not choices:
+            return []
+        parsed: List[int] = []
+        for choice in choices:
+            try:
+                phase_number = int(choice.split(":", 1)[0].strip())
+            except ValueError:
+                continue
+            if phase_number in RUNNABLE_PHASES:
+                parsed.append(phase_number)
+        return parsed
+
+    @staticmethod
+    def _format_phase_selection(phases: List[int]) -> str:
+        if not phases:
+            return "none"
+        labels = [PHASE_TITLE_MAP.get(phase, f"Phase {phase}") for phase in phases]
+        return ", ".join(labels)
+
     def _load_presets(self) -> List[str]:
         presets_path = PROJECT_ROOT / "phase5_enhancement" / "presets" / "mastering_presets.yaml"
         try:
@@ -346,11 +383,7 @@ You can:
         max_retries: float,
         generate_subtitles: bool,
         concat_only: bool,
-        phase1: bool,
-        phase2: bool,
-        phase3: bool,
-        phase4: bool,
-        phase5: bool,
+        phase_choices: List[str],
         progress=gr.Progress(track_tqdm=True),
     ) -> Tuple[Optional[str], str, UIState]:
         if not book_file:
@@ -363,7 +396,7 @@ You can:
         if not voice_meta:
             return None, "❌ Please select a voice.", ui_state
 
-        phases = [p for p, enabled in zip([1, 2, 3, 4, 5], [phase1, phase2, phase3, phase4, phase5]) if enabled]
+        phases = self._parse_phase_choices(phase_choices)
         if not phases:
             return None, "❌ Please select at least one phase to run.", ui_state
 
@@ -421,8 +454,8 @@ You can:
             options_list.append(f"Max retries: {retries}")
         if generate_subtitles:
             options_list.append("Subtitles generated")
-        if phases != [1, 2, 3, 4, 5]:
-            options_list.append(f"Phases: {', '.join(map(str, phases))}")
+        if phases != RUNNABLE_PHASES:
+            options_list.append(f"Phases: {self._format_phase_selection(phases)}")
         if concat_only:
             options_list.append("Concat only (reuse enhanced WAVs when present)")
 
@@ -451,11 +484,7 @@ You can:
         enable_resume: bool,
         max_retries: float,
         generate_subtitles: bool,
-        phase1: bool,
-        phase2: bool,
-        phase3: bool,
-        phase4: bool,
-        phase5: bool,
+        phase_choices: List[str],
         progress=gr.Progress(track_tqdm=True),
     ) -> Tuple[str, UIState]:
         if not book_files:
@@ -467,7 +496,7 @@ You can:
         if not voice_meta:
             return "❌ Please select a voice.", ui_state
 
-        phases = [p for p, enabled in zip([1, 2, 3, 4, 5], [phase1, phase2, phase3, phase4, phase5]) if enabled]
+        phases = self._parse_phase_choices(phase_choices)
         if not phases:
             return "❌ Please select at least one phase to run.", ui_state
 
@@ -531,6 +560,33 @@ You can:
             return f"❌ Error: {exc}", ui_state
         finally:
             ui_state.clear_job()
+
+
+    def handle_batch_history_refresh(self, ui_state: UIState) -> str:
+        try:
+            runs = ui_state.pipeline_api.get_batch_runs()
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to load batch history: %s", exc)
+            return f"❌ Unable to load batch history: {exc}"
+
+        if not runs:
+            return "No batch runs recorded yet."
+
+        lines: List[str] = ["### Recent Batch Runs"]
+        for run in reversed(runs[-5:]):
+            run_id = run.get("run_id", "unknown")
+            status = run.get("status", "unknown")
+            timestamps = run.get("timestamps", {})
+            metrics = run.get("metrics", {})
+            files = run.get("files", {}) or {}
+            lines.append(
+                f"**{run_id}** — {status}\n"
+                f"- Started: `{timestamps.get('start', 'unknown')}`\n"
+                f"- Ended: `{timestamps.get('end', 'unknown')}`\n"
+                f"- Files processed: {metrics.get('total_files', len(files))}\n"
+                f"- Successful: {metrics.get('successful_files', 'n/a')} | Failed: {metrics.get('failed_files', 'n/a')}"
+            )
+        return "\n\n".join(lines)
 
     def handle_add_voice(
         self,
@@ -812,14 +868,11 @@ You can:
                             )
 
                             gr.Markdown("**Phases to Run:**")
-                            with gr.Row():
-                                phase1_check = gr.Checkbox(label="Phase 1: Validation", value=True)
-                                phase2_check = gr.Checkbox(label="Phase 2: Extraction", value=True)
-                                phase3_check = gr.Checkbox(label="Phase 3: Chunking", value=True)
-
-                            with gr.Row():
-                                phase4_check = gr.Checkbox(label="Phase 4: TTS", value=True)
-                                phase5_check = gr.Checkbox(label="Phase 5: Enhancement", value=True)
+                            phase_selector = gr.CheckboxGroup(
+                                label="Select pipeline phases",
+                                choices=self._phase_choice_list() or ["1: Validation"],
+                                value=self._phase_choice_list() or ["1: Validation"],
+                            )
 
                         with gr.Row():
                             generate_btn = gr.Button("🎬 Generate Audiobook", variant="primary", size="lg", scale=2)
@@ -834,24 +887,20 @@ You can:
 
                 stop_status = gr.Markdown(visible=False)
 
-                generate_click = generate_btn.click(
-                    fn=self.handle_create_audiobook,
-                    inputs=[
-                        ui_state,
-                        book_input,
+                        generate_click = generate_btn.click(
+                            fn=self.handle_create_audiobook,
+                            inputs=[
+                                ui_state,
+                                book_input,
                         voice_dropdown,
                         engine_dropdown,
                         preset_dropdown,
                         enable_resume,
-                        max_retries,
-                        generate_subtitles,
-                        concat_only,
-                        phase1_check,
-                        phase2_check,
-                        phase3_check,
-                        phase4_check,
-                        phase5_check,
-                    ],
+                                max_retries,
+                                generate_subtitles,
+                                concat_only,
+                                phase_selector,
+                            ],
                     outputs=[audio_output, status_output, ui_state],
                 )
 
@@ -918,38 +967,41 @@ You can:
                             )
 
                             gr.Markdown("**Phases to Run:**")
-                            with gr.Row():
-                                b_phase1 = gr.Checkbox(label="Phase 1: Validation", value=True)
-                                b_phase2 = gr.Checkbox(label="Phase 2: Extraction", value=True)
-                                b_phase3 = gr.Checkbox(label="Phase 3: Chunking", value=True)
-                            with gr.Row():
-                                b_phase4 = gr.Checkbox(label="Phase 4: TTS", value=True)
-                                b_phase5 = gr.Checkbox(label="Phase 5: Enhancement", value=True)
+                            batch_phase_selector = gr.CheckboxGroup(
+                                label="Select pipeline phases",
+                                choices=self._phase_choice_list() or ["1: Validation"],
+                                value=self._phase_choice_list() or ["1: Validation"],
+                            )
 
                     with gr.Column():
                         gr.Markdown("### Batch Controls")
                         batch_run_btn = gr.Button("🚀 Run Batch", variant="primary")
                         batch_status = gr.Markdown("Waiting to start...")
 
-                batch_run_btn.click(
-                    fn=self.handle_batch_audiobooks,
-                    inputs=[
-                        ui_state,
-                        batch_files,
-                        batch_voice,
-                        batch_engine,
-                        batch_preset,
-                        batch_enable_resume,
-                        batch_max_retries,
-                        batch_generate_subtitles,
-                        b_phase1,
-                        b_phase2,
-                        b_phase3,
-                        b_phase4,
-                        b_phase5,
-                    ],
-                    outputs=[batch_status, ui_state],
-                )
+                        with gr.Accordion("📜 Batch History", open=False):
+                            batch_history_md = gr.Markdown(self.handle_batch_history_refresh(ui_state))
+                            refresh_history_btn = gr.Button("🔄 Refresh History", variant="secondary")
+                            refresh_history_btn.click(
+                                self.handle_batch_history_refresh,
+                                inputs=[ui_state],
+                                outputs=[batch_history_md],
+                            )
+
+                    batch_run_btn.click(
+                        fn=self.handle_batch_audiobooks,
+                        inputs=[
+                            ui_state,
+                            batch_files,
+                            batch_voice,
+                            batch_engine,
+                            batch_preset,
+                            batch_enable_resume,
+                            batch_max_retries,
+                            batch_generate_subtitles,
+                            batch_phase_selector,
+                        ],
+                        outputs=[batch_status, ui_state],
+                    )
 
             # VOICE TAB
             with gr.Tab("🎤 Voice Library"):
@@ -1067,3 +1119,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+

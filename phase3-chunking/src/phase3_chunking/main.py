@@ -1,6 +1,5 @@
 import argparse
 import logging
-import json
 from time import perf_counter
 from pathlib import Path
 import re
@@ -15,18 +14,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-try:
-    from filelock import FileLock
-except ImportError:
-    FileLock = None
-
-try:
-    from pipeline_common import canonicalize_state, validate_pipeline_schema
-except Exception:  # pragma: no cover - fallback when pipeline_common is not importable
-    canonicalize_state = lambda payload, **kwargs: payload  # type: ignore
-
-    def validate_pipeline_schema(payload, **kwargs):  # type: ignore
-        return None
+from pipeline_common import PipelineState, StateError, ensure_phase_block, ensure_phase_and_file
+from pipeline_common.state_manager import StateTransaction
 
 # Smart import: works both as script and as module
 try:
@@ -44,7 +33,7 @@ try:
         calculate_chunk_metrics,
     )
     from .structure_chunking import chunk_by_structure, should_use_structure_chunking
-    from .io_utils import atomic_write_json, ensure_absolute_path
+    from .io_utils import ensure_absolute_path
 except ImportError:
     from models import ChunkRecord, ValidationConfig, Phase3Config
     from voice_selection import select_voice, validate_voice_id
@@ -60,7 +49,7 @@ except ImportError:
         calculate_chunk_metrics,
     )
     from structure_chunking import chunk_by_structure, should_use_structure_chunking
-    from io_utils import atomic_write_json, ensure_absolute_path
+    from io_utils import ensure_absolute_path
 from pipeline_common.astromech_notify import play_success_beep, play_alert_beep
 
 # Configure logging
@@ -74,6 +63,43 @@ warnings.filterwarnings("ignore", category=UserWarning, module="textstat.textsta
 
 # Shared cadence assumption so downstream durations line up
 DEFAULT_CHARS_PER_MINUTE = 1050
+
+
+def _install_update_phase_api() -> None:
+    """Ensure StateTransaction exposes update_phase for schema-aligned writes."""
+
+    if hasattr(StateTransaction, "update_phase"):
+        return
+
+    def update_phase(  # type: ignore[override]
+        self,
+        file_id: str,
+        phase_name: str,
+        status: str,
+        timestamps: Optional[Dict[str, Any]] = None,
+        artifacts: Optional[Dict[str, Any]] = None,
+        metrics: Optional[Dict[str, Any]] = None,
+        errors: Optional[List[Any]] = None,
+        *,
+        chunks: Optional[List[Dict[str, Any]]] = None,
+        extra_fields: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        phase_block, file_entry = ensure_phase_and_file(self.data, phase_name, file_id)
+        envelope = file_entry
+        envelope["status"] = status
+        envelope["timestamps"] = dict(timestamps or {})
+        envelope["artifacts"] = dict(artifacts or {})
+        envelope["metrics"] = dict(metrics or {})
+        envelope["errors"] = list(errors or [])
+        envelope["chunks"] = list(chunks or [])
+        if extra_fields:
+            envelope.update(extra_fields)
+        return envelope
+
+    setattr(StateTransaction, "update_phase", update_phase)
+
+
+_install_update_phase_api()
 
 
 def _read_chunk_text_length(path: Path) -> Optional[int]:
@@ -191,16 +217,15 @@ def hash_text_content(text: str) -> str:
 
 
 def load_pipeline_state(json_path: str) -> dict:
-    """Load pipeline.json contents if available."""
-    json_path_abs = Path(json_path).absolute()
+    """Load pipeline.json contents via PipelineState."""
+    state = PipelineState(Path(json_path), validate_on_read=False)
     try:
-        with open(json_path_abs, "r") as handle:
-            return json.load(handle)
+        return state.read(validate=False)
     except FileNotFoundError:
-        logger.info(f"Pipeline JSON not found at {json_path_abs}, starting fresh.")
+        logger.info("Pipeline JSON not found at %s, starting fresh.", state.path)
         return {}
-    except json.JSONDecodeError as exc:
-        logger.error(f"Failed to decode pipeline JSON ({exc}); starting with empty state.")
+    except StateError as exc:
+        logger.error("Failed to read pipeline state (%s); starting empty.", exc)
         return {}
 
 
@@ -219,23 +244,13 @@ def persist_phase3_result(
     fallback_used: bool = False,
     fallback_message: str = "",
 ) -> dict:
-    """Write phase3 results back to pipeline.json with locking."""
-    json_path_abs = Path(json_path).absolute()
-    lock_file = str(json_path_abs) + ".lock"
-
-    def _write(data: dict):
-        if not data and pipeline_data:
-            data = dict(pipeline_data)
-        data.setdefault("phase3", {"files": {}, "errors": [], "metrics": {}})
-        phase3 = data["phase3"]
-
-        entry = {}
-        try:
-            entry.update(record.model_dump())
-        except AttributeError:
-            entry.update(record.dict())
-
-        chunk_metrics = record.chunk_metrics or {}
+    """Persist phase3 results using PipelineState transactions."""
+    state = PipelineState(Path(json_path), validate_on_read=False)
+    with state.transaction(
+        operation="phase3_commit", seed_data=pipeline_data if pipeline_data else None
+    ) as txn:
+        entry_payload = record.model_dump()
+        chunk_metrics = dict(record.chunk_metrics or {})
         avg_coherence = (
             sum(record.coherence_scores) / len(record.coherence_scores)
             if record.coherence_scores
@@ -247,28 +262,52 @@ def persist_phase3_result(
             else 0.0
         )
 
-        entry.update(
+        artifacts = {
+            "text_path": record.text_path,
+            "chunk_paths": list(record.chunk_paths),
+        }
+        metrics = {
+            **chunk_metrics,
+            "chunk_count": len(record.chunk_paths),
+            "avg_chunk_chars": int(chunk_metrics.get("avg_char_length", 0) or 0),
+            "avg_chunk_words": int(chunk_metrics.get("avg_word_count", 0) or 0),
+            "avg_chunk_duration_sec": float(chunk_metrics.get("avg_duration", 0.0) or 0.0),
+            "avg_coherence": None if avg_coherence is None else float(avg_coherence),
+            "avg_readability": float(avg_readability),
+        }
+        extra_fields = {
+            key: value
+            for key, value in entry_payload.items()
+            if key not in {"status", "timestamps", "artifacts", "metrics", "errors", "chunks"}
+        }
+        extra_fields.update(
             {
-                "chunks": chunk_ids,
+                "chunk_ids": chunk_ids,
                 "genre": detected_genre,
                 "profile": applied_profile,
                 "sentence_model": sentence_model,
                 "embeddings_enabled": embeddings_enabled,
-                "avg_chunk_chars": int(chunk_metrics.get("avg_char_length", 0) or 0),
-                "avg_chunk_words": int(chunk_metrics.get("avg_word_count", 0) or 0),
-                "avg_chunk_duration_sec": float(chunk_metrics.get("avg_duration", 0.0) or 0.0),
-                "avg_coherence": None if avg_coherence is None else float(avg_coherence),
-                "avg_readability": float(avg_readability),
                 "structure_mode_used": bool(structure_mode_used),
                 "text_hash": text_hash,
+                "source_hash": entry_payload.get("source_hash") or text_hash,
+                "avg_coherence": metrics["avg_coherence"],
+                "avg_readability": metrics["avg_readability"],
+                "chunk_metadata": record.chunk_metadata or [],
             }
         )
-        entry.setdefault("chunk_paths", record.chunk_paths)
-        entry["source_hash"] = entry.get("source_hash") or text_hash
-        entry["status"] = record.status
+        txn.update_phase(
+            file_id,
+            "phase3",
+            record.status or "pending",
+            record.timestamps or {},
+            artifacts,
+            metrics,
+            record.errors or [],
+            chunks=record.chunk_metadata or [],
+            extra_fields=extra_fields,
+        )
 
-        phase3["files"][file_id] = entry
-
+        phase_block = ensure_phase_block(txn.data, "phase3")
         if fallback_used:
             error_entry = {
                 "file_id": file_id,
@@ -277,68 +316,65 @@ def persist_phase3_result(
                 or "Fallback used due to missing/invalid Phase 2 data",
                 "timestamp": record.timestamps.get("start", 0),
             }
-            phase3.setdefault("errors", []).append(error_entry)
+            phase_block.setdefault("errors", []).append(error_entry)
 
-        all_files = phase3.get("files", {})
-        if all_files:
-            phase3["metrics"] = {
-                "total_files": len(all_files),
-                "successful": sum(
-                    1 for f in all_files.values() if f.get("status") == "success"
-                ),
-                "partial": sum(
-                    1 for f in all_files.values() if f.get("status") == "partial"
-                ),
-                "failed": sum(
-                    1 for f in all_files.values() if f.get("status") == "failed"
-                ),
-                "total_chunks": sum(
-                    len(f.get("chunk_paths", [])) for f in all_files.values()
-                ),
+        files = phase_block.get("files", {})
+        successful = sum(1 for f in files.values() if f.get("status") == "success")
+        failed = sum(1 for f in files.values() if f.get("status") == "failed")
+        total = len(files)
+        if failed:
+            phase_block["status"] = "partial"
+        elif successful == total and total > 0:
+            phase_block["status"] = "success"
+        else:
+            phase_block.setdefault("status", "running")
+
+        phase_block.setdefault("metrics", {})
+        phase_block["metrics"].update(
+            {
+                "total_files": total,
+                "successful": successful,
+                "failed": failed,
+                "partial": total - successful - failed,
+                "total_chunks": sum(len(f.get("chunk_paths", [])) for f in files.values()),
             }
+        )
 
-        try:
-            data = canonicalize_state(data)
-            validate_pipeline_schema(data)
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("Phase 3 canonical schema enforcement skipped: %s", exc)
+        phase_block.setdefault("timestamps", {})
+        if record.timestamps:
+            if "start" not in phase_block["timestamps"]:
+                phase_block["timestamps"]["start"] = record.timestamps.get("start")
+            phase_block["timestamps"]["last_completed"] = record.timestamps.get("end")
+            phase_block["timestamps"]["duration"] = max(
+                phase_block["timestamps"].get("duration", 0.0) or 0.0,
+                record.timestamps.get("duration", 0.0) or 0.0,
+            )
 
-        with open(json_path_abs, "w") as handle:
-            json.dump(data, handle, indent=2)
-        logger.info(f"Updated pipeline JSON: {json_path_abs}")
-        return data
+        phase_block.setdefault("artifacts", {})
+        phase_block.setdefault("chunks", [])
 
-    if FileLock:
-        with FileLock(lock_file, timeout=10):
-            on_disk = load_pipeline_state(json_path_abs)
-            return _write(on_disk)
-    on_disk = load_pipeline_state(json_path_abs)
-    return _write(on_disk)
+        logger.info("Updated pipeline JSON for phase3 -> %s", file_id)
+        return txn.data
 
 
 def load_structure_from_json(json_path: str, file_id: str):
     """Load document structure from Phase 2 if available."""
     try:
-        json_path_abs = Path(json_path).absolute()
-        if not json_path_abs.exists():
-            return None
-        
-        with open(json_path_abs, "r") as f:
-            data = json.load(f)
-        
-        phase2_data = data.get("phase2", {}).get("files", {}).get(file_id, {})
-        structure = phase2_data.get("structure")
-        
-        if structure:
-            logger.info(f"Loaded structure metadata from Phase 2: {len(structure)} nodes")
-            return structure
-        else:
-            logger.info("No structure metadata found in Phase 2")
-            return None
-            
-    except Exception as e:
-        logger.warning(f"Could not load structure from Phase 2: {e}")
+        state = PipelineState(Path(json_path), validate_on_read=False)
+        data = state.read(validate=False)
+    except FileNotFoundError:
+        logger.info("Pipeline JSON not found when loading structure: %s", json_path)
         return None
+    except StateError as exc:
+        logger.warning("Could not load structure: %s", exc)
+        return None
+
+    structure = data.get("phase2", {}).get("files", {}).get(file_id, {}).get("structure")
+    if structure:
+        logger.info("Loaded structure metadata from Phase 2: %s nodes", len(structure))
+    else:
+        logger.info("No structure metadata found in Phase 2 for %s", file_id)
+    return structure
 
 def run_phase3(file_id: str, pipeline: dict, config: Phase3Config) -> ChunkRecord:
     """Canonical Phase 3 execution entry point."""
@@ -702,57 +738,61 @@ def execute_phase3(
     return run_phase3(file_id=file_id, pipeline=pipeline, config=cfg)
 
 
-def load_from_json(json_path: str, file_id: str, strict: bool = False) -> str:
-    """Load text path from Phase 2 JSON or fallback to file search."""
-    json_path_abs = Path(json_path).absolute()
-    lock_file = str(json_path_abs) + ".lock"
-    
-    if FileLock:
-        with FileLock(lock_file, timeout=10):
-            return _load_from_json_impl(json_path_abs, file_id, strict)
-    else:
-        logger.warning("filelock not installed; proceeding without file lock")
-        return _load_from_json_impl(json_path_abs, file_id, strict)
-
-
-def _load_from_json_impl(json_path_abs: Path, file_id: str, strict: bool = False) -> str:
-    """Implementation of load_from_json with actual logic."""
+def load_text_path_from_pipeline(json_path: str, file_id: str, strict: bool = False) -> str:
+    """Load text path from Phase 2 via PipelineState or fallback."""
     try:
-        if not json_path_abs.exists():
-            raise FileNotFoundError(f"Pipeline JSON not found: {json_path_abs}")
-        
-        with open(json_path_abs, "r") as f:
-            data = json.load(f)
-        
-        phase2_data = data.get("phase2", {}).get("files", {}).get(file_id, {})
-        
-        if not phase2_data:
-            raise KeyError(f"No Phase 2 data found for file_id: {file_id}")
-        
-        if phase2_data.get("status") != "success":
-            raise ValueError(f"Phase 2 status is not 'success': {phase2_data.get('status')}")
-        
-        text_path = phase2_data.get("extracted_text_path", "")
-        
-        if not text_path:
-            raise ValueError("Phase 2 data missing 'extracted_text_path' field")
-        
-        text_path_obj = Path(text_path)
-        if not text_path_obj.exists():
-            raise FileNotFoundError(f"Text file from Phase 2 not found: {text_path}")
-        
-        logger.info(f"Loaded text path from JSON: {text_path}")
-        return text_path
-        
-    except Exception as e:
-        logger.error(f"Failed to load from Phase 2 JSON: {e}")
-        
+        state = PipelineState(Path(json_path), validate_on_read=False)
+        data = state.read(validate=False)
+    except FileNotFoundError as exc:
+        logger.error("Pipeline JSON not found: %s", json_path)
         if strict:
-            logger.error("Strict mode enabled, not attempting fallback")
             raise
-        
         logger.info("Attempting fallback to file search...")
         return _fallback_find_text(file_id)
+    except StateError as exc:
+        logger.error("Failed to read pipeline state: %s", exc)
+        if strict:
+            raise
+        logger.info("Attempting fallback to file search...")
+        return _fallback_find_text(file_id)
+
+    phase2_data = data.get("phase2", {}).get("files", {}).get(file_id, {}) or {}
+    if not phase2_data:
+        message = f"No Phase 2 data found for file_id: {file_id}"
+        logger.error(message)
+        if strict:
+            raise KeyError(message)
+        logger.info("Attempting fallback to file search...")
+        return _fallback_find_text(file_id)
+
+    if phase2_data.get("status") != "success":
+        message = f"Phase 2 status is not 'success': {phase2_data.get('status')}"
+        logger.error(message)
+        if strict:
+            raise ValueError(message)
+        logger.info("Attempting fallback to file search...")
+        return _fallback_find_text(file_id)
+
+    text_path = phase2_data.get("extracted_text_path")
+    if not text_path:
+        message = "Phase 2 data missing 'extracted_text_path' field"
+        logger.error(message)
+        if strict:
+            raise ValueError(message)
+        logger.info("Attempting fallback to file search...")
+        return _fallback_find_text(file_id)
+
+    text_path_obj = ensure_absolute_path(text_path)
+    if not text_path_obj.exists():
+        message = f"Text file from Phase 2 not found: {text_path_obj}"
+        logger.error(message)
+        if strict:
+            raise FileNotFoundError(message)
+        logger.info("Attempting fallback to file search...")
+        return _fallback_find_text(file_id)
+
+    logger.info("Loaded text path from pipeline.json: %s", text_path_obj)
+    return str(text_path_obj)
 
 
 def _fallback_find_text(file_id: str) -> str:
@@ -828,69 +868,6 @@ def _fallback_find_text(file_id: str) -> str:
     
     return text_path
 
-
-def merge_to_json(record: ChunkRecord, json_path: str, file_id: str, fallback_used: bool = False, fallback_message: str = ""):
-    """Merge chunking results into pipeline JSON file."""
-    json_path_abs = Path(json_path).absolute()
-    lock_file = str(json_path_abs) + ".lock"
-    
-    if FileLock:
-        with FileLock(lock_file, timeout=10):
-            _merge_to_json_impl(record, json_path_abs, file_id, fallback_used, fallback_message)
-    else:
-        _merge_to_json_impl(record, json_path_abs, file_id, fallback_used, fallback_message)
-
-
-def _merge_to_json_impl(record: ChunkRecord, json_path_abs: Path, file_id: str, fallback_used: bool = False, fallback_message: str = ""):
-    """Implementation of merge_to_json with actual logic."""
-    try:
-        with open(json_path_abs, "r") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        logger.info(f"Creating new pipeline JSON: {json_path_abs}")
-        data = {}
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON decode error, creating new structure: {e}")
-        data = {}
-    
-    if "phase3" not in data:
-        data["phase3"] = {"files": {}, "errors": [], "metrics": {}}
-    
-    try:
-        data["phase3"]["files"][file_id] = record.model_dump()
-    except AttributeError:
-        # Pydantic v1 fallback
-        data["phase3"]["files"][file_id] = record.dict()
-    
-    metrics = record.get_metrics()
-    data["phase3"]["files"][file_id]["metrics"] = metrics
-    
-    if fallback_used:
-        error_entry = {
-            "file_id": file_id,
-            "type": "Phase2Desync",
-            "message": fallback_message or "Fallback used due to missing/invalid Phase 2 data",
-            "timestamp": record.timestamps.get("start", 0),
-        }
-        data["phase3"]["errors"].append(error_entry)
-        logger.warning(f"Recorded Phase 2 desync error for {file_id}")
-    
-    all_files = data["phase3"]["files"]
-    if all_files:
-        data["phase3"]["metrics"] = {
-            "total_files": len(all_files),
-            "successful": sum(1 for f in all_files.values() if f.get("status") == "success"),
-            "partial": sum(1 for f in all_files.values() if f.get("status") == "partial"),
-            "failed": sum(1 for f in all_files.values() if f.get("status") == "failed"),
-            "total_chunks": sum(len(f.get("chunk_paths", [])) for f in all_files.values()),
-        }
-    
-    try:
-        atomic_write_json(json_path_abs, data)
-        logger.info(f"Updated pipeline JSON: {json_path_abs}")
-    except Exception as e:
-        logger.error(f"Failed to write JSON atomically: {e}")
-        raise
 
 
 def load_config(config_path: str) -> Phase3Config:
@@ -1090,7 +1067,7 @@ def main():
             sys.exit(2)
         if not pipeline_data.get('phase2', {}).get('files', {}).get(file_id):
             try:
-                config.text_path_override = load_from_json(args.json_path, file_id, args.strict)
+                config.text_path_override = load_text_path_from_pipeline(args.json_path, file_id, args.strict)
             except Exception as exc:
                 if args.strict:
                     logger.error(f"Strict mode: could not locate text for {file_id}: {exc}")

@@ -69,6 +69,8 @@ def test_update_phase4_summary_records_results(tmp_path: Path) -> None:
         file_id="MyBook",
         voice_id="voice_a",
         requested_engine="f5",
+        selected_engine="xtts",
+        slow_rt_threshold=2.5,
         results=results,
         output_dir=tmp_path,
         duration_sec=12.5,
@@ -77,7 +79,9 @@ def test_update_phase4_summary_records_results(tmp_path: Path) -> None:
     data = json.loads(pipeline_path.read_text(encoding="utf-8"))
     book_entry = data["phase4"]["files"]["MyBook"]
 
-    assert book_entry["chunks_failed"] == 1
-    assert book_entry["chunk_0001"]["status"] == "failed"
-    assert book_entry["chunk_0001"]["errors"] == ["boom"]
+    metrics = book_entry["metrics"]
+    assert metrics["chunks_failed"] == 1
+    chunk_map = {chunk["chunk_id"]: chunk for chunk in book_entry["chunks"]}
+    assert chunk_map["chunk_0001"]["status"] == "failed"
+    assert chunk_map["chunk_0001"]["errors"] == ["boom"]
     assert data["phase4"]["status"] == "partial"

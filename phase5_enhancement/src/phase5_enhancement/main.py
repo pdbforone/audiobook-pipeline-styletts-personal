@@ -49,7 +49,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from pipeline_common import PipelineState
+from pipeline_common import PipelineState, ensure_phase_and_file, ensure_phase_block
 from pipeline_common.astromech_notify import play_success_beep, play_alert_beep
 
 # Simple serializer placeholder (matching Phase 4 usage)
@@ -887,8 +887,8 @@ def get_audio_chunks_from_json(config: EnhancementConfig) -> list[AudioMetadata]
     chunks = []
     try:
         logger.info(f"Loading pipeline.json from: {config.pipeline_json}")
-        with open(config.pipeline_json, "r") as f:
-            pipeline = json.load(f)
+        state = PipelineState(config.pipeline_json, validate_on_read=False)
+        pipeline = state.read(validate=False)
         phase4_files = pipeline.get("phase4", {}).get("files", {})
         
         logger.info(f"Phase 4 files in JSON: {list(phase4_files.keys())}")
@@ -939,30 +939,50 @@ def get_audio_chunks_from_json(config: EnhancementConfig) -> list[AudioMetadata]
         return []
 
 
-def safe_update_json(path: str, updater: Callable[[dict], None]) -> None:
-    """
-    Safely update a JSON document using PipelineState transactions.
-
-    Args:
-        path: Path to the JSON file.
-        updater: Callable that mutates the loaded JSON dict in-place.
-    """
-    state = PipelineState(path, validate_on_read=False)
-    with state.transaction() as txn:
-        updater(txn.data)
-
-
 def update_pipeline_json(config: EnhancementConfig, file_id: str, phase5_data: dict):
     """
     Persist Phase 5 results atomically under phase5 -> files -> file_id.
     """
     try:
-        def _update(data: dict) -> None:
-            phase5 = data.setdefault("phase5", {"files": {}})
-            files = phase5.setdefault("files", {})
-            files[file_id] = phase5_data
+        state = PipelineState(config.pipeline_json, validate_on_read=False)
+        with state.transaction(operation="phase5_commit") as txn:
+            phase_block, file_entry = ensure_phase_and_file(txn.data, "phase5", file_id)
+            file_entry.clear()
+            status = phase5_data.get("status", "partial")
+            file_entry.update(
+                {
+                    "status": status,
+                    "summary": phase5_data.get("summary", {}),
+                    "output_file": phase5_data.get("output_file"),
+                }
+            )
+            artifacts_payload = phase5_data.get("artifacts") or {}
+            if isinstance(artifacts_payload, dict):
+                file_entry["artifacts"] = artifacts_payload
+            else:
+                file_entry["artifacts"] = {
+                    "enhanced_chunks": artifacts_payload,
+                    "final_output": phase5_data.get("output_file"),
+                }
+            file_entry["metrics"] = phase5_data.get("metrics", {})
+            file_entry["errors"] = phase5_data.get("errors", [])
+            file_entry["timestamps"] = phase5_data.get("timestamps", {})
+            file_entry["chunks"] = phase5_data.get("chunks", [])
 
-        safe_update_json(config.pipeline_json, _update)
+            files = phase_block.setdefault("files", {})
+            files[file_id] = file_entry
+            successes = sum(1 for entry in files.values() if entry.get("status") == "success")
+            total_files = len(files)
+            phase_block["status"] = "success" if successes == total_files and total_files else "partial"
+            phase_block.setdefault("errors", [])
+            block_metrics = phase_block.setdefault("metrics", {})
+            block_metrics.update(
+                {
+                    "files_processed": total_files,
+                    "successful_files": successes,
+                    "failed_files": sum(1 for entry in files.values() if entry.get("status") == "failed"),
+                }
+            )
         logger.info(
             "Updated pipeline.json for %s with phase5 results at %s",
             file_id,
@@ -1115,8 +1135,8 @@ def main(argv: Optional[list[str]] = None):
 
             # ===== RESUME LOGIC =====
             if args.chunk_id is None and config.resume_on_failure:
-                with open(config.pipeline_json, "r") as f:
-                    pipeline = json.load(f)
+                state = PipelineState(config.pipeline_json, validate_on_read=False)
+                pipeline = state.read(validate=False)
 
                 phase5_files = pipeline.get("phase5", {}).get("files", {})
                 file_entry = phase5_files.get(target_file_id, {})
@@ -1504,9 +1524,14 @@ def main(argv: Optional[list[str]] = None):
                 "cleanup_scope_used": getattr(config, "cleanup_scope", "all"),
             }
 
+            chunk_artifacts = [
+                serialize_path_for_pipeline(Path(m.enhanced_path))
+                for m in processed_metadata
+                if m.enhanced_path
+            ]
             phase5_data = {
                 "status": "success" if successful > 0 else "failed",
-                "output_file": final_output_path,  # Path to final audiobook.mp3
+                "output_file": serialize_path_for_pipeline(Path(final_output_path)) if final_output_path else None,
                 "metrics": {
                     "successful": successful,
                     "failed": failed,
@@ -1514,16 +1539,16 @@ def main(argv: Optional[list[str]] = None):
                     "avg_snr_improvement": avg_snr_improv,
                     "avg_volume_normalization_delta": avg_vol_norm_delta,
                     "volume_normalization_applied_count": vol_norm_applied,
-                    # NEW: Cleanup metrics
                     "phrases_removed_total": phrases_cleaned_total,
                     "chunks_with_phrases": chunks_with_phrases,
                     "cleanup_errors": cleanup_errors,
                     "cleanup_runs": cleanup_operations,
                 },
                 "summary": summary_block,
-                "artifacts": [
-                    m.enhanced_path for m in processed_metadata if m.enhanced_path
-                ],
+                "artifacts": {
+                    "enhanced_chunks": chunk_artifacts,
+                    "final_output": serialize_path_for_pipeline(Path(final_output_path)) if final_output_path else None,
+                },
                 "errors": [
                     m.error_message for m in processed_metadata if m.error_message
                 ],

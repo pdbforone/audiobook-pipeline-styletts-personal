@@ -14,6 +14,8 @@ import logging
 from pathlib import Path
 from typing import Dict, Optional
 
+from pipeline_common import PipelineState
+
 logger = logging.getLogger(__name__)
 
 
@@ -298,20 +300,10 @@ def set_file_override(
     if not validate_voice_id(voice_id):
         raise ValueError(f"Voice ID '{voice_id}' not found in registry")
     
-    # Read current pipeline data
-    with open(pipeline_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    
-    # Update voice_overrides
-    if 'voice_overrides' not in data:
-        data['voice_overrides'] = {}
-    
-    data['voice_overrides'][file_id] = voice_id
-    
-    # Write back
-    with open(pipeline_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    
+    state = PipelineState(pipeline_path, validate_on_read=False)
+    with state.transaction(operation="phase3_set_file_voice") as txn:
+        overrides = txn.data.setdefault('voice_overrides', {})
+        overrides[file_id] = voice_id
     logger.info(f"Set file-level override: {file_id} → {voice_id}")
 
 
@@ -340,17 +332,9 @@ def set_global_override(
     if not validate_voice_id(voice_id):
         raise ValueError(f"Voice ID '{voice_id}' not found in registry")
     
-    # Read current pipeline data
-    with open(pipeline_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    
-    # Update global override
-    data['tts_voice'] = voice_id
-    
-    # Write back
-    with open(pipeline_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    
+    state = PipelineState(pipeline_path, validate_on_read=False)
+    with state.transaction(operation="phase3_set_global_voice") as txn:
+        txn.data['tts_voice'] = voice_id
     logger.info(f"Set global voice override: {voice_id}")
 
 
@@ -372,30 +356,22 @@ def clear_override(
         >>> # Clear file-level override
         >>> clear_override(Path("pipeline.json"), "file_abc123")
     """
-    # Read current pipeline data
-    with open(pipeline_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    
-    if file_id:
-        # Clear file-level override
-        voice_overrides = data.get('voice_overrides', {})
-        if file_id in voice_overrides:
-            del voice_overrides[file_id]
-            data['voice_overrides'] = voice_overrides
-            logger.info(f"Cleared file-level override for {file_id}")
+    state = PipelineState(pipeline_path, validate_on_read=False)
+    with state.transaction(operation="phase3_clear_voice") as txn:
+        if file_id:
+            overrides = txn.data.get('voice_overrides', {})
+            if file_id in overrides:
+                del overrides[file_id]
+                txn.data['voice_overrides'] = overrides
+                logger.info(f"Cleared file-level override for {file_id}")
+            else:
+                logger.warning(f"No file-level override found for {file_id}")
         else:
-            logger.warning(f"No file-level override found for {file_id}")
-    else:
-        # Clear global override
-        if 'tts_voice' in data:
-            data['tts_voice'] = None
-            logger.info("Cleared global voice override")
-        else:
-            logger.warning("No global voice override set")
-    
-    # Write back
-    with open(pipeline_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+            if 'tts_voice' in txn.data:
+                txn.data['tts_voice'] = None
+                logger.info("Cleared global voice override")
+            else:
+                logger.warning("No global voice override set")
 
 
 def print_voice_info(voice_id: Optional[str] = None) -> None:

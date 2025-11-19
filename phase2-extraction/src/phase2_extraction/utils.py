@@ -10,23 +10,22 @@ Provides:
 
 from __future__ import annotations
 
-import json
 import logging
-import platform
 import sys
-import time
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import yaml
-try:
-    from pipeline_common import canonicalize_state, validate_pipeline_schema
-except Exception:  # pragma: no cover - defensive fallback when pipeline_common not installed
-    canonicalize_state = lambda data, **kwargs: data  # type: ignore
-
-    def validate_pipeline_schema(data, **kwargs):  # type: ignore
-        return None
+from pipeline_common import (
+    PipelineState,
+    StateError,
+    ensure_phase_and_file,
+    ensure_phase_block,
+    ensure_phase_file_entry,
+)
+from pipeline_common.state_manager import StateTransaction
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -42,6 +41,61 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = {"use_nemo": False}
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"
+
+
+def _install_update_phase_api() -> None:
+    """Ensure transactions expose update_phase for schema-first writes."""
+
+    if hasattr(StateTransaction, "update_phase"):
+        return
+
+    def update_phase(  # type: ignore[override]
+        self,
+        file_id: str,
+        phase_name: str,
+        status: Optional[str] = None,
+        timestamps: Optional[Dict[str, Any]] = None,
+        artifacts: Optional[Any] = None,
+        metrics: Optional[Dict[str, Any]] = None,
+        errors: Optional[List[Any]] = None,
+        *,
+        chunks: Optional[List[Dict[str, Any]]] = None,
+        extra_fields: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        phase_block, file_entry = ensure_phase_and_file(self.data, phase_name, file_id)
+        envelope = file_entry
+        if status is not None:
+            envelope["status"] = status
+        else:
+            envelope.setdefault("status", "pending")
+        if timestamps is not None:
+            envelope["timestamps"] = dict(timestamps)
+        else:
+            envelope.setdefault("timestamps", {})
+        if artifacts is not None:
+            envelope["artifacts"] = artifacts
+        else:
+            envelope.setdefault("artifacts", {})
+        if metrics is not None:
+            envelope["metrics"] = dict(metrics)
+        else:
+            envelope.setdefault("metrics", {})
+        if errors is not None:
+            envelope["errors"] = list(errors)
+        else:
+            envelope.setdefault("errors", [])
+        if chunks is not None:
+            envelope["chunks"] = list(chunks)
+        else:
+            envelope.setdefault("chunks", [])
+        if extra_fields:
+            envelope.update(extra_fields)
+        return envelope
+
+    setattr(StateTransaction, "update_phase", update_phase)
+
+
+_install_update_phase_api()
 
 
 def load_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
@@ -70,105 +124,79 @@ def load_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
     return config
 
 
-def safe_update_json(pipeline_path: Path, phase_name: str, data: Dict[str, Any]) -> None:
-    """
-    Thread-safe pipeline.json updates with platform-aware locking.
-    
-    Args:
-        pipeline_path: Path to pipeline.json
-        phase_name: Phase key to update (e.g., 'phase2')
-        data: Data to merge into phase
-        
-    Prevents race conditions and JSON corruption when multiple processes
-    access pipeline.json simultaneously.
-    
-    Reason: File locking ensures that concurrent reads/writes don't
-    corrupt the JSON file. Platform-specific locking handles Windows
-    vs Unix differences.
-    """
-    max_attempts = 5
-    delay = 0.5
-    
-    for attempt in range(max_attempts):
-        try:
-            with pipeline_path.open('r+', encoding='utf-8') as f:
-                # Platform-aware file locking
-                if platform.system() == 'Windows':
-                    import msvcrt
-                    try:
-                        msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
-                    except IOError as e:
-                        if attempt < max_attempts - 1:
-                            logger.debug(f"Lock attempt {attempt+1} failed, retrying...")
-                            time.sleep(delay)
-                            continue
-                        raise
-                else:
-                    import fcntl
-                    try:
-                        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    except IOError as e:
-                        if attempt < max_attempts - 1:
-                            logger.debug(f"Lock attempt {attempt+1} failed, retrying...")
-                            time.sleep(delay)
-                            continue
-                        raise
-                
-                try:
-                    # Read current content
-                    current = json.load(f)
-                    
-                    # Ensure phase exists
-                    if phase_name not in current:
-                        current[phase_name] = {}
-                    
-                    # Deep merge: update nested dicts properly
-                    def deep_merge(base: Dict[str, Any], update: Dict[str, Any]) -> Dict[str, Any]:
-                        """Recursively merge update into base."""
-                        for key, value in update.items():
-                            if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-                                base[key] = deep_merge(base[key], value)
-                            else:
-                                base[key] = value
-                        return base
-                    
-                    current[phase_name] = deep_merge(current[phase_name], data)
-
-                    try:
-                        current = canonicalize_state(current)
-                        validate_pipeline_schema(current)
-                    except Exception as exc:  # pragma: no cover - defensive
-                        logger.warning("Pipeline schema enforcement skipped: %s", exc)
-                    
-                    # Write back
-                    f.seek(0)
-                    json.dump(current, f, indent=2, ensure_ascii=False)
-                    f.truncate()
-                    
-                    logger.debug(f"Successfully updated {phase_name} in pipeline.json")
-                    
-                finally:
-                    # Unlock
-                    if platform.system() == 'Windows':
-                        try:
-                            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
-                        except:
-                            pass
-                    else:
-                        try:
-                            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-                        except:
-                            pass
-                
-                return  # Success!
-                
-        except (IOError, OSError) as e:  # pragma: no cover - depends on platform locks
-            if attempt < max_attempts - 1:
-                logger.warning(f"Pipeline update attempt {attempt+1} failed: {e}, retrying...")
-                time.sleep(delay)
+def _deep_merge_inplace(base: Any, new_data: Any) -> Any:
+    """Recursively merge ``new_data`` into ``base``."""
+    if isinstance(base, dict) and isinstance(new_data, dict):
+        for key, value in new_data.items():
+            if key in base:
+                base[key] = _deep_merge_inplace(base[key], value)
             else:
-                logger.error(f"Failed to update pipeline.json after {max_attempts} attempts")
-                raise
+                base[key] = deepcopy(value)
+        return base
+    if isinstance(base, list) and isinstance(new_data, list):
+        base.extend(deepcopy(item) for item in new_data)
+        return base
+    return deepcopy(new_data)
+
+
+def merge_phase_state(
+    pipeline_path: Path,
+    phase_name: str,
+    data: Dict[str, Any],
+    *,
+    operation: str = "phase_update",
+) -> Dict[str, Any]:
+    """
+    Merge ``data`` into ``pipeline_path`` under ``phase_name`` using PipelineState.
+    """
+    files = data.get("files") or {}
+    status = data.get("status")
+    timestamps = data.get("timestamps")
+    artifacts = data.get("artifacts")
+    metrics = data.get("metrics")
+    errors = data.get("errors")
+    chunks = data.get("chunks")
+
+    state = PipelineState(pipeline_path, validate_on_read=False)
+    with state.transaction(operation=operation) as txn:
+        phase_block = ensure_phase_block(txn.data, phase_name)
+        if status:
+            phase_block["status"] = status
+        if timestamps:
+            phase_block.setdefault("timestamps", {}).update(timestamps)
+        if artifacts is not None:
+            existing_artifacts = phase_block.get("artifacts")
+            if isinstance(existing_artifacts, dict) and isinstance(artifacts, dict):
+                existing_artifacts.update(artifacts)
+            elif isinstance(existing_artifacts, list) and isinstance(artifacts, list):
+                existing_artifacts.extend(artifacts)
+            else:
+                phase_block["artifacts"] = artifacts
+        if metrics:
+            phase_block.setdefault("metrics", {}).update(metrics)
+        if errors:
+            phase_errors = phase_block.setdefault("errors", [])
+            phase_errors.extend(errors)
+        if chunks is not None:
+            if isinstance(chunks, list):
+                phase_block["chunks"] = list(chunks)
+            else:
+                phase_block["chunks"] = []
+
+        for file_id, entry in files.items():
+            entry_status = entry.get("status", status or "pending")
+            txn.update_phase(
+                file_id,
+                phase_name,
+                entry_status,
+                entry.get("timestamps"),
+                entry.get("artifacts"),
+                entry.get("metrics"),
+                entry.get("errors"),
+                chunks=entry.get("chunks"),
+                extra_fields=entry,
+            )
+        return txn.data
 
 
 def with_retry(func: Callable[[], Any], max_attempts: int = 3, delay: float = 1.0) -> Any:
@@ -341,22 +369,15 @@ def log_error(
     }
     
     try:
-        with pipeline_path.open('r+', encoding='utf-8') as f:
-            data = json.load(f)
-            
-            if phase_name not in data:
-                data[phase_name] = {}
-            if 'errors' not in data[phase_name]:
-                data[phase_name]['errors'] = []
-            
-            data[phase_name]['errors'].append(error_entry)
-            
-            f.seek(0)
-            json.dump(data, f, indent=2, ensure_ascii=False)
-            f.truncate()
-        
+        state = PipelineState(pipeline_path, validate_on_read=False)
+        with state.transaction(operation=f"{phase_name}_log_error") as txn:
+            phase_block = ensure_phase_block(txn.data, phase_name)
+            phase_block.setdefault("errors", []).append(error_entry)
+            if file_id:
+                file_entry = ensure_phase_file_entry(phase_block, file_id)
+                file_entry.setdefault("errors", []).append(dict(error_entry))
+                file_entry.setdefault("status", "error")
         logger.error(f"[{phase_name}:{file_id}] {message}")
-        
-    except Exception as e:
-        logger.error(f"Failed to log error to pipeline.json: {e}")
+    except StateError as exc:
+        logger.error(f"Failed to log error to pipeline.json: {exc}")
         logger.error(f"Original error: [{phase_name}:{file_id}] {message}")

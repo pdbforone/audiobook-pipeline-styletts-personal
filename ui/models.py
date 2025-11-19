@@ -65,7 +65,7 @@ class VoiceMetadata:
 
 @dataclass
 class PhaseStatusSummary:
-    phase: int
+    phase: str
     status: str
 
 
@@ -110,6 +110,6 @@ class Phase4Summary:
 @dataclass
 class IncompleteWork:
     file_id: str
-    phases_complete: List[int]
-    phases_incomplete: List[int]
-    last_phase: int
+    phases_complete: List[float]
+    phases_incomplete: List[float]
+    last_phase: float

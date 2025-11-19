@@ -5,11 +5,11 @@ Quick diagnostic to check Phase 5 results
 import json
 from pathlib import Path
 
-# Paths
-phase4_audio_dir = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase4_tts\audio_chunks")
-phase5_processed_dir = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement\processed")
-phase5_output_dir = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement\output")
-pipeline_json = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\pipeline.json")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+phase4_audio_dir = PROJECT_ROOT / "phase4_tts" / "audio_chunks"
+phase5_processed_dir = PROJECT_ROOT / "phase5_enhancement" / "processed"
+phase5_output_dir = PROJECT_ROOT / "phase5_enhancement" / "output"
+pipeline_json = PROJECT_ROOT / "pipeline.json"
 
 print("=" * 70)
 print("PHASE 5 RESULTS DIAGNOSTIC")

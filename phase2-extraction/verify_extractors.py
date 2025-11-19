@@ -200,7 +200,7 @@ def test_utils():
     from phase2_extraction import utils
     
     required_functions = [
-        'safe_update_json',
+        'merge_phase_state',
         'with_retry',
         'detect_format',
         'calculate_yield',

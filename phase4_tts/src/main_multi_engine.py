@@ -37,8 +37,44 @@ except ImportError:
 MODULE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = MODULE_ROOT.parent.parent
 DEFAULT_CHARS_PER_MINUTE = 1050  # Shared speaking cadence assumption
+from pipeline_common import PipelineState, ensure_phase_and_file, ensure_phase_block
+from pipeline_common.state_manager import StateTransaction
 from pipeline_common.astromech_notify import play_success_beep, play_alert_beep
-from io_helpers import atomic_write_json, ensure_absolute_path, validate_audio_file
+from io_helpers import ensure_absolute_path, validate_audio_file
+
+if not hasattr(StateTransaction, "update_phase"):
+
+    def _phase4_update_phase(  # type: ignore[override]
+        self,
+        file_id: str,
+        phase_name: str,
+        status: str,
+        timestamps: Optional[Dict[str, Any]] = None,
+        artifacts: Optional[Dict[str, Any]] = None,
+        metrics: Optional[Dict[str, Any]] = None,
+        errors: Optional[List[Any]] = None,
+        *,
+        chunks: Optional[List[Dict[str, Any]]] = None,
+        extra_fields: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        phase_block, file_entry = ensure_phase_and_file(self.data, phase_name, file_id)
+        envelope = file_entry
+        envelope["status"] = status
+        envelope["timestamps"] = dict(timestamps or {})
+        envelope["artifacts"] = dict(artifacts or {})
+        envelope["metrics"] = dict(metrics or {})
+        envelope["errors"] = list(errors or [])
+        envelope["chunks"] = list(chunks or [])
+        if extra_fields:
+            envelope.update(extra_fields)
+        return envelope
+
+    setattr(StateTransaction, "update_phase", _phase4_update_phase)
+
+
+
+
+
 
 # Add engines + shared utils to path
 sys.path.insert(0, str(MODULE_ROOT.parent))
@@ -131,10 +167,12 @@ def load_voices_config(voices_config_path: Path) -> Dict[str, Any]:
 
 
 def load_pipeline_json(json_path: Path) -> Dict[str, Any]:
-    if not json_path.exists():
+    state = PipelineState(json_path, validate_on_read=False)
+    try:
+        return state.read(validate=False)
+    except FileNotFoundError:
+        logger.info("Pipeline JSON not found at %s, starting fresh.", json_path)
         return {}
-    with open(json_path, "r", encoding="utf-8") as f:
-        return json.load(f)
 
 
 def estimate_audio_seconds(chunks: List[ChunkPayload], chars_per_min: int = DEFAULT_CHARS_PER_MINUTE) -> float:
@@ -876,12 +914,9 @@ def update_phase4_summary(
     results: List[ChunkResult],
     output_dir: Path,
     duration_sec: float,
-    ) -> None:
+) -> None:
     """Write phase4 status back to pipeline.json following the documented schema."""
-    data = load_pipeline_json(pipeline_path)
-    phase4 = data.setdefault("phase4", {"status": "partial", "files": {}})
-    files_section = phase4.setdefault("files", {})
-
+    state = PipelineState(pipeline_path, validate_on_read=False)
     total = len(results)
     completed = sum(1 for r in results if r.success)
     failed = total - completed
@@ -912,9 +947,9 @@ def update_phase4_summary(
         extra = " High latency fallback usage (>20%)."
         advisory = (advisory + extra) if advisory else ("High latency fallback usage (>20%). " "Consider Kokoro.")
 
-    chunk_details: List[Dict[str, Any]] = []
+    chunk_rows: List[Dict[str, Any]] = []
     for result in results:
-        chunk_details.append(
+        chunk_rows.append(
             {
                 "chunk_id": result.chunk_id,
                 "text_len": result.text_len,
@@ -922,64 +957,91 @@ def update_phase4_summary(
                 "engine": result.engine_used,
                 "rt_factor": result.rt_factor,
                 "audio_path": serialize_path_for_pipeline(result.output_path) if result.output_path else None,
+                "status": "success" if result.success else "failed",
+                "errors": [] if result.success else [result.error or "unknown error"],
+                "latency_fallback_used": result.latency_fallback_used,
+                "validation_tier": result.validation_tier,
+                "validation_reason": result.validation_reason,
+                "validation_details": result.validation_details,
             }
         )
 
-    file_entry: Dict[str, Any] = {
-        "status": "success" if failed == 0 else "partial",
-        "voice_id": voice_id,
-        "requested_engine": requested_engine,
-        "selected_engine": selected_engine,
-        "engines_used": engines_used,
-        "voices_used": voices_used,
-        "total_chunks": total,
-        "chunks_completed": completed,
-        "chunks_failed": failed,
-        "audio_dir": serialize_path_for_pipeline(output_dir),
-        "chunk_audio_paths": [
-            serialize_path_for_pipeline(r.output_path) for r in results if r.success and r.output_path
-        ],
-        "duration_seconds": duration_sec,
-        "avg_rt_factor": avg_rt_factor,
-        "latency_fallback_chunks": latency_fallback_count,
-        "fallback_rate": fallback_rate,
-        "rt_p50": rt_p50,
-        "rt_p90": rt_p90,
-        "rt_p99": rt_p99,
-        "advisory": advisory,
-        "validated_chunks": validated_chunks,
-        "validation_failures": validation_failures,
-        "tier1_failures": tier1_failures,
-        "tier2_failures": tier2_failures,
-        "chunks_metadata": chunk_details,
-    }
-
-    for result in results:
-        file_entry[result.chunk_id] = {
-            "chunk_id": result.chunk_id,
-            "audio_path": serialize_path_for_pipeline(result.output_path) if result.output_path else None,
-            "status": "success" if result.success else "failed",
-            "engine_used": result.engine_used,
-            "voice_used": result.voice_used,
-            "rt_factor": result.rt_factor,
-            "audio_seconds": result.audio_duration,
-            "text_len": result.text_len,
-            "est_dur": result.est_dur,
-            "latency_fallback_used": result.latency_fallback_used,
-            "errors": [] if result.success else [result.error or "unknown error"],
-            "validation_tier": result.validation_tier,
-            "validation_reason": result.validation_reason,
-            "validation_details": result.validation_details,
+    file_errors = [
+        {"chunk_id": r.chunk_id, "message": r.error or "unknown error"}
+        for r in results
+        if not r.success
+    ]
+    end_ts = time.time()
+    start_ts = end_ts - duration_sec if duration_sec else None
+    with state.transaction(operation="phase4_summary") as txn:
+        status = "success" if failed == 0 else "partial"
+        timestamps = {
+            "start": start_ts,
+            "end": end_ts,
+            "duration": duration_sec,
         }
+        artifacts = {
+            "audio_dir": serialize_path_for_pipeline(output_dir),
+            "chunk_audio_paths": [
+                serialize_path_for_pipeline(r.output_path) for r in results if r.success and r.output_path
+            ],
+        }
+        metrics = {
+            "total_chunks": total,
+            "chunks_completed": completed,
+            "chunks_failed": failed,
+            "duration_seconds": duration_sec,
+            "avg_rt_factor": avg_rt_factor,
+            "latency_fallback_chunks": latency_fallback_count,
+            "fallback_rate": fallback_rate,
+            "rt_p50": rt_p50,
+            "rt_p90": rt_p90,
+            "rt_p99": rt_p99,
+            "validated_chunks": validated_chunks,
+            "validation_failures": validation_failures,
+            "tier1_failures": tier1_failures,
+            "tier2_failures": tier2_failures,
+        }
+        extra_fields = {
+            "voice_id": voice_id,
+            "requested_engine": requested_engine,
+            "selected_engine": selected_engine,
+            "engines_used": engines_used,
+            "voices_used": voices_used,
+            "advisory": advisory,
+        }
+        file_entry = txn.update_phase(
+            file_id,
+            "phase4",
+            status,
+            timestamps,
+            artifacts,
+            metrics,
+            file_errors,
+            chunks=chunk_rows,
+            extra_fields=extra_fields,
+        )
 
-    files_section[file_id] = file_entry
-
-    if files_section and all(entry.get("status") == "success" for entry in files_section.values()):
-        phase4["status"] = "success"
-    else:
-        phase4["status"] = "partial"
-
-    atomic_write_json(pipeline_path, data)
+        phase_block = ensure_phase_block(txn.data, "phase4")
+        files_section = phase_block.setdefault("files", {})
+        phase_block.setdefault("chunks", [])
+        all_files = files_section.values()
+        block_success = all(entry.get("status") == "success" for entry in all_files)
+        phase_block["status"] = "success" if block_success else "partial"
+        phase_block.setdefault("errors", [])
+        phase_metrics = phase_block.setdefault("metrics", {})
+        phase_metrics.update(
+            {
+                "files_processed": len(files_section),
+                "chunks_completed": sum(
+                    entry.get("metrics", {}).get("chunks_completed", 0) for entry in all_files
+                ),
+                "chunks_failed": sum(
+                    entry.get("metrics", {}).get("chunks_failed", 0) for entry in all_files
+                ),
+            }
+        )
+    logger.info("Updated phase4 summary for %s", file_id)
 
 
 def write_run_summary(
@@ -1018,7 +1080,8 @@ def write_run_summary(
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     summary_path = output_dir / "summary.json"
-    atomic_write_json(summary_path, payload)
+    with open(summary_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
 
 
 ENGINE_IMPORT_MAP: Dict[str, Tuple[str, str]] = {

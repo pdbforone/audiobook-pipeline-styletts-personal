@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import psutil
 import trio
 import yaml
+from pipeline_common import PipelineState
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -92,32 +93,91 @@ def discover_input_files(config: BatchConfig) -> List[Path]:
 
 
 def load_pipeline_state(pipeline_path: Path) -> Dict[str, Any]:
-    if pipeline_path.exists():
-        with open(pipeline_path, "r", encoding="utf-8") as fh:
-            return json.load(fh)
-    return {}
+    state = PipelineState(pipeline_path, validate_on_read=False)
+    try:
+        return state.read(validate=False)
+    except FileNotFoundError:
+        return {}
+
+
+def latest_batch_records(pipeline: Dict[str, Any]) -> Dict[str, Any]:
+    runs = pipeline.get("batch_runs") or []
+    if not runs:
+        return {}
+    return runs[-1].get("files", {}) or {}
 
 
 def metadata_from_existing(file_path: Path, record: Dict[str, Any]) -> BatchMetadata:
     phase6_data = record.get("phase6") or {}
+    timestamps = record.get("timestamps") or {}
+    metrics = record.get("metrics") or {}
+    artifacts = record.get("artifacts") or {}
+    errors = record.get("errors", [])
+    if record.get("error_message"):
+        errors = [record["error_message"], *errors]
     metadata = BatchMetadata(
         file_id=file_path.stem,
-        status="skipped",
-        started_at=record.get("started_at"),
-        completed_at=record.get("completed_at"),
-        duration_sec=record.get("duration_sec"),
+        status=record.get("status", "skipped"),
+        started_at=timestamps.get("start"),
+        completed_at=timestamps.get("end"),
+        duration_sec=timestamps.get("duration"),
         was_skipped=True,
         error_message=record.get("error_message"),
-        errors=record.get("errors", []),
-        source_path=posix(file_path),
+        errors=errors,
+        source_path=artifacts.get("source_path") or posix(file_path),
         phase6=Phase6Result(**phase6_data),
-        cpu_avg=record.get("cpu_avg"),
+        cpu_avg=metrics.get("cpu_avg"),
     )
     if metadata.started_at is None:
         metadata.started_at = utcnow().isoformat()
     if metadata.completed_at is None:
         metadata.completed_at = metadata.started_at
     return metadata
+
+
+def _timestamp_payload(start: Optional[str], end: Optional[str], duration: Optional[float]) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
+    if start is not None:
+        payload["start"] = start
+    if end is not None:
+        payload["end"] = end
+    if duration is not None:
+        payload["duration"] = duration
+    return payload
+
+
+def _file_entry_from_metadata(meta: BatchMetadata) -> Dict[str, Any]:
+    errors = [*(meta.errors or [])]
+    if meta.error_message:
+        errors.insert(0, meta.error_message)
+
+    artifacts: Dict[str, Any] = {}
+    if meta.source_path:
+        artifacts["source_path"] = meta.source_path
+
+    metrics: Dict[str, Any] = {}
+    if meta.duration_sec is not None:
+        metrics["duration_sec"] = meta.duration_sec
+    if meta.cpu_avg is not None:
+        metrics["cpu_avg"] = meta.cpu_avg
+
+    entry: Dict[str, Any] = {
+        "file_id": meta.file_id,
+        "status": meta.status or "pending",
+        "timestamps": _timestamp_payload(meta.started_at, meta.completed_at, meta.duration_sec),
+        "artifacts": artifacts,
+        "metrics": metrics,
+        "errors": errors,
+        "chunks": [],
+    }
+
+    phase6_payload = meta.phase6.model_dump(exclude_none=True)
+    if phase6_payload:
+        entry["phase6"] = phase6_payload
+    if meta.was_skipped:
+        entry["was_skipped"] = True
+
+    return entry
 
 
 async def process_single_file(
@@ -271,30 +331,41 @@ def render_reports(summary: BatchSummary, metadata_list: List[BatchMetadata]) ->
     console.print(file_table)
 
 
-def atomic_write_pipeline(pipeline_path: Path, data: Dict[str, Any]) -> None:
-    pipeline_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = pipeline_path.with_suffix(pipeline_path.suffix + ".tmp")
-    with open(tmp_path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(tmp_path, pipeline_path)
-
-
 def persist_batch_state(
     pipeline_path: Path,
-    pipeline: Dict[str, Any],
     summary: BatchSummary,
     metadata_list: List[BatchMetadata],
 ) -> None:
-    pipeline["batch"] = {
-        "status": summary.status,
-        "summary": summary.model_dump(exclude_none=True),
-        "files": {
-            m.file_id: m.to_pipeline_dict() for m in sorted(metadata_list, key=lambda m: m.file_id)
-        },
+    state = PipelineState(pipeline_path, validate_on_read=False)
+    files_payload: Dict[str, Any] = {
+        meta.file_id: _file_entry_from_metadata(meta)
+        for meta in sorted(metadata_list, key=lambda m: m.file_id)
     }
-    atomic_write_pipeline(pipeline_path, pipeline)
+
+    run_id = f"batch_{summary.completed_at}"
+    run_entry = {
+        "run_id": run_id,
+        "status": summary.status,
+        "timestamps": _timestamp_payload(summary.started_at, summary.completed_at, summary.duration_sec),
+        "metrics": {
+            "total_files": summary.total_files,
+            "successful_files": summary.successful_files,
+            "failed_files": summary.failed_files,
+            "skipped_files": summary.skipped_files,
+            "avg_cpu_usage": summary.avg_cpu_usage,
+            "duration_sec": summary.duration_sec,
+        },
+        "errors": list(summary.errors),
+        "artifacts": [str(artifact) for artifact in summary.artifacts],
+        "files": files_payload,
+    }
+    with state.transaction(operation="batch_run") as txn:
+        runs = txn.data.setdefault("batch_runs", [])
+        existing_index = next((idx for idx, run in enumerate(runs) if run.get("run_id") == run_id), None)
+        if existing_index is not None:
+            runs[existing_index] = run_entry
+        else:
+            runs.append(run_entry)
     logger.info("Updated pipeline.json with batch results at %s", pipeline_path)
 
 
@@ -336,7 +407,7 @@ async def run_batch(config: BatchConfig) -> Tuple[BatchSummary, List[BatchMetada
         )
         console.print(dry_run_panel)
 
-        persist_batch_state(pipeline_path, pipeline, summary, metadata_list)
+        persist_batch_state(pipeline_path, summary, metadata_list)
         render_reports(summary, metadata_list)
         return summary, metadata_list
 
@@ -346,7 +417,7 @@ async def run_batch(config: BatchConfig) -> Tuple[BatchSummary, List[BatchMetada
         logger.error("No input files found in %s", config.input_dir)
         raise FileNotFoundError("No input files found to process.")
 
-    existing_records = pipeline.get("batch", {}).get("files", {})
+    existing_records = latest_batch_records(pipeline)
     cpu_readings: List[float] = []
     metadata_list: List[BatchMetadata] = []
     semaphore = trio.Semaphore(config.max_workers)
@@ -373,7 +444,7 @@ async def run_batch(config: BatchConfig) -> Tuple[BatchSummary, List[BatchMetada
     )
     summary.artifacts.append(Path(config.log_file).as_posix())
 
-    persist_batch_state(pipeline_path, pipeline, summary, metadata_list)
+    persist_batch_state(pipeline_path, summary, metadata_list)
     render_reports(summary, metadata_list)
     return summary, metadata_list
 

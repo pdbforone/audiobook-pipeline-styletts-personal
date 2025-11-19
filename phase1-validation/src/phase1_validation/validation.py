@@ -17,14 +17,54 @@ import pymupdf as fitz  # PyMuPDF
 from docx import Document
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from pipeline_common import PipelineState, StateError, ensure_phase_and_file, ensure_phase_block
+from pipeline_common.state_manager import StateTransaction
+
 from .utils import compute_sha256 as utils_compute_sha256
-from .utils import log_error, safe_update_json
+from .utils import log_error
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 PHASE_NAME = "phase1"
 SUPPORTED_EXTENSIONS = {".pdf", ".epub", ".docx", ".txt"}
+
+
+def _install_update_phase_api() -> None:
+    """Ensure StateTransaction objects expose update_phase for schema-safe writes."""
+
+    if hasattr(StateTransaction, "update_phase"):
+        return
+
+    def update_phase(  # type: ignore[override]
+        self,
+        file_id: str,
+        phase_name: str,
+        status: str,
+        timestamps: Optional[Dict[str, Any]] = None,
+        artifacts: Optional[Any] = None,
+        metrics: Optional[Dict[str, Any]] = None,
+        errors: Optional[List[Any]] = None,
+        *,
+        chunks: Optional[List[Dict[str, Any]]] = None,
+        extra_fields: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        phase_block, file_entry = ensure_phase_and_file(self.data, phase_name, file_id)
+        envelope = file_entry
+        envelope["status"] = status
+        envelope["timestamps"] = dict(timestamps or {})
+        envelope["artifacts"] = artifacts if artifacts is not None else {}
+        envelope["metrics"] = dict(metrics or {})
+        envelope["errors"] = list(errors or [])
+        envelope["chunks"] = list(chunks or [])
+        if extra_fields:
+            envelope.update(extra_fields)
+        return envelope
+
+    setattr(StateTransaction, "update_phase", update_phase)
+
+
+_install_update_phase_api()
 
 
 class PDFParsingError(Exception):
@@ -348,13 +388,17 @@ def _categorize_error(exc: Exception, file_ext: str) -> str:
     return "general"
 
 
-def _load_existing_metadata(pipeline_json: Path, file_id: str, sha256_hash: str, size_bytes: int) -> Optional[FileMetadata]:
+def _read_pipeline_data(json_path: Path) -> Dict[str, Any]:
+    state = PipelineState(json_path, validate_on_read=False)
     try:
-        data = json.loads(pipeline_json.read_text(encoding="utf-8"))
-    except Exception as exc:
-        logger.warning("Phase 1 reuse check failed; unable to read pipeline.json: %s", exc)
-        return None
+        return state.read(validate=False)
+    except (StateError, FileNotFoundError, json.JSONDecodeError) as exc:
+        logger.warning("Phase 1: pipeline read failed (%s)", exc)
+        return {}
 
+
+def _load_existing_metadata(pipeline_json: Path, file_id: str, sha256_hash: str, size_bytes: int) -> Optional[FileMetadata]:
+    data = _read_pipeline_data(pipeline_json)
     record = data.get(PHASE_NAME, {}).get("files", {}).get(file_id)
     if not record:
         return None
@@ -382,10 +426,7 @@ def _load_existing_metadata(pipeline_json: Path, file_id: str, sha256_hash: str,
 def _flag_duplicate_hash(json_path: Optional[Path], file_id: str, metadata: FileMetadata) -> None:
     if not json_path:
         return
-    try:
-        existing = json.loads(json_path.read_text(encoding="utf-8"))
-    except Exception:
-        return
+    existing = _read_pipeline_data(json_path)
     hashes = existing.get(PHASE_NAME, {}).get("hashes", [])
     if metadata.sha256 in hashes:
         metadata.duplicate = True
@@ -394,17 +435,96 @@ def _flag_duplicate_hash(json_path: Optional[Path], file_id: str, metadata: File
         log_error(json_path, PHASE_NAME, file_id, message, "Integrity")
 
 
+def _phase1_artifacts_from_metadata(metadata: FileMetadata) -> Dict[str, Any]:
+    """Normalize the artifact payload for schema v3."""
+    artifacts: Dict[str, Any] = {
+        "source_path": metadata.file_path,
+        "artifacts_path": metadata.artifacts_path,
+        "file_type": metadata.file_type,
+        "classification": metadata.classification,
+        "sha256": metadata.sha256,
+        "hash": metadata.hash or metadata.sha256,
+        "repair_attempted": metadata.repair_attempted,
+        "repair_success": metadata.repair_success,
+        "duplicate": metadata.duplicate,
+        "page_count": metadata.page_count,
+        "title": metadata.title,
+        "author": metadata.author,
+        "creation_date": metadata.creation_date,
+    }
+    return {key: value for key, value in artifacts.items() if value is not None}
+
+
+def _phase1_metrics_from_metadata(metadata: FileMetadata) -> Dict[str, Any]:
+    """Project numeric metadata into the metrics envelope."""
+    metrics = dict(metadata.metrics or {})
+    metrics.setdefault("size_bytes", metadata.size_bytes)
+    metrics.setdefault("file_size_bytes", metadata.size_bytes)
+    if metadata.page_count is not None:
+        metrics.setdefault("page_count", metadata.page_count)
+    metrics.setdefault("duplicate", 1 if metadata.duplicate else 0)
+    if metadata.timestamps.get("duration") is not None:
+        metrics.setdefault("duration", metadata.timestamps["duration"])
+    return metrics
+
+
 def persist_metadata(metadata: FileMetadata, json_path: Path, file_id: str) -> Dict[str, Any]:
     payload = metadata.as_payload()
-    update: Dict[str, Any] = {
-        PHASE_NAME: {
-            "files": {file_id: payload},
-            "hashes": [] if metadata.duplicate else [metadata.sha256],
-        }
-    }
-    merged = safe_update_json(json_path, update)
-    logger.info("Persisted metadata for %s into %s", file_id, json_path)
-    return merged
+    status = "success" if not metadata.errors else "partial"
+    timestamps = payload.get("timestamps") or {}
+    artifacts = _phase1_artifacts_from_metadata(metadata)
+    metrics = _phase1_metrics_from_metadata(metadata)
+    errors = list(metadata.errors)
+    state = PipelineState(json_path, validate_on_read=False)
+    with state.transaction(operation="phase1_persist") as txn:
+        file_entry = txn.update_phase(
+            file_id,
+            PHASE_NAME,
+            status,
+            timestamps,
+            artifacts,
+            metrics,
+            errors,
+            chunks=[],
+            extra_fields=payload,
+        )
+        phase_block = ensure_phase_block(txn.data, PHASE_NAME)
+        hashes = set(phase_block.get("hashes") or [])
+        if metadata.sha256:
+            hashes.add(metadata.sha256)
+        sorted_hashes = sorted(hashes)
+        phase_block["hashes"] = sorted_hashes
+
+        phase_artifacts = phase_block.get("artifacts")
+        if isinstance(phase_artifacts, dict):
+            phase_artifacts = dict(phase_artifacts)
+        else:
+            phase_artifacts = {}
+        phase_artifacts["hashes"] = sorted_hashes
+        phase_block["artifacts"] = phase_artifacts
+
+        files = phase_block.get("files", {})
+        phase_metrics = phase_block.setdefault("metrics", {})
+        phase_metrics["files_processed"] = len(files)
+        phase_metrics["duplicates"] = sum(1 for entry in files.values() if entry.get("duplicate"))
+        phase_metrics["repaired"] = sum(1 for entry in files.values() if entry.get("repair_success"))
+
+        phase_timestamps = phase_block.setdefault("timestamps", {})
+        if timestamps.get("start") and "start" not in phase_timestamps:
+            phase_timestamps["start"] = timestamps["start"]
+        if timestamps.get("end"):
+            phase_timestamps["last_completed"] = timestamps["end"]
+
+        phase_block.setdefault("errors", [])
+        phase_block.setdefault("chunks", [])
+
+        if status != "success":
+            phase_block["status"] = "partial"
+        elif phase_block.get("status") not in {"partial", "failed"}:
+            phase_block["status"] = "success"
+
+        logger.info("Persisted metadata for %s into %s", file_id, json_path)
+        return txn.data
 
 
 def validate_and_repair(

@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 import psutil
 from phase6_orchestrator.orchestrator import run_pipeline
-from pipeline_common import PipelineState, StateError
+from pipeline_common import PHASE_KEYS, PipelineState, StateError
 
 from ui.models import (
     FileSystemProgress,
@@ -21,6 +21,18 @@ from ui.models import (
 )
 
 logger = logging.getLogger(__name__)
+PHASE_LABELS: List[tuple[str, str]] = [
+    (phase_key, phase_key.replace("phase", "").replace("_", "."))
+    for phase_key in PHASE_KEYS
+]
+PHASE_ORDER: List[tuple[float, str]] = []
+for phase_key, label in PHASE_LABELS:
+    try:
+        number = float(label)
+    except ValueError:
+        continue
+    PHASE_ORDER.append((number, phase_key))
+PHASE_ORDER.sort(key=lambda item: item[0])
 
 
 class PipelineAPI:
@@ -61,7 +73,7 @@ class PipelineAPI:
     def _collect_file_ids(self, data: Dict[str, Any]) -> List[str]:
         """Return all known file_ids from the canonical phase-first schema."""
         file_ids: set[str] = set()
-        for phase_key in ["phase1", "phase2", "phase3", "phase4", "phase5"]:
+        for phase_key, _ in PHASE_LABELS:
             phase_block = data.get(phase_key) or {}
             files = phase_block.get("files") or {}
             if isinstance(files, dict):
@@ -91,15 +103,15 @@ class PipelineAPI:
         data = self._read_state()
         try:
             for file_id in self._collect_file_ids(data):
-                phases_complete: List[int] = []
-                phases_incomplete: List[int] = []
+                phases_complete: List[float] = []
+                phases_incomplete: List[float] = []
 
-                for phase in [1, 2, 3, 4, 5]:
-                    status = self._phase_status(data, file_id, phase)
+                for phase_num, phase_key in PHASE_ORDER:
+                    status = self._phase_status(data, file_id, phase_key)
                     if status == "success":
-                        phases_complete.append(phase)
+                        phases_complete.append(phase_num)
                     else:
-                        phases_incomplete.append(phase)
+                        phases_incomplete.append(phase_num)
 
                 if phases_complete and phases_incomplete:
                     return IncompleteWork(
@@ -112,8 +124,11 @@ class PipelineAPI:
             logger.warning("Failed to detect incomplete work: %s", exc)
         return None
 
-    def _phase_status(self, data: Dict[str, Any], file_id: str, phase_num: int) -> str:
-        phase_key = f"phase{phase_num}"
+    def _phase_status(self, data: Dict[str, Any], file_id: str, phase: Any) -> str:
+        if isinstance(phase, str) and phase.startswith("phase"):
+            phase_key = phase
+        else:
+            phase_key = f"phase{phase}"
         try:
             phase = data.get(phase_key, {}) or {}
             files = phase.get("files", {}) or {}
@@ -149,7 +164,10 @@ class PipelineAPI:
             return None
 
         data = self._read_state()
-        phases = [PhaseStatusSummary(phase=p, status=self._phase_status(data, file_id, p)) for p in range(1, 6)]
+        phases = [
+            PhaseStatusSummary(phase=label, status=self._phase_status(data, file_id, phase_key))
+            for phase_key, label in PHASE_LABELS
+        ]
 
         fs_progress = FileSystemProgress(
             chunk_txt=self._count_files(f"phase3-chunking/chunks/{file_id}_chunk_*.txt"),
@@ -248,6 +266,11 @@ class PipelineAPI:
         except Exception as exc:
             logger.warning("Failed to tail log %s: %s", log_key, exc)
             return f"Failed to read log: {exc}"
+
+    def get_batch_runs(self) -> List[Dict[str, Any]]:
+        data = self._read_state()
+        runs = data.get("batch_runs") or []
+        return runs if isinstance(runs, list) else []
 
     # ------------------------------------------------------------------ #
     # Orchestration
