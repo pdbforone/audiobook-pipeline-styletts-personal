@@ -63,6 +63,19 @@ DEFAULT_REQUIRED_SECTIONS: tuple[str, ...] = (
     *(_PHASE_KEYS),
 )
 
+# Allowed status values for phases (lenient to avoid breaking legacy states)
+VALID_PHASE_STATUSES: tuple[str, ...] = (
+    "pending",
+    "running",
+    "success",
+    "partial",
+    "partial_success",
+    "failed",
+    "error",
+    "skipped",
+    "unknown",
+)
+
 
 class StateError(Exception):
     """Base exception for state management errors."""
@@ -74,6 +87,18 @@ class StateLockError(StateError):
 
 class StateValidationError(StateError):
     """Raised when validation fails."""
+
+
+class StateReadError(StateError):
+    """Raised when reading the state file fails or returns invalid JSON."""
+
+
+class StateWriteError(StateError):
+    """Raised when persisting a new state to disk fails."""
+
+
+class StateTransactionError(StateError):
+    """Raised when a transactional commit fails after acquiring the lock."""
 
 
 class StateBackupManager:
@@ -246,7 +271,7 @@ class PipelineState:
     # Public API
     # ------------------------------------------------------------------ #
     def read(self, validate: Optional[bool] = None) -> JsonDict:
-        """Read current state from disk."""
+        """Read current state from disk with optional validation."""
         run_validation = self.validate_on_read if validate is None else validate
 
         if not self.path.exists():
@@ -265,22 +290,39 @@ class PipelineState:
             return data
         except json.JSONDecodeError as exc:
             self._log_transaction("read", False, {"error": "json_decode_error"})
-            raise StateError(f"Corrupted state file: {exc}") from exc
+            raise StateReadError(f"Corrupted state file: {exc}") from exc
         except StateValidationError:
             self._log_transaction("read", False, {"error": "validation_error"})
             raise
+        except OSError as exc:
+            self._log_transaction("read", False, {"error": str(exc)})
+            raise StateReadError(f"Failed to read state file: {exc}") from exc
         except Exception as exc:
             self._log_transaction("read", False, {"error": str(exc)})
-            raise
+            raise StateReadError(f"Unexpected error reading state: {exc}") from exc
 
     def write(self, data: JsonDict, validate: bool = True) -> None:
-        """Write the provided state to disk atomically."""
-        with self._file_lock():
-            self._write_atomic(data, validate=validate)
+        """Write the provided state to disk atomically via a transaction."""
+        with self.transaction(validate=validate, seed_data=data, operation="write"):
+            # All work is performed by the transaction context
+            pass
 
-    def transaction(self) -> StateTransaction:
-        """Create a transaction context manager."""
-        return StateTransaction(self)
+    def transaction(
+        self,
+        *,
+        validate: Optional[bool] = None,
+        seed_data: Optional[JsonDict] = None,
+        operation: str = "transaction",
+    ) -> StateTransaction:
+        """
+        Create a transaction context manager.
+
+        Args:
+            validate: Override validation behaviour (defaults to strict validation).
+            seed_data: Optional initial payload to use instead of the on-disk state.
+            operation: Operation name recorded in the transaction log.
+        """
+        return StateTransaction(self, validate=validate, seed_data=seed_data, operation=operation)
 
     def list_backups(self, limit: int = 10) -> List[Path]:
         """Return recent backup files."""
@@ -382,6 +424,17 @@ class PipelineState:
     # ------------------------------------------------------------------ #
     # Internal helpers
     # ------------------------------------------------------------------ #
+    def _normalize_for_write(self, data: JsonDict) -> JsonDict:
+        """
+        Defensive copy of the payload used for persistence.
+
+        Ensures callers cannot mutate the serialized representation after the
+        write and enforces that the root is a JSON object.
+        """
+        if not isinstance(data, dict):
+            raise StateValidationError("State payload must be a JSON object.")
+        return deepcopy(data)
+
     def _log_transaction(
         self, operation: str, success: bool, details: Optional[TransactionRecord] = None
     ) -> None:
@@ -417,10 +470,24 @@ class PipelineState:
                     and not isinstance(data[phase_key], dict)
                 ):
                     raise StateValidationError(f"Phase '{phase_key}' must be an object if present.")
+                phase_data = data.get(phase_key)
+                if isinstance(phase_data, dict):
+                    status_value = phase_data.get("status")
+                    if status_value is not None and not isinstance(status_value, str):
+                        raise StateValidationError(f"Phase '{phase_key}' status must be a string.")
+                    if isinstance(status_value, str) and status_value and status_value not in VALID_PHASE_STATUSES:
+                        logger.debug(
+                            "Non-standard status '%s' detected for %s", status_value, phase_key
+                        )
 
         if "chunks" in data and data["chunks"] is not None:
             if not isinstance(data["chunks"], (list, dict)):
                 raise StateValidationError("Top-level 'chunks' must be a list or object.")
+
+        # Basic metadata validation
+        for key in ("file_id", "pipeline_version", "input_file"):
+            if key in data and data[key] is not None and not isinstance(data[key], str):
+                raise StateValidationError(f"Top-level '{key}' must be a string if present.")
 
     def _validate_schema(self, data: JsonDict) -> None:
         """Optional Pydantic validation."""
@@ -434,12 +501,13 @@ class PipelineState:
         except Exception as exc:
             raise StateValidationError(f"Schema validation failed: {exc}") from exc
 
-    def _write_atomic(self, data: JsonDict, validate: bool = True) -> None:
+    def _write_atomic(self, data: JsonDict, validate: bool = True, operation: str = "write") -> None:
         """Perform an atomic write with optional validation and backups."""
+        normalized = self._normalize_for_write(data)
         if validate:
-            self._validate_schema(data)
+            self._validate_schema(normalized)
         else:
-            self._validate_basic(data, enforce_sections=False)
+            self._validate_basic(normalized, enforce_sections=False)
 
         if self.backup_before_write:
             self.backup_manager.create_backup()
@@ -451,18 +519,18 @@ class PipelineState:
 
         try:
             with open(temp_path, "w", encoding="utf-8") as handle:
-                json.dump(data, handle, indent=2, ensure_ascii=False)
+                json.dump(normalized, handle, indent=2, ensure_ascii=False)
                 handle.flush()
                 os.fsync(handle.fileno())
 
             os.replace(temp_path, self.path)
-            self._log_transaction("write", True)
+            self._log_transaction(operation, True)
             logger.debug("Atomic write completed for %s", self.path)
-        except Exception:
+        except Exception as exc:
             if temp_path.exists():
                 temp_path.unlink(missing_ok=True)
-            self._log_transaction("write", False, {"error": "atomic_write_failed"})
-            raise
+            self._log_transaction(operation, False, {"error": "atomic_write_failed"})
+            raise StateWriteError(f"Failed to persist state to {self.path}: {exc}") from exc
         finally:
             if self.backup_before_write:
                 self.backup_manager.rotate_backups()
@@ -471,19 +539,34 @@ class PipelineState:
 class StateTransaction:
     """Context manager for transactional updates."""
 
-    def __init__(self, state: PipelineState) -> None:
+    def __init__(
+        self,
+        state: PipelineState,
+        *,
+        validate: Optional[bool] = None,
+        seed_data: Optional[JsonDict] = None,
+        operation: str = "transaction",
+    ) -> None:
         self.state = state
         self.data: JsonDict = {}
         self.original_data: JsonDict = {}
         self.committed: bool = False
         self._lock_cm = None
+        self.validate_override = validate
+        self.seed_data = seed_data
+        self.operation = operation
 
     def __enter__(self) -> "StateTransaction":
         self._lock_cm = self.state._file_lock()
         self._lock_cm.__enter__()
         try:
             self.original_data = self.state.read(validate=self.state.validate_on_read)
-            self.data = deepcopy(self.original_data)
+            working_copy = (
+                self.state._normalize_for_write(self.seed_data)
+                if self.seed_data is not None
+                else deepcopy(self.original_data)
+            )
+            self.data = working_copy
             return self
         except Exception:
             self._release_lock()
@@ -493,17 +576,36 @@ class StateTransaction:
         try:
             if exc_type is not None:
                 self.state._log_transaction(
-                    "rollback", True, {"reason": str(exc_val) if exc_val else repr(exc_type)}
+                    "rollback",
+                    True,
+                    {
+                        "operation": self.operation,
+                        "reason": str(exc_val) if exc_val else repr(exc_type),
+                    },
                 )
                 return False
 
-            self.state._write_atomic(self.data, validate=True)
+            validate_flag = True if self.validate_override is None else self.validate_override
+            self.state._write_atomic(self.data, validate=validate_flag, operation="commit")
             self.committed = True
-            self.state._log_transaction("commit", True, {"changed_keys": self._get_changed_keys()})
+            self.state._log_transaction(
+                "commit",
+                True,
+                {"changed_keys": self._get_changed_keys(), "operation": self.operation},
+            )
             return False
-        except Exception as exc:
-            self.state._log_transaction("commit", False, {"error": str(exc)})
+        except StateValidationError:
+            self.state._log_transaction(
+                "commit",
+                False,
+                {"operation": self.operation, "error": "validation_error"},
+            )
             raise
+        except Exception as exc:
+            self.state._log_transaction(
+                "commit", False, {"operation": self.operation, "error": str(exc)}
+            )
+            raise StateTransactionError(f"{self.operation} failed to commit") from exc
         finally:
             self._release_lock()
 

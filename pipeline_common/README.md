@@ -58,8 +58,12 @@ state = PipelineState("pipeline.json")
 # Simple read
 data = state.read()
 
-# Simple write
+# Simple write (routes through a transactional commit under the hood)
 state.write({"phase1": {"status": "pending"}}, validate=False)
+
+# Explicit full-replacement write using a seeded transaction
+with state.transaction(validate=False, seed_data={"phase1": {"status": "pending"}}):
+    pass
 
 # Transactional update
 with state.transaction() as txn:
@@ -82,6 +86,16 @@ try:
 except Exception as e:
     # State unchanged - transaction rolled back
     print(f"Phase 4 failed: {e}")
+
+# Targeted error handling
+from pipeline_common import StateReadError, StateValidationError
+
+try:
+    state.read()
+except StateReadError:
+    print("pipeline.json is unreadable - try restoring a backup.")
+except StateValidationError:
+    print("pipeline.json failed schema validation - investigate recent writes.")
 ```
 
 ### Backup Management

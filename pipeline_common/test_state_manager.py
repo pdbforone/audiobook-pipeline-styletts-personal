@@ -26,7 +26,10 @@ from pipeline_common.state_manager import (
     PipelineState,
     StateError,
     StateLockError,
+    StateReadError,
+    StateTransactionError,
     StateValidationError,
+    StateWriteError,
 )
 
 
@@ -441,24 +444,25 @@ class TestErrorRecovery:
     """Test crash recovery and error scenarios"""
 
     def test_corrupted_json_raises_error(self, state_path, state_manager):
-        """Corrupted JSON file raises StateError"""
+        """Corrupted JSON file raises StateReadError"""
         # Write corrupted JSON
         with open(state_path, 'w') as f:
             f.write("{invalid json")
 
-        with pytest.raises(StateError):
+        with pytest.raises(StateReadError):
             state_manager.read()
 
     def test_atomic_write_cleanup_on_error(self, state_manager, state_path):
         """Temp file is cleaned up if write fails"""
         # Patch json.dump to raise error
         with patch('json.dump', side_effect=IOError("Simulated error")):
-            with pytest.raises(IOError):
+            with pytest.raises(StateTransactionError) as excinfo:
                 state_manager.write({'test': 'data'}, validate=False)
+        assert isinstance(excinfo.value.__cause__, StateWriteError)
 
-        # Verify temp file doesn't exist
-        temp_path = state_path.with_suffix('.json.tmp')
-        assert not temp_path.exists()
+        # Verify no temp files remain for this state
+        tmp_candidates = list(state_path.parent.glob(f"{state_path.name}.*.tmp"))
+        assert not tmp_candidates
 
     def test_partial_write_recovery(self, state_manager, state_path):
         """Can recover from partial writes using backup"""

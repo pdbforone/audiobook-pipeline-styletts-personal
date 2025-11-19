@@ -21,8 +21,10 @@ except ImportError:
     class BaseModel:
         def __init__(self, **kwargs):
             pass
+
     def Field(*args, **kwargs):
         return None
+
     def field_validator(*args, **kwargs):
         def decorator(func):
             return func
@@ -45,9 +47,12 @@ class PhaseStatus(BaseModel):
 
     Each phase can extend this with phase-specific fields.
     """
-    status: Optional[str] = Field(None, pattern="^(pending|success|partial|failed)$")
-    errors: Optional[List[Any]] = []
-    metrics: Optional[Dict[str, Any]] = {}
+    status: Optional[str] = Field(
+        None,
+        pattern="^(pending|running|success|partial|partial_success|failed|error|skipped|unknown)$",
+    )
+    errors: Optional[List[Any]] = Field(default_factory=list)
+    metrics: Optional[Dict[str, Any]] = Field(default_factory=dict)
     timestamps: Optional[TimestampModel] = None
 
     class Config:
@@ -56,29 +61,29 @@ class PhaseStatus(BaseModel):
 
 class Phase1Schema(PhaseStatus):
     """Phase 1: Validation & Repair"""
-    files: Optional[Dict[str, Any]] = {}
-    hashes: Optional[List[str]] = []
+    files: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    hashes: Optional[List[str]] = Field(default_factory=list)
 
 
 class Phase2Schema(PhaseStatus):
     """Phase 2: Text Extraction"""
-    files: Optional[Dict[str, Any]] = {}
+    files: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
 class Phase3Schema(PhaseStatus):
     """Phase 3: Semantic Chunking"""
-    files: Optional[Dict[str, Any]] = {}
+    files: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
 class Phase4Schema(PhaseStatus):
     """Phase 4: TTS Synthesis"""
-    files: Optional[Dict[str, Any]] = {}
+    files: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
 class Phase5Schema(PhaseStatus):
     """Phase 5: Audio Enhancement"""
-    artifacts: Optional[List[str]] = []
-    chunks: Optional[List[Dict[str, Any]]] = []
+    artifacts: Optional[List[str]] = Field(default_factory=list)
+    chunks: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
 
 
 class Phase5_5Schema(PhaseStatus):
