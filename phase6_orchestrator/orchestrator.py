@@ -67,7 +67,7 @@ RUN_SUMMARY: Dict[str, Any] = {
 def _policy_call(
     policy_engine: Optional[PolicyEngine],
     method: str,
-    *args: Any,
+    context: Dict[str, Any],
 ) -> None:
     """Invoke a policy hook defensively so orchestration never crashes."""
     if not policy_engine:
@@ -75,9 +75,90 @@ def _policy_call(
     try:
         hook = getattr(policy_engine, method, None)
         if hook:
-            hook(*args)
+            hook(context)
     except Exception:
         logger.debug("Policy hook %s failed", method, exc_info=True)
+
+
+def _phase_entry_snapshot(state: PipelineState, phase_key: str, file_id: str) -> Dict[str, Any]:
+    snapshot = read_state_snapshot(state, warn=False)
+    phase_block = snapshot.get(phase_key, {}) or {}
+    files = phase_block.get("files", {}) or {}
+    entry = files.get(file_id)
+    if isinstance(entry, dict):
+        return entry
+    fallback: Dict[str, Any] = {}
+    for key in ("status", "errors", "metrics", "timestamps"):
+        value = phase_block.get(key)
+        if value:
+            fallback[key] = value
+    return fallback
+
+
+def _build_policy_context(
+    phase_key: str,
+    file_id: str,
+    pipeline_json: Path,
+    *,
+    status: str,
+    event: str,
+    state: PipelineState,
+    duration_ms: Optional[float] = None,
+    include_snapshot: bool = False,
+    metrics: Optional[Dict[str, Any]] = None,
+    errors: Optional[List[Any]] = None,
+    extra: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    timestamp = datetime.utcnow().isoformat(timespec="milliseconds") + "Z"
+    context: Dict[str, Any] = {
+        "timestamp": timestamp,
+        "phase": phase_key,
+        "file_id": file_id,
+        "status": status,
+        "event": event,
+        "pipeline_json": str(pipeline_json),
+    }
+    if duration_ms is not None:
+        context["duration_ms"] = duration_ms
+    normalized_errors: Optional[List[str]] = None
+    if errors:
+        normalized_errors = [str(err) for err in errors if err]
+        if normalized_errors:
+            context["errors"] = normalized_errors
+    if metrics is not None:
+        context["metrics"] = metrics
+    if extra:
+        context["extra"] = extra
+    if include_snapshot:
+        snapshot = _phase_entry_snapshot(state, phase_key, file_id)
+        if snapshot:
+            context["phase_snapshot"] = snapshot
+            if "metrics" not in context and isinstance(snapshot.get("metrics"), dict):
+                context["metrics"] = snapshot["metrics"]
+            snapshot_errors = snapshot.get("errors")
+            if snapshot_errors and "errors" not in context:
+                context["errors"] = snapshot_errors
+    return context
+
+
+def _pop_phase_duration(timer_map: Dict[str, float], phase_key: str) -> Optional[float]:
+    started = timer_map.pop(phase_key, None)
+    if started is None:
+        return None
+    return max((time.perf_counter() - started) * 1000.0, 0.0)
+
+
+def _log_policy_advice(
+    policy_engine: Optional[PolicyEngine],
+    context: Dict[str, Any],
+    phase_label: str,
+    file_id: str,
+) -> None:
+    if not policy_engine:
+        return
+    advice = policy_engine.advise(context)
+    if advice:
+        logger.info("Policy advice for %s (%s): %s", file_id, phase_label, advice)
 
 
 class SubtitleConfig(BaseModel):
@@ -109,6 +190,7 @@ class OrchestratorConfig(BaseModel):
     prefer_shell_tts_execution: bool = False
     global_time_budget_sec: Optional[int] = None
     subtitles: SubtitleConfig = Field(default_factory=SubtitleConfig)
+    policy_engine: Dict[str, Any] = Field(default_factory=lambda: {"logging": True, "learning_mode": "observe"})
     model_config = ConfigDict(populate_by_name=True)
 
 
@@ -848,10 +930,20 @@ def run_phase_with_retry(
         True if successful, False otherwise
     """
     phase_label = f"phase{phase_num}"
+    phase_label = f"phase{phase_num}"
     for attempt in range(max_retries + 1):
         if attempt > 0:
             logger.info(f"Retry attempt {attempt}/{max_retries} for Phase {phase_num}")
-            _policy_call(policy_engine, "before_retry", phase_label, file_id, attempt, state)
+            retry_ctx = _build_policy_context(
+                phase_label,
+                file_id,
+                pipeline_json,
+                status="retry",
+                event="phase_retry",
+                state=state,
+                extra={"attempt": attempt},
+            )
+            _policy_call(policy_engine, "record_retry", retry_ctx)
             time.sleep(2)  # Brief pause before retry
             if phase_num == 4:
                 phase_dir = find_phase_dir(4)
@@ -874,8 +966,6 @@ def run_phase_with_retry(
             return True
     
     logger.error(f"Phase {phase_num} failed after {max_retries + 1} attempts")
-    error = RuntimeError(f"Phase {phase_num} exhausted retries")
-    _policy_call(policy_engine, "after_failure", phase_label, file_id, error, state)
     return False
 
 
@@ -1981,7 +2071,12 @@ def run_pipeline(
     if phases is None:
         phases = orchestrator_config.phases_to_run
 
-    policy_engine = policy_engine or PolicyEngine()
+    if policy_engine is None:
+        policy_config = orchestrator_config.policy_engine or {}
+        policy_engine = PolicyEngine(
+            logging_enabled=bool(policy_config.get("logging", False)),
+            learning_mode=str(policy_config.get("learning_mode", "observe")),
+        )
     pipeline_mode = orchestrator_config.pipeline_mode.lower()
 
     RUN_SUMMARY.update(
@@ -2010,6 +2105,7 @@ def run_pipeline(
         os.environ.pop("PHASE5_CONCAT_ONLY", None)
 
     # Run phases
+    policy_phase_timers: Dict[str, float] = {}
     completed_phases = []
 
     for phase_num in phases:
@@ -2018,21 +2114,32 @@ def run_pipeline(
             progress_callback(phase_num, 0.0, f"Starting Phase {phase_num}...")
 
         # Check resume status (phase-first view)
+        resume_status: Optional[str] = None
         if resume_enabled:
-            status = check_phase_status(state, phase_num, file_id)
-            if status == "success":
+            resume_status = check_phase_status(state, phase_num, file_id)
+            if resume_status == "success":
                 logger.info(f"Skipping Phase {phase_num} (already completed)")
                 completed_phases.append(phase_num)
                 if progress_callback:
                     progress_callback(phase_num, 100.0, "Already completed")
                 continue
-            elif status in {"failed", "partial"}:
-                logger.info(f"Retrying Phase {phase_num} (previous status: {status})")
+            elif resume_status in {"failed", "partial"}:
+                logger.info(f"Retrying Phase {phase_num} (previous status: {resume_status})")
 
         # Run phase with retries
         logger.info(f"Running Phase {phase_num}...")
         phase_label = f"phase{phase_num}"
-        _policy_call(policy_engine, "before_phase", phase_label, file_id, state)
+        policy_phase_timers[phase_label] = time.perf_counter()
+        start_ctx = _build_policy_context(
+            phase_label,
+            file_id,
+            pipeline_json,
+            status="starting",
+            event="phase_start",
+            state=state,
+            extra={"resume_status": resume_status},
+        )
+        _policy_call(policy_engine, "record_phase_start", start_ctx)
 
         success = run_phase_with_retry(
             phase_num,
@@ -2047,9 +2154,21 @@ def run_pipeline(
             policy_engine=policy_engine,
         )
 
-        _policy_call(policy_engine, "after_phase", phase_label, file_id, state)
-
         if not success:
+            failure_duration = _pop_phase_duration(policy_phase_timers, phase_label)
+            failure_ctx = _build_policy_context(
+                phase_label,
+                file_id,
+                pipeline_json,
+                status="failed",
+                event="phase_failure",
+                state=state,
+                duration_ms=failure_duration,
+                include_snapshot=True,
+                errors=[f"Phase {phase_num} failed"],
+            )
+            _policy_call(policy_engine, "record_failure", failure_ctx)
+            _log_policy_advice(policy_engine, failure_ctx, phase_label, file_id)
             return {
                 "success": False,
                 "error": f"Pipeline failed at Phase {phase_num}",
@@ -2061,6 +2180,20 @@ def run_pipeline(
 
         if progress_callback:
             progress_callback(phase_num, 100.0, "Complete")
+
+        duration_ms = _pop_phase_duration(policy_phase_timers, phase_label)
+        end_ctx = _build_policy_context(
+            phase_label,
+            file_id,
+            pipeline_json,
+            status="success",
+            event="phase_end",
+            state=state,
+            duration_ms=duration_ms,
+            include_snapshot=True,
+        )
+        _policy_call(policy_engine, "record_phase_end", end_ctx)
+        _log_policy_advice(policy_engine, end_ctx, phase_label, file_id)
 
         # Archive after Phase 5
         if phase_num == 5:
@@ -2074,7 +2207,16 @@ def run_pipeline(
         phase5_dir = find_phase_dir(5)
         if phase5_dir:
             subtitle_phase_label = "phase5.5"
-            _policy_call(policy_engine, "before_phase", subtitle_phase_label, file_id, state)
+            policy_phase_timers[subtitle_phase_label] = time.perf_counter()
+            subtitle_start_ctx = _build_policy_context(
+                subtitle_phase_label,
+                file_id,
+                pipeline_json,
+                status="starting",
+                event="phase_start",
+                state=state,
+            )
+            _policy_call(policy_engine, "record_phase_start", subtitle_start_ctx)
 
             success = run_phase5_5_subtitles(
                 phase5_dir,
@@ -2083,8 +2225,34 @@ def run_pipeline(
                 enable_subtitles=True
             )
 
-            _policy_call(policy_engine, "after_phase", subtitle_phase_label, file_id, state)
-            if not success:
+            duration_ms = _pop_phase_duration(policy_phase_timers, subtitle_phase_label)
+            if success:
+                end_ctx = _build_policy_context(
+                    subtitle_phase_label,
+                    file_id,
+                    pipeline_json,
+                    status="success",
+                    event="phase_end",
+                    state=state,
+                    duration_ms=duration_ms,
+                    include_snapshot=True,
+                )
+                _policy_call(policy_engine, "record_phase_end", end_ctx)
+                _log_policy_advice(policy_engine, end_ctx, subtitle_phase_label, file_id)
+            else:
+                failure_ctx = _build_policy_context(
+                    subtitle_phase_label,
+                    file_id,
+                    pipeline_json,
+                    status="failed",
+                    event="phase_failure",
+                    state=state,
+                    duration_ms=duration_ms,
+                    include_snapshot=True,
+                    errors=["Phase 5.5 (Subtitles) failed"],
+                )
+                _policy_call(policy_engine, "record_failure", failure_ctx)
+                _log_policy_advice(policy_engine, failure_ctx, subtitle_phase_label, file_id)
                 logger.warning("Phase 5.5 (Subtitles) failed - continuing anyway")
 
     # Find final audiobook path
@@ -2198,7 +2366,11 @@ Examples:
     # Resolve pipeline.json path
     pipeline_json = (args.pipeline_json or orchestrator_config.pipeline_path).resolve()
     state = PipelineState(pipeline_json, validate_on_read=False)
-    policy_engine = PolicyEngine()
+    policy_config = orchestrator_config.policy_engine or {}
+    policy_engine = PolicyEngine(
+        logging_enabled=bool(policy_config.get("logging", False)),
+        learning_mode=str(policy_config.get("learning_mode", "observe")),
+    )
     
     # Display header (use -> instead of → for Windows compatibility)
     phases_to_run = args.phases or orchestrator_config.phases_to_run
@@ -2217,6 +2389,7 @@ Pipeline Mode: {pipeline_mode}
     print_panel(header.strip(), "Configuration", "bold cyan")
     
     resume_enabled = not args.no_resume
+    policy_phase_timers: Dict[str, float] = {}
 
     # Configure Phase 5 concat-only hint
     if args.phase5_concat_only:
@@ -2247,20 +2420,31 @@ Pipeline Mode: {pipeline_mode}
             break
         
         # Check resume status
+        resume_status: Optional[str] = None
         if resume_enabled:
-            status = check_phase_status(state, phase_num, file_id)
-            if status == "success":
+            resume_status = check_phase_status(state, phase_num, file_id)
+            if resume_status == "success":
                 print_status(f"[green]OK Skipping {phase_name} (already completed)[/green]")
                 completed_phases.append(phase_num)
                 continue
-            elif status in ["failed", "partial"]:
-                print_status(f"[yellow]> Retrying {phase_name} (previous status: {status})[/yellow]")
+            elif resume_status in ["failed", "partial"]:
+                print_status(f"[yellow]> Retrying {phase_name} (previous status: {resume_status})[/yellow]")
         
         # Run phase with retries (use > instead of ▶ for Windows compatibility)
         print_status(f"\n[bold cyan]> Running {phase_name}...[/bold cyan]")
         
         phase_label = f"phase{phase_num}"
-        _policy_call(policy_engine, "before_phase", phase_label, file_id, state)
+        policy_phase_timers[phase_label] = time.perf_counter()
+        start_ctx = _build_policy_context(
+            phase_label,
+            file_id,
+            pipeline_json,
+            status="starting",
+            event="phase_start",
+            state=state,
+            extra={"resume_status": resume_status},
+        )
+        _policy_call(policy_engine, "record_phase_start", start_ctx)
 
         success = run_phase_with_retry(
             phase_num,
@@ -2274,9 +2458,21 @@ Pipeline Mode: {pipeline_mode}
             policy_engine=policy_engine,
         )
 
-        _policy_call(policy_engine, "after_phase", phase_label, file_id, state)
-        
         if not success:
+            failure_duration = _pop_phase_duration(policy_phase_timers, phase_label)
+            failure_ctx = _build_policy_context(
+                phase_label,
+                file_id,
+                pipeline_json,
+                status="failed",
+                event="phase_failure",
+                state=state,
+                duration_ms=failure_duration,
+                include_snapshot=True,
+                errors=[f"Phase {phase_num} failed"],
+            )
+            _policy_call(policy_engine, "record_failure", failure_ctx)
+            _log_policy_advice(policy_engine, failure_ctx, phase_label, file_id)
             play_sound(success=False)
             print_panel(
                 f"Pipeline aborted at {phase_name}\n\n"
@@ -2289,6 +2485,20 @@ Pipeline Mode: {pipeline_mode}
         
         print_status(f"[green]OK {phase_name} completed successfully[/green]")
         play_sound(success=True)
+
+        duration_ms = _pop_phase_duration(policy_phase_timers, phase_label)
+        end_ctx = _build_policy_context(
+            phase_label,
+            file_id,
+            pipeline_json,
+            status="success",
+            event="phase_end",
+            state=state,
+            duration_ms=duration_ms,
+            include_snapshot=True,
+        )
+        _policy_call(policy_engine, "record_phase_end", end_ctx)
+        _log_policy_advice(policy_engine, end_ctx, phase_label, file_id)
 
         if phase_num == 5:
             archive_final_audiobook(file_id, pipeline_json)
@@ -2317,7 +2527,16 @@ Pipeline Mode: {pipeline_mode}
         phase5_dir = find_phase_dir(5)
         if phase5_dir:
             subtitle_phase_label = "phase5.5"
-            _policy_call(policy_engine, "before_phase", subtitle_phase_label, file_id, state)
+            policy_phase_timers[subtitle_phase_label] = time.perf_counter()
+            subtitle_start_ctx = _build_policy_context(
+                subtitle_phase_label,
+                file_id,
+                pipeline_json,
+                status="starting",
+                event="phase_start",
+                state=state,
+            )
+            _policy_call(policy_engine, "record_phase_start", subtitle_start_ctx)
 
             success = run_phase5_5_subtitles(
                 phase5_dir,
@@ -2326,11 +2545,36 @@ Pipeline Mode: {pipeline_mode}
                 enable_subtitles=True
             )
 
-            _policy_call(policy_engine, "after_phase", subtitle_phase_label, file_id, state)
+            duration_ms = _pop_phase_duration(policy_phase_timers, subtitle_phase_label)
             if success:
                 print_status(f"[green]OK Phase 5.5 (Subtitles) completed successfully[/green]")
+                subtitle_end_ctx = _build_policy_context(
+                    subtitle_phase_label,
+                    file_id,
+                    pipeline_json,
+                    status="success",
+                    event="phase_end",
+                    state=state,
+                    duration_ms=duration_ms,
+                    include_snapshot=True,
+                )
+                _policy_call(policy_engine, "record_phase_end", subtitle_end_ctx)
+                _log_policy_advice(policy_engine, subtitle_end_ctx, subtitle_phase_label, file_id)
             else:
                 print_status(f"[yellow]Warning: Phase 5.5 (Subtitles) failed - continuing anyway[/yellow]")
+                subtitle_failure_ctx = _build_policy_context(
+                    subtitle_phase_label,
+                    file_id,
+                    pipeline_json,
+                    status="failed",
+                    event="phase_failure",
+                    state=state,
+                    duration_ms=duration_ms,
+                    include_snapshot=True,
+                    errors=["Phase 5.5 (Subtitles) failed"],
+                )
+                _policy_call(policy_engine, "record_failure", subtitle_failure_ctx)
+                _log_policy_advice(policy_engine, subtitle_failure_ctx, subtitle_phase_label, file_id)
 
     # Calculate duration
     duration = time.perf_counter() - overall_start

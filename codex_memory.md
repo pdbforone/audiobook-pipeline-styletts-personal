@@ -101,5 +101,10 @@
 - PDF classification heuristic uses text length, density, replacement-char ratio, and alphabetic token ratio; logs classification stats.
 - Shared helper `compute_sha256` in utils for Phase1/2 consistency; tests updated for new flow and JSON merge behavior (install dev deps to run).
 
+## Policy Engine & Prefect Orchestration (Mar 2026)
+- Phase 6 orchestrator now instantiates `pipeline_common.PolicyEngine` (configurable via `phase6_orchestrator/config.yaml -> policy_engine`) and wraps every phase boundary—including Phase 5.5 subtitles—with structured JSON logging to `.pipeline/policy_logs/YYYYMMDD.log` (timestamps, durations, metrics/errors, psutil CPU/memory when available).
+- `policy_engine/advisor.PolicyAdvisor` consumes the logs to issue non-blocking recommendations (chunk-size adjustments, engine reliability picks, retry-budget tweaks, and voice-variant switches after repeated failures); advice is echoed in orchestrator logs, and `python -m policy_engine report [--output path]` writes `policy_reports/summary.md`.
+- Local-only Prefect flows live in `orchestration/prefect_flows.py` (`tts_pipeline_flow` + `tts_pipeline_batch_flow`) with a CLI wrapper (`python -m orchestration.prefect_cli run|batch --pipeline ... [--no-policy]`) that forwards to the existing orchestrator while optionally sharing a single PolicyEngine instance; `.prefect/config.toml` pins the local profile so no Prefect server/agent is required.
+
 
 

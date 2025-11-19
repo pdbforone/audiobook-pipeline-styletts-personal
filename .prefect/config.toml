@@ -1,0 +1,15 @@
+[prefect]
+api_url = ""
+profile = "local"
+
+[prefect.logging]
+level = "INFO"
+
+[prefect.storage]
+default = "local"
+
+[prefect.ui]
+enabled = false
+
+[prefect.server]
+start_server = false
