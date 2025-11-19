@@ -8,6 +8,7 @@ Multi-pass text extraction with TTS-oriented normalization. Handles PDF/EPUB/DOC
 - TTS normalization hook (`tts_normalizer`) to clean whitespace/formatting and validate TTS readiness (optional if module missing).
 - Reuse check: skips extraction when Phase 2 already succeeded and source hash is unchanged (unless `--force`).
 - Output merges into `pipeline.json` under `phase2.files[file_id]` (path, tool_used, yield_pct, quality_score, language, timestamps, status) and writes extracted text to `extracted_text/{file_id}.txt`.
+- Cache: additionally stores extraction text/metadata keyed by source hash under `~/.cache/phase2_extract` to skip re-extraction on unchanged inputs (honors `--force` to bypass).
 
 ## CLI
 ```

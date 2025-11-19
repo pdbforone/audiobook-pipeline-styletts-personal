@@ -63,6 +63,8 @@
   - Phase 4 runtime guard: optional CPU usage-based downscale (`--cpu_guard`, auto-enabled by `--cpu_safe`) using psutil; reduces workers on sustained high CPU, never below 1; warns and skips if psutil missing.
   - Phase docs: Phase 1 (`phase1-validation/README.md`), Phase 2 (`phase2-extraction/README.md`), Phase 3 (`phase3-chunking/README.md`), Phase 4 (`phase4_tts/README.md`), Phase 5 (`phase5_enhancement/README.md`), Phase 6 (`phase6_orchestrator/README.md`), Phase 7 (`phase7_batch/README.md`), and consolidated map `PHASE_DOCS.md` (phase entrypoints and doc pointers).
   - Phase 4: added `--prefer_kokoro` flag to default to Kokoro for throughput when engine was xtts.
+  - Phase 2: added source-hash cache at `~/.cache/phase2_extract` to reuse extraction text/metadata when inputs are unchanged (bypassed with `--force`).
+  - Phase 5: RNNoise now enabled by default; added optional pydub compression + limiter (threshold -24 dBFS, ratio 4:1, ceiling -1 dBFS) post-denoise/pre-LUFS normalize; config toggles added.
   - Phase 5: RNNoise now enabled by default; optional pydub-based compression+limiter added (threshold -24 dBFS, ratio 4:1, ceiling -1 dBFS) applied after denoise and before LUFS normalize.
 
 ## Operational Heuristics (Dec 2025)

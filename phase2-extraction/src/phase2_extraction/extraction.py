@@ -55,6 +55,9 @@ logger = logging.getLogger(__name__)
 nltk.download("punkt", quiet=True)
 DetectorFactory.seed = 0
 
+CACHE_DIR = Path.home() / ".cache" / "phase2_extract"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
 
 class ExtractionConfig(BaseModel):
     json_path: str
@@ -85,6 +88,36 @@ def compute_sha256(file_path: Path) -> str:
         for block in iter(lambda: f.read(1024 * 1024), b""):
             sha.update(block)
     return sha.hexdigest()
+
+
+def load_cached_extraction(source_hash: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Load cached extraction text/metadata by source hash."""
+    if not source_hash:
+        return None
+    cache_path = CACHE_DIR / f"{source_hash}.json"
+    if not cache_path.exists():
+        return None
+    try:
+        return json.loads(cache_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning(f"Phase 2 cache read failed: {exc}")
+        return None
+
+
+def save_cached_extraction(source_hash: Optional[str], text: str, tool_used: str, quality_score: float) -> None:
+    """Persist extraction text/metadata for reuse."""
+    if not source_hash:
+        return
+    cache_path = CACHE_DIR / f"{source_hash}.json"
+    payload = {
+        "text": text,
+        "tool_used": tool_used,
+        "quality_score": float(quality_score),
+    }
+    try:
+        cache_path.write_text(json.dumps(payload), encoding="utf-8")
+    except Exception as exc:
+        logger.warning(f"Phase 2 cache write failed: {exc}")
 
 
 def load_from_json(json_path: str, file_id: str, file_arg: str = None) -> Dict:
@@ -282,23 +315,34 @@ def main(config: ExtractionConfig, file_arg: str = None):
     text = ""
     tool_used = ""
     quality_score = 0.0
+    cache_hit = False
+
+    if source_hash and not config.force:
+        cached = load_cached_extraction(source_hash)
+        if cached and cached.get("text"):
+            text = cached["text"]
+            tool_used = cached.get("tool_used", "cache")
+            quality_score = float(cached.get("quality_score", 0.8))
+            cache_hit = True
+            logger.info("Phase 2: cache hit for source hash; restoring extracted text.")
     
-    if classification in ["text", "mixed"]:
-        if config.use_multipass:
-            text, tool_used, quality_score = extract_text_multipass(file_path)
-        else:
-            # Fallback to single method
-            text = extract_text_pypdf(file_path) or extract_text_pymupdf(file_path)
-            tool_used = "pypdf or pymupdf"
-            quality_score = validate_extraction_quality(text, tool_used) if text else 0.0
-    
-    elif classification == "scanned":
-        logger.warning("Scanned PDF detected - text extraction may be poor")
-        logger.warning("Consider using OCR if available")
-        text = extract_text_pymupdf(file_path)
-        tool_used = "pymupdf"
-        quality_score = 0.5  # Lower quality expected for scanned
-    
+    if not cache_hit:
+        if classification in ["text", "mixed"]:
+            if config.use_multipass:
+                text, tool_used, quality_score = extract_text_multipass(file_path)
+            else:
+                # Fallback to single method
+                text = extract_text_pypdf(file_path) or extract_text_pymupdf(file_path)
+                tool_used = "pypdf or pymupdf"
+                quality_score = validate_extraction_quality(text, tool_used) if text else 0.0
+        
+        elif classification == "scanned":
+            logger.warning("Scanned PDF detected - text extraction may be poor")
+            logger.warning("Consider using OCR if available")
+            text = extract_text_pymupdf(file_path)
+            tool_used = "pymupdf"
+            quality_score = 0.5  # Lower quality expected for scanned
+
     if not text.strip():
         logger.error("Extraction failed - no text extracted")
         status = "failed"
@@ -338,7 +382,9 @@ def main(config: ExtractionConfig, file_arg: str = None):
             status = "partial_success"
         else:
             status = "failed"
-    
+        if source_hash:
+            save_cached_extraction(source_hash, text, tool_used, quality_score)
+
     # Calculate metrics
     end_time = perf_counter()
     duration = end_time - start_time
