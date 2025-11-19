@@ -144,7 +144,7 @@ calculate_chunk_metrics() returns:
 Run Phase 3 on a sample file and check for incomplete chunks:
 
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase3-chunking
+cd path\to\audiobook-pipeline-styletts-personal\phase3-chunking
 
 # Run chunking on a test file
 poetry run python -m phase3_chunking.main \
@@ -163,8 +163,8 @@ Re-run Phase 3 on "The Meditations" to generate new chunks without mid-sentence 
 
 ```bash
 # Back up existing chunks first
-cp -r "C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase3-chunking\chunks" \
-      "C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase3-chunking\chunks_backup"
+cp -r "path\to\audiobook-pipeline-styletts-personal\phase3-chunking\chunks" \
+      "path\to\audiobook-pipeline-styletts-personal\phase3-chunking\chunks_backup"
 
 # Re-run Phase 3
 poetry run python -m phase3_chunking.main \
@@ -397,3 +397,5 @@ Phase 3 chunking fix is successful when:
 **Author**: Claude (Sonnet 4.5)  
 **Based on**: TTS chunking research (7 minutes, 311 sources)  
 **Implementation**: 2025-10-30
+
+

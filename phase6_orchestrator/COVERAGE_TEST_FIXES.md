@@ -38,8 +38,10 @@ if isinstance(chunk_paths_data, list):
 
 ### Run the tests now:
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 .\run_coverage_tests.bat
 ```
 
 This should work now! 🎯
+
+

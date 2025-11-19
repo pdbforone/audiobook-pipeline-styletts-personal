@@ -5,6 +5,8 @@ from dataclasses import dataclass, field as dataclass_field
 import os
 import json
 
+from pipeline_common import PipelineState
+
 
 class EnhancementConfig(BaseModel):
     """Configuration for audio enhancement pipeline"""
@@ -247,9 +249,13 @@ class EnhancementConfig(BaseModel):
 
         path = Path(self.pipeline_json)
         if not path.exists():
-            # Create empty pipeline.json if missing
-            with open(path, "w") as f:
-                json.dump({"phase5": {}}, f)
+            state = PipelineState(path, validate_on_read=False)
+            with state.transaction(validate=False) as txn:
+                phase_block = txn.data.setdefault("phase5", {})
+                phase_block.setdefault("status", "pending")
+                phase_block.setdefault("files", {})
+                phase_block.setdefault("errors", [])
+                phase_block.setdefault("timestamps", {})
         return self
 
     def _apply_profile_defaults(self) -> None:
@@ -347,6 +353,7 @@ class SubtitleConfig:
     audio_path: Path
     output_dir: Path = dataclass_field(default_factory=lambda: Path("subtitles"))
     file_id: str = "audiobook"
+    pipeline_json: Optional[Path] = None
 
     # Model Selection
     model_size: Literal["tiny", "small", "base"] = "small"
@@ -384,3 +391,5 @@ class SubtitleConfig:
         self.output_dir = Path(self.output_dir)
         if self.reference_text_path:
             self.reference_text_path = Path(self.reference_text_path)
+        if self.pipeline_json:
+            self.pipeline_json = Path(self.pipeline_json)

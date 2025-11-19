@@ -50,7 +50,7 @@ cd phase1-validation
 poetry env remove --all
 
 # Create virtualenv with correct Python
-poetry env use "C:\Users\myson\AppData\Local\Programs\Python\Python312\python.exe"
+poetry env use "path\to\Python312\python.exe"
 
 # Install dependencies
 poetry install --sync
@@ -241,7 +241,7 @@ poetry run python src/phase7_batch/main.py --input-dir ../input --pipeline ../pi
 ## Directory Structure After Setup
 
 ```
-audiobook-pipeline-chatterbox/
+audiobook-pipeline-styletts-personal/
 ├── phase1-validation/
 │   └── .venv/              # Python 3.12+ virtualenv
 ├── phase2-extraction/
@@ -285,3 +285,4 @@ If setup still fails after running scripts:
    ```
 
 4. **Share error output** from scripts for diagnosis.
+

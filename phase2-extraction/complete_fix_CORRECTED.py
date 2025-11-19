@@ -15,6 +15,7 @@ from pathlib import Path
 import shutil
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEPRECATED_PROCESS_SCRIPT = PROJECT_ROOT / "deprecated" / "phase2-extraction" / "process_systematic_theology_FIXED.py"
 
 print("=" * 80)
 print("SYSTEMATIC THEOLOGY - COMPLETE FIX (CORRECTED)")
@@ -139,12 +140,12 @@ else:
 # Step 4: Process the file
 print("\n📄 STEP 4: PROCESSING SYSTEMATIC THEOLOGY")
 print("=" * 80)
-print("\nNow running process_systematic_theology_FIXED.py...")
+print(f"\nNow running deprecated fixer at {DEPRECATED_PROCESS_SCRIPT}...")
 print("This will run Phase 1 → Phase 2 with proper tracking\n")
 
 # Run the FIXED processing script
 result = subprocess.run(
-    ["python", "process_systematic_theology_FIXED.py"],
+    ["python", str(DEPRECATED_PROCESS_SCRIPT)],
     cwd=str(phase2_dir)
 )
 

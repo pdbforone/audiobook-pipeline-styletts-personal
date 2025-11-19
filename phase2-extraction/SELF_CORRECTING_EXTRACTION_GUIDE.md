@@ -204,12 +204,12 @@ else:  # simple mode - existing extraction
 ### Test Multi-Pass:
 ```bash
 cd phase2-extraction
-python multi_pass_extractor.py "C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\input\Systematic Theology.pdf"
+python multi_pass_extractor.py "path\to\audiobook-pipeline-styletts-personal\input\Systematic Theology.pdf"
 ```
 
 ### Test Consensus:
 ```bash
-python consensus_extractor.py "C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\input\Systematic Theology.pdf" 0.8
+python consensus_extractor.py "path\to\audiobook-pipeline-styletts-personal\input\Systematic Theology.pdf" 0.8
 ```
 
 ### Compare Methods:
@@ -222,7 +222,7 @@ from multi_pass_extractor import extract_with_self_correction
 from consensus_extractor import extract_with_consensus
 from pathlib import Path
 
-pdf = "C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/input/Systematic Theology.pdf"
+pdf = "path/to/audiobook-pipeline-styletts-personal/input/Systematic Theology.pdf"
 
 print("Testing Multi-Pass...")
 text1, meta1 = extract_with_self_correction(pdf)
@@ -333,3 +333,5 @@ min_confidence: 0.6
 ✅ **CPU-only (no GPU required)**
 
 The extractors "work harder" by trying multiple methods, "check their work" by validating quality, and "correct mistakes" by choosing the best result or using OCR fallback.
+
+

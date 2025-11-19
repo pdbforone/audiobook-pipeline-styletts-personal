@@ -22,7 +22,7 @@ The orchestrator produces **lower quality** extraction than the test script beca
 
 ### Option 1: Quick Fix (Recommended)
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction
+cd path\to\audiobook-pipeline-styletts-personal\phase2-extraction
 
 # Backup original
 copy src\phase2_extraction\extraction.py src\phase2_extraction\extraction_BACKUP.py
@@ -109,3 +109,5 @@ Fix this BEFORE running any more full pipelines.
 ---
 
 **Next Action:** Choose Option 1 (quick fix) and run the commands above.
+
+

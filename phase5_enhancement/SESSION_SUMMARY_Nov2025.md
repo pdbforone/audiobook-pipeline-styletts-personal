@@ -28,7 +28,7 @@ This phrase appears scattered throughout the audiobook and needs removal before 
 **Usage**:
 ```bash
 poetry run python validate_subtitles.py \
-  --phase2-text "C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\the meditations, by Marcus Aurelius.txt" \
+  --phase2-text "path\to\audiobook-pipeline-styletts-personal\phase2-extraction\extracted_text\the meditations, by Marcus Aurelius.txt" \
   --subtitle-file "processed\meditations_audiobook.srt" \
   --output "validation_report.txt"
 ```
@@ -222,7 +222,7 @@ the meditations, by Marcus Aurelius_chunk_001.wav
 ## 🗂️ File Reference Map
 
 ```
-audiobook-pipeline-chatterbox/
+audiobook-pipeline-styletts-personal/
 ├── phase2-extraction/
 │   └── extracted_text/
 │       └── the meditations, by Marcus Aurelius.txt  ← Source text (44,743 words)
@@ -257,9 +257,9 @@ audiobook-pipeline-chatterbox/
 
 ### **Validate Subtitles**
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement
+cd path\to\audiobook-pipeline-styletts-personal\phase5_enhancement
 poetry run python validate_subtitles.py \
-  --phase2-text "C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\the meditations, by Marcus Aurelius.txt" \
+  --phase2-text "path\to\audiobook-pipeline-styletts-personal\phase2-extraction\extracted_text\the meditations, by Marcus Aurelius.txt" \
   --subtitle-file "processed\meditations_audiobook.srt"
 ```
 
@@ -337,3 +337,5 @@ When picking up this project:
 **Last Updated**: November 3, 2025  
 **Session Duration**: ~3 hours  
 **Primary Achievement**: Identified Phase 5 issues and created manual workaround tools
+
+

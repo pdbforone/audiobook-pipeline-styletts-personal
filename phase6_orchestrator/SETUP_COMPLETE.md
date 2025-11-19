@@ -37,7 +37,7 @@ Try running it on your test file:
 
 ```bash
 cd phase6_orchestrator
-python orchestrator.py "C:\Users\myson\Pipeline\The Analects of Confucius_20240228.pdf"
+python orchestrator.py "path\to\The Analects of Confucius_20240228.pdf"
 ```
 
 ### 3. Debug Any Issues
@@ -170,8 +170,10 @@ Phase 6 is now the **main entry point** for processing one file through the enti
 Try this now:
 
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 python test_conda.py
 ```
 
 This will tell you if Phase 4 is ready. Then you can run the full orchestrator!
+
+

@@ -209,7 +209,7 @@ Edit `configs/voices.json` to:
 **Fix**: Ensure `configs/voices.json` exists at monorepo root:
 ```powershell
 # Should exist at:
-audiobook-pipeline-chatterbox/configs/voices.json
+audiobook-pipeline-styletts-personal/configs/voices.json
 ```
 
 ### Issue: Low genre confidence
@@ -244,3 +244,4 @@ audiobook-pipeline-chatterbox/configs/voices.json
 ---
 
 **Ready to test!** Start with the Quick Test above, then run a full chunking test on The Analects.
+

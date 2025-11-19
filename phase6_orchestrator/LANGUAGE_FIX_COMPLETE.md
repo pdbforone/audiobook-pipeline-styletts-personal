@@ -84,7 +84,7 @@ cmd = [
 ### Test 1: Run Verification Script
 
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 python test_language_fix.py
 ```
 
@@ -218,7 +218,7 @@ if detected not in SUPPORTED_LANGUAGES:
 
 ### Test the fix:
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 python test_language_fix.py
 python orchestrator.py "The Analects of Confucius.pdf" --phases 4
 ```
@@ -244,3 +244,5 @@ type ..\phase4_tts\chunk_0_error.log
 **Files Modified:** `orchestrator.py` (1 line added)  
 **Impact:** Minimal, surgical fix  
 **Risk:** Low - adds explicit parameter that was implicitly defaulted
+
+

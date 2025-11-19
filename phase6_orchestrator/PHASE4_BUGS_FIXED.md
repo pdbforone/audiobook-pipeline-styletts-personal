@@ -42,7 +42,7 @@ validated = TTSRecord(**file_data)  # Pass dict only
 
 ### Direct Test (Single Chunk)
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 python test_phase4_direct.py
 ```
 
@@ -50,7 +50,7 @@ Expected: Chunk 0 should process successfully and create `audio_chunks\chunk_0.w
 
 ### Full Orchestrator Test
 ```bash
-python orchestrator.py "C:\Users\myson\Pipeline\The Analects of Confucius.pdf" --phases 4
+python orchestrator.py "path\to\The Analects of Confucius.pdf" --phases 4
 ```
 
 Expected: All 109 chunks should process successfully!
@@ -70,3 +70,5 @@ Expected: All 109 chunks should process successfully!
 | phase4_tts/main.py | ~288 | Fixed duplicate `file_id` argument |
 
 Test it now! 🚀
+
+

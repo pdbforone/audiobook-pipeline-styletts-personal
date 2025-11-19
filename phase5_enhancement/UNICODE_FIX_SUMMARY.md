@@ -91,7 +91,7 @@ is_clipped = False  # [PATCHED]
 ### Option 1: Automated (Recommended)
 
 ```powershell
-C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement\apply_fix_and_test.bat
+path\to\audiobook-pipeline-styletts-personal\phase5_enhancement\apply_fix_and_test.bat
 ```
 
 **What it does:**
@@ -390,3 +390,5 @@ step2_run_phase5.bat
 
 **Last Updated:** October 30, 2025
 **Status:** ✅ Ready for production use
+
+

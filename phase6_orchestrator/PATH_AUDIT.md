@@ -164,7 +164,7 @@ python orchestrator.py ../input/The_Analects_of_Confucius_20240228.pdf
 
 ### 2. If Still Fails, Try Absolute Path
 ```powershell
-python orchestrator.py "C:\Users\myson\Pipeline\audiobook-pipeline\input\The_Analects_of_Confucius_20240228.pdf"
+python orchestrator.py "path\to\audiobook-pipeline-styletts-personal\input\The_Analects_of_Confucius_20240228.pdf"
 ```
 
 ### 3. Verify Conda Environment for Phase 4
@@ -186,7 +186,7 @@ pip install piper-tts librosa requests torchaudio
 ## File Locations Reference
 
 ```
-C:\Users\myson\Pipeline\audiobook-pipeline\
+path\to\audiobook-pipeline-styletts-personal\
 ├── input/
 │   └── The_Analects_of_Confucius_20240228.pdf  ✓ EXISTS
 ├── pipeline.json  ← Single source of truth
@@ -234,3 +234,5 @@ C:\Users\myson\Pipeline\audiobook-pipeline\
 ✅ Ready to test end-to-end pipeline
 
 **Next Step:** Run the orchestrator and test!
+
+

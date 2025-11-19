@@ -122,7 +122,7 @@ pip install poetry
 After successful run, you'll see:
 
 ```
-audiobook-pipeline-chatterbox/
+audiobook-pipeline-styletts-personal/
 ├── pipeline.json                  # ✅ Updated with all phase data
 ├── phase2-extraction/
 │   └── extracted_text/
@@ -210,3 +210,4 @@ After confirming everything works:
 
 **Last Updated**: 2025-10-11  
 **Status**: Phase 3 fixed ✅ - spaCy model required ⚠️
+

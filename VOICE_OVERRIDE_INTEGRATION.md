@@ -38,7 +38,7 @@ PHASE 3 (Chunking)                       PHASE 4 (TTS Synthesis)
 ## 🗂️ File Structure
 
 ```
-audiobook-pipeline-chatterbox/
+audiobook-pipeline-styletts-personal/
 │
 ├── configs/
 │   └── voices.json                      # 14 narrator definitions
@@ -516,3 +516,4 @@ poetry run python src/main.py --file_id meditations --json_path ../pipeline.json
 Start processing audiobooks with genre-appropriate, overridable voice selection!
 
 For detailed usage examples, see: **VOICE_OVERRIDE_USAGE_GUIDE.md**
+

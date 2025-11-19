@@ -70,7 +70,7 @@ Add punctuation to incomplete chunks after all attempts to complete them natural
 3. Save the file
 4. Re-run Phase 3 on your problematic file:
    ```bash
-   cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase3-chunking
+   cd path\to\audiobook-pipeline-styletts-personal\phase3-chunking
    poetry run python -m phase3_chunking.main --file_id "the meditations, by Marcus Aurelius" --json_path ../pipeline.json
    ```
 5. Check the chunk file again - it should now end with a period
@@ -104,3 +104,5 @@ Grok suggested similar logic but:
 - Over-complicated with unnecessary new functions
 
 Your code already has 90% of the solution - it just needs the safety net of adding punctuation when natural completion isn't possible.
+
+

@@ -7,7 +7,7 @@
 ## Step 1: Install Dependencies (5 min)
 
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction
+cd path\to\audiobook-pipeline-styletts-personal\phase2-extraction
 
 # Install all new dependencies
 poetry add python-docx ebooklib beautifulsoup4 lxml readability-lxml pdf2image pypdf
@@ -174,3 +174,5 @@ poetry run python orchestrator.py --file_id full_test --input path\to\file.pdf
 ---
 
 **Ready? Start with Step 1!** 🚀
+
+

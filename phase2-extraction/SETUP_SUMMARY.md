@@ -13,7 +13,7 @@
 ## Solution - Run These Commands
 
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction
+cd path\to\audiobook-pipeline-styletts-personal\phase2-extraction
 
 # First, ensure package is installed
 poetry install
@@ -67,3 +67,5 @@ Once tests pass:
 ## Questions?
 
 If tests fail, share the output from diagnose.py with Claude.
+
+

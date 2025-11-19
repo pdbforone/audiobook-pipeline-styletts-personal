@@ -11,6 +11,7 @@ from .state_manager import (
     StateValidationError,
     StateWriteError,
 )
+from .policy_engine import PolicyEngine
 from .schema import (
     CANONICAL_JSON_SCHEMA,
     CANONICAL_SCHEMA_VERSION,
@@ -50,4 +51,5 @@ __all__ = [
     "ensure_phase_file_entry",
     "ensure_phase_files",
     "ensure_phase_and_file",
+    "PolicyEngine",
 ]

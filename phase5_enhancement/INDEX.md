@@ -102,7 +102,7 @@ All located in: `phase5_enhancement/`
 ### **1. Validate Current Subtitles**
 ```bash
 poetry run python validate_subtitles.py \
-  --phase2-text "C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\the meditations, by Marcus Aurelius.txt" \
+  --phase2-text "path\to\audiobook-pipeline-styletts-personal\phase2-extraction\extracted_text\the meditations, by Marcus Aurelius.txt" \
   --subtitle-file "processed\meditations_audiobook.srt"
 ```
 
@@ -159,3 +159,5 @@ poetry run python generate_subtitles.py --input processed/meditations_audiobook.
 3. validation_report.txt for current state
 
 **Good luck! 🎧**
+
+

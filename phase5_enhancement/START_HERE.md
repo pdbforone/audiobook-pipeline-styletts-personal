@@ -15,7 +15,7 @@ The integrated Phase 5 code had **Unicode encoding errors** that caused crashes 
 ### Step 1: Run the Test Script
 
 ```powershell
-C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement\apply_fix_and_test.bat
+path\to\audiobook-pipeline-styletts-personal\phase5_enhancement\apply_fix_and_test.bat
 ```
 
 **What it does:**
@@ -45,7 +45,7 @@ UnicodeEncodeError    ❌ (This means Unicode chars still present)
 ### Run Full Processing:
 
 ```powershell
-C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\step2_run_phase5.bat
+path\to\audiobook-pipeline-styletts-personal\step2_run_phase5.bat
 ```
 
 This will:
@@ -85,3 +85,5 @@ This will:
 
 **Status:** ✅ Fix applied and ready to test
 **Next Step:** Run `apply_fix_and_test.bat`
+
+

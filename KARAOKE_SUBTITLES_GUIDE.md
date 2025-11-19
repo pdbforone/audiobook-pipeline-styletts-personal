@@ -313,4 +313,5 @@ For issues or questions:
 
 ## License
 
-This feature is part of the audiobook-pipeline-chatterbox project.
+This feature is part of the audiobook-pipeline-styletts-personal project.
+

@@ -85,7 +85,7 @@ for i in range(len(chunks)):
 
 ### **Test 1: Verify Correct Chunk Loading**
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase4_tts
+cd path\to\audiobook-pipeline-styletts-personal\phase4_tts
 conda activate phase4_tts
 
 python src\phase4_tts\main.py --chunk_id 441 --file_id The_Analects_of_Confucius_20240228 --json_path ..\pipeline.json --language en --enable-splitting
@@ -216,7 +216,7 @@ Errors: []
 If these fixes cause new issues, revert changes:
 
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline
+cd path\to\audiobook-pipeline-styletts-personal
 
 # Revert chunk_loader.py
 git checkout phase4_tts/src/phase4_tts/chunk_loader.py
@@ -263,3 +263,5 @@ Or manually restore from backups if not using git.
 
 **Generated**: 2025-10-03 20:55 (after applying all fixes)
 **Next Update**: After running Test 1-3 above
+
+

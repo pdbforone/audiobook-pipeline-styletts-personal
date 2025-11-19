@@ -25,7 +25,7 @@ We need to **verify** that what we extract matches what's in the PDF.
 
 **Usage:**
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction
+cd path\to\audiobook-pipeline-styletts-personal\phase2-extraction
 python compare_pdf_to_extracted.py
 ```
 
@@ -400,3 +400,5 @@ Recommendation: Normalize then proceed to Phase 3
 2. Try different extraction parameters
 3. Consider OCR for scanned PDFs
 4. Report findings for troubleshooting
+
+

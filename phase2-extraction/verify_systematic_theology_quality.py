@@ -115,7 +115,7 @@ if alphabetic/len(sample_for_analysis) > 0.6 and found_common > 10 and not has_i
     print("   - No significant gibberish indicators")
     print("\n   The file is ready to use!")
     print("   However, it should be processed through Phase 1 → Phase 2 for proper tracking.")
-    print("\n   Run: python process_systematic_theology_FIXED.py")
+    print("\n   Run: python deprecated/phase2-extraction/process_systematic_theology_FIXED.py")
 elif alphabetic/len(sample_for_analysis) > 0.4 and found_common > 5:
     print("\n⚠️  TEXT IS PARTIALLY READABLE")
     print("   - Some quality issues detected")

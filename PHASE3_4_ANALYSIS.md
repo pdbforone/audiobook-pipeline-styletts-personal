@@ -83,7 +83,7 @@ coherence_threshold: 0.4  # LOWERED for classical texts
 ## TASK 3: Re-run Phase 3 Command
 
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase3-chunking
+cd path\to\audiobook-pipeline-styletts-personal\phase3-chunking
 poetry run python -m phase3_chunking.main `
   --file_id The_Analects_of_Confucius_20240228 `
   --json_path ..\pipeline.json `
@@ -119,14 +119,14 @@ Chunk   | Chars | Words | Predicted Duration | Content Type
 
 **Option A: Using Test Script**
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline
+cd path\to\audiobook-pipeline-styletts-personal
 conda activate chatterbox_env
 python test_phase4_chunks.py
 ```
 
 **Option B: Manual Chunk-by-Chunk**
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase4_tts
+cd path\to\audiobook-pipeline-styletts-personal\phase4_tts
 conda activate chatterbox_env
 
 # Test each chunk individually
@@ -271,7 +271,7 @@ test_import = [
 
 ### Full Orchestrator Test Command
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 
 # Full pipeline (all phases)
 python orchestrator.py ..\input\The_Analects_of_Confucius_20240228.pdf
@@ -434,3 +434,5 @@ All critical fixes are in place. The pipeline should now correctly handle:
 - ✅ Conda environment activation
 
 **Ready for testing!**
+
+

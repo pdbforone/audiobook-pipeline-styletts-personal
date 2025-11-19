@@ -122,7 +122,7 @@ Without this, Phase 5 would always try to resume from old pipeline.json data, ca
 
 ### Quick Test (5-10 minutes)
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 .\test_phase5_fix.bat
 ```
 
@@ -130,7 +130,7 @@ This runs ONLY Phase 5 with the fixes enabled.
 
 ### Full Pipeline Test
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 poetry run python orchestrator.py "..\input\The_Analects_of_Confucius_20240228.pdf" --pipeline-json="..\pipeline.json"
 ```
 
@@ -223,3 +223,5 @@ When adding resume/checkpoint logic:
 3. Clear processed/ directory
 
 **Result:** Phase 5 will now process all 637 chunks every time, producing a complete audiobook.
+
+

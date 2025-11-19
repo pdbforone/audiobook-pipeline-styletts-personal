@@ -4,7 +4,7 @@ Run these commands to verify all bug fixes are working:
 
 ## 🧪 **Test 1: Phase 4 MOS Score (Fix #2)**
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase4_tts
+cd path\to\audiobook-pipeline-styletts-personal\phase4_tts
 conda activate phase4_tts
 
 # Re-run chunk_441 with fixed MOS calculation
@@ -200,3 +200,5 @@ Total time: ~45 minutes (including Phase 5 full run)
 ---
 
 **Ready to test! Start with Test 1 and report back with results.**
+
+

@@ -914,6 +914,7 @@ def update_phase4_summary(
     results: List[ChunkResult],
     output_dir: Path,
     duration_sec: float,
+    summary_path: Optional[Path] = None,
 ) -> None:
     """Write phase4 status back to pipeline.json following the documented schema."""
     state = PipelineState(pipeline_path, validate_on_read=False)
@@ -986,6 +987,8 @@ def update_phase4_summary(
                 serialize_path_for_pipeline(r.output_path) for r in results if r.success and r.output_path
             ],
         }
+        if summary_path:
+            artifacts["run_summary"] = serialize_path_for_pipeline(summary_path)
         metrics = {
             "total_chunks": total,
             "chunks_completed": completed,
@@ -1051,8 +1054,8 @@ def write_run_summary(
     requested_engine: str,
     selected_engine: str,
     voice_id: str,
-) -> None:
-    """Persist a lightweight summary.json for quick inspection."""
+) -> Path:
+    """Persist a lightweight summary.json for quick inspection and return its path."""
     rt_values = [
         r.rt_factor for r in results if r.success and r.rt_factor is not None and np.isfinite(r.rt_factor)
     ]
@@ -1082,6 +1085,7 @@ def write_run_summary(
     summary_path = output_dir / "summary.json"
     with open(summary_path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)
+    return summary_path
 
 
 ENGINE_IMPORT_MAP: Dict[str, Tuple[str, str]] = {
@@ -1596,6 +1600,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
     logger.info("-" * 80)
 
+    summary_path = write_run_summary(
+        output_dir=output_dir,
+        results=results,
+        duration_sec=duration,
+        requested_engine=engine_requested,
+        selected_engine=engine_selected,
+        voice_id=voice_id,
+    )
     update_phase4_summary(
         pipeline_path=json_path,
         file_id=resolved_file_id,
@@ -1606,14 +1618,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         results=results,
         output_dir=output_dir,
         duration_sec=duration,
-    )
-    write_run_summary(
-        output_dir=output_dir,
-        results=results,
-        duration_sec=duration,
-        requested_engine=engine_requested,
-        selected_engine=engine_selected,
-        voice_id=voice_id,
+        summary_path=summary_path,
     )
 
     exit_code = 0 if failed_count == 0 else 1

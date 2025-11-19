@@ -255,7 +255,7 @@ Look at the error messages carefully - they're detailed and actionable.
 ### Verify File Paths
 Make sure you're in the correct directory:
 ```batch
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 ```
 
 ### Check Disk Space
@@ -288,3 +288,5 @@ If you need to report an issue, include:
 
 **Last Updated**: 2025-10-11
 **Most Common Issue**: spaCy model not downloaded (run install_spacy_model.bat)
+
+

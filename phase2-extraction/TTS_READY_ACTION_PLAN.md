@@ -32,7 +32,7 @@
 The multi-pass file has **MORE text** (4.0MB vs 3.7MB = 288KB more), making it more complete and less likely truncated.
 
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction
+cd path\to\audiobook-pipeline-styletts-personal\phase2-extraction
 python normalize_now.py
 ```
 
@@ -237,7 +237,7 @@ Systematic_Theology_multipass_TTS_READY.txt
 ## ⚡ Run This Now
 
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction
+cd path\to\audiobook-pipeline-styletts-personal\phase2-extraction
 python normalize_now.py
 ```
 
@@ -248,3 +248,5 @@ This will give you a TTS-ready file for Systematic Theology that's:
 - ✅ Ready for Phase 3 (chunking)
 
 **Then all future extractions will automatically be TTS-ready!**
+
+

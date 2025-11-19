@@ -81,8 +81,10 @@ Duration: ~75 minutes
 ## Ready to Run
 
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 .\emergency_fix_v3.bat
 ```
 
 The key insight: **Filename only, not full path!** 🎯
+
+

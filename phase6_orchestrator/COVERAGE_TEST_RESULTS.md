@@ -78,7 +78,7 @@ To verify chunk_441 (or any chunk) has all text:
 
 ```powershell
 # 1. Read the chunk file
-type "C:\Users\myson\Pipeline\audiobook-pipeline\phase3-chunking\chunks\The_Analects_of_Confucius_20240228_chunk_441.txt"
+type "path\to\audiobook-pipeline-styletts-personal\phase3-chunking\chunks\The_Analects_of_Confucius_20240228_chunk_441.txt"
 
 # 2. Play the audio
 # (Use Windows Media Player or VLC)
@@ -135,3 +135,5 @@ python test_coverage_manual.py
 ```
 
 This will tell you if chunking preserved all text. Then we can discuss whether Phase 4 TTS is skipping content.
+
+

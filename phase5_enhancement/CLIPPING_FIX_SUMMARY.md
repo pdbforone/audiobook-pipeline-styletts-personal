@@ -74,7 +74,7 @@ if peak > 0.95:
 
 ### Step 1: Clear Old Output
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase5_enhancement
+cd path\to\audiobook-pipeline-styletts-personal\phase5_enhancement
 Remove-Item -Recurse -Force processed/* -ErrorAction SilentlyContinue
 ```
 
@@ -242,3 +242,5 @@ The only reason this isn't 100% is that if Phase 4 output is already clipped, Ph
 ---
 
 **Ready to test? Run the single chunk test and report back!** 🚀
+
+

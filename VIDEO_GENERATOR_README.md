@@ -3,7 +3,7 @@
 ## ✅ INSTALLED: Gift of The Magi Video Generator
 
 ### 📍 File Location
-`C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\generate_gift_of_magi_video.ps1`
+`path\to\audiobook-pipeline-styletts-personal\generate_gift_of_magi_video.ps1`
 
 ---
 
@@ -12,7 +12,7 @@
 ### Run This Command Now:
 
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox
+cd path\to\audiobook-pipeline-styletts-personal
 .\generate_gift_of_magi_video.ps1
 ```
 
@@ -181,3 +181,5 @@ This Week:
 *Created: November 2024*  
 *Status: ✅ Production Ready*  
 *Business Impact: Professional ELL-optimized videos at zero cost*
+
+

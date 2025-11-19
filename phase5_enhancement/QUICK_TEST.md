@@ -2,7 +2,7 @@
 
 ## Verify Configuration
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase5_enhancement
+cd path\to\audiobook-pipeline-styletts-personal\phase5_enhancement
 python verify_fix.py
 ```
 
@@ -116,3 +116,5 @@ start ..\phase4_tts\audio_chunks\chunk_0000.wav
 ---
 
 Ready to test? Start with the **Verify Configuration** step!
+
+

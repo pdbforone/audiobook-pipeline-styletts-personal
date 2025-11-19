@@ -10,7 +10,7 @@ Your "Systematic Theology.pdf" is extracting as gibberish because:
 
 ### Step 1: Install pypdf library
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction
+cd path\to\audiobook-pipeline-styletts-personal\phase2-extraction
 poetry add pypdf
 ```
 
@@ -26,7 +26,7 @@ copy extraction_PATCHED.py src\phase2_extraction\extraction.py
 ### Step 3: Re-extract Systematic Theology
 ```bash
 # Run Phase 2 with the new extraction code
-poetry run python -m phase2_extraction.extraction --file_id "Systematic_Theology" --file "C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\input\Systematic Theology.pdf"
+poetry run python -m phase2_extraction.extraction --file_id "Systematic_Theology" --file "path\to\audiobook-pipeline-styletts-personal\input\Systematic Theology.pdf"
 ```
 
 ## Verify the Fix
@@ -91,7 +91,7 @@ if "Systematic Theology" in file_path:
 #### Option C: OCR as last resort
 ```bash
 # Force OCR extraction (slow but accurate)
-poetry run python -m phase2_extraction.extraction --file_id "Systematic_Theology" --file "C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\input\Systematic Theology.pdf" --config config_force_ocr.yaml
+poetry run python -m phase2_extraction.extraction --file_id "Systematic_Theology" --file "path\to\audiobook-pipeline-styletts-personal\input\Systematic Theology.pdf" --config config_force_ocr.yaml
 ```
 
 Create `config_force_ocr.yaml`:
@@ -148,3 +148,5 @@ python test_extraction_methods.py
 # Check what was extracted
 head -c 1000 "extracted_text\Systematic Theology.txt"
 ```
+
+

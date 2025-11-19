@@ -18,7 +18,7 @@ The `--chunk_id` parameter now works correctly!
 ## 🧪 Test Single Chunk Now
 
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase5_enhancement
+cd path\to\audiobook-pipeline-styletts-personal\phase5_enhancement
 
 # Verify config
 python verify_fix.py
@@ -135,3 +135,5 @@ volume_norm_headroom: 0.5   # Maximum headroom
 ---
 
 Ready to test! Run the commands above and report back how it sounds! 🎧
+
+

@@ -88,7 +88,7 @@ But it went too far and removed structural content that's part of the actual boo
 
 1. **Edit file**:
    ```
-   C:\Users\myson\Pipeline\audiobook-pipeline\phase3-chunking\src\phase3_chunking\utils.py
+   path\to\audiobook-pipeline-styletts-personal\phase3-chunking\src\phase3_chunking\utils.py
    ```
 
 2. **Find line 111**:
@@ -123,3 +123,5 @@ text = re.sub(r"[^\w\s.,;:!?\-'\"\nIVXLCDM]", "", text)
 ```
 
 But honestly, **minimal cleaning is better** - TTS models can handle most characters fine!
+
+

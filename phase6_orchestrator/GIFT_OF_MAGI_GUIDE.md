@@ -80,7 +80,7 @@ Synthesizing 8-12 chunks...
 
 ### File Structure After Success:
 ```
-audiobook-pipeline-chatterbox/
+audiobook-pipeline-styletts-personal/
 ├── pipeline_magi.json              # Pipeline state
 ├── input/
 │   └── Gift of the Magi.pdf        # Original PDF
@@ -321,3 +321,4 @@ cd phase6_orchestrator
 **Test File**: Gift of the Magi.pdf (86KB, ~2000 words)  
 **Expected Time**: 6-11 minutes  
 **Expected Output**: ~10-15 minute audiobook
+

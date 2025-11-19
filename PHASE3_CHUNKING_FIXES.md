@@ -163,7 +163,7 @@ if current_chunk and current_char_count >= min_chars:
 ### 1. Test on Sample Text (first 2000 chars)
 ```bash
 # Extract sample
-head -c 2000 "C:\Users\myson\Pipeline\audiobook-pipeline\phase2-extraction\extracted_text\The_Analects_of_Confucius_20240228.txt" > test_sample.txt
+head -c 2000 "path\to\audiobook-pipeline-styletts-personal\phase2-extraction\extracted_text\The_Analects_of_Confucius_20240228.txt" > test_sample.txt
 
 # Run with fixed code
 python -m phase3_chunking.main --file_id "test_sample" --text_path "test_sample.txt" --chunks_dir "test_chunks" --config "phase3-chunking/config.yaml"
@@ -280,3 +280,5 @@ grep "chunks_exceeding_duration" pipeline.json
 
 Generated: 2025-10-04
 Author: Claude (Sonnet 4.5)
+
+

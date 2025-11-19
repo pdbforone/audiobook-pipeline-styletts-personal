@@ -40,7 +40,7 @@ Verify extraction accuracy by comparing extracted text against original PDF page
 
 ### Quick Test (5 minutes)
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction
+cd path\to\audiobook-pipeline-styletts-personal\phase2-extraction
 python run_full_test.py
 ```
 
@@ -102,3 +102,5 @@ python test_all_methods.py --pages 50 75 100
 **Status:** Ready to test
 **Next Action:** Run `python run_full_test.py`
 **Time Estimate:** 5-10 minutes for full test
+
+

@@ -189,12 +189,12 @@ cleanup_save_transcripts: true  # Creates .srt files
 
 1. **Install and Test**:
    ```powershell
-   C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement\install_integrated.bat
+   path\to\audiobook-pipeline-styletts-personal\phase5_enhancement\install_integrated.bat
    ```
 
 2. **Run Comparison Test**:
    ```powershell
-   C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement\test_integration.bat
+   path\to\audiobook-pipeline-styletts-personal\phase5_enhancement\test_integration.bat
    ```
 
 3. **Verify Results**:
@@ -207,7 +207,7 @@ cleanup_save_transcripts: true  # Creates .srt files
 
 4. **Process Full Audiobook**:
    ```powershell
-   C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\step2_run_phase5.bat
+   path\to\audiobook-pipeline-styletts-personal\step2_run_phase5.bat
    ```
 
 5. **Monitor Progress**:
@@ -336,3 +336,5 @@ That's it! Your audiobook pipeline is now complete. 🎧✨
 **Status**: ✅ Complete and Ready for Production  
 **Developer**: Claude (Anthropic)  
 **Estimated Integration Time**: ~2 hours of development + testing
+
+

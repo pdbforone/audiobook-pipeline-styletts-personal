@@ -20,7 +20,7 @@ The coverage tests verify that **no text is lost** between phases:
 
 ### Option 1: Quick Run (Recommended)
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 run_coverage_tests.bat
 ```
 
@@ -79,7 +79,7 @@ Test 2 (Phase 3→4 Audio Coverage): ✅ PASS
 
 **Issue: "Missing chunk file(s)"**
 - Some Phase 3 chunks don't exist on disk
-- Check: `C:\Users\myson\Pipeline\audiobook-pipeline\phase3-chunking\chunks\`
+- Check: `path\to\audiobook-pipeline-styletts-personal\phase3-chunking\chunks\`
 - Fix: Re-run Phase 3
 
 **Issue: "Similarity ratio: 0.9875 (98.75%)"**  
@@ -143,3 +143,5 @@ Run Phase 5:
 ```bash
 python orchestrator.py ..\input\[your_file].pdf --phases 5 --pipeline-json ..\pipeline.json
 ```
+
+

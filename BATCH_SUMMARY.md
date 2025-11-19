@@ -42,7 +42,7 @@ elif phase_num == 3:
 
 ### STEP 1: Re-run Phase 3 (30 seconds)
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase3-chunking
+cd path\to\audiobook-pipeline-styletts-personal\phase3-chunking
 poetry run python -m phase3_chunking.main --file_id The_Analects_of_Confucius_20240228 --json_path ..\pipeline.json --config config.yaml
 ```
 
@@ -50,7 +50,7 @@ poetry run python -m phase3_chunking.main --file_id The_Analects_of_Confucius_20
 
 ### STEP 2: Test Phase 4 Samples (5-10 minutes)
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline
+cd path\to\audiobook-pipeline-styletts-personal
 conda activate chatterbox_env
 python test_phase4_chunks.py
 ```
@@ -64,7 +64,7 @@ python test_phase4_chunks.py
 
 ### STEP 3: Run Full Pipeline (optional)
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 python orchestrator.py ..\input\The_Analects_of_Confucius_20240228.pdf --phases 3 4 5
 ```
 
@@ -194,3 +194,5 @@ See `PHASE3_4_ANALYSIS.md` for detailed troubleshooting.
 4. Test script for Phase 4 validation
 
 **Next:** Run the 3 test steps above and report results!
+
+

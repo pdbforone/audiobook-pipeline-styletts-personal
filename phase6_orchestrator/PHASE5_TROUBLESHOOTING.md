@@ -5,7 +5,7 @@
 Run this first to see what actually happened:
 
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 poetry run python check_phase5_results.py
 ```
 
@@ -175,3 +175,5 @@ Phase 5 will automatically:
 - Process all chunks
 
 So you shouldn't need Direct Mode anymore!
+
+

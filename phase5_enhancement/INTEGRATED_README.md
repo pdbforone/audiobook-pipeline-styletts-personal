@@ -39,7 +39,7 @@ Phase 5 now includes **automatic phrase cleanup** integrated directly into the a
 ### Quick Install (Recommended)
 
 ```powershell
-C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement\install_integrated.bat
+path\to\audiobook-pipeline-styletts-personal\phase5_enhancement\install_integrated.bat
 ```
 
 This script will:
@@ -54,7 +54,7 @@ This script will:
 If you prefer manual installation:
 
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement
+cd path\to\audiobook-pipeline-styletts-personal\phase5_enhancement
 
 # Install dependencies
 poetry install
@@ -115,13 +115,13 @@ The first time you run with phrase cleanup enabled, Whisper will download the mo
 
 ```powershell
 # Using the existing batch script (now with phrase cleanup!)
-C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\step2_run_phase5.bat
+path\to\audiobook-pipeline-styletts-personal\step2_run_phase5.bat
 ```
 
 ### Process Single Chunk (Testing)
 
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement
+cd path\to\audiobook-pipeline-styletts-personal\phase5_enhancement
 poetry run python -m phase5_enhancement.main --chunk_id 42 --skip_concatenation
 ```
 
@@ -183,7 +183,7 @@ Volume normalized chunk 42: RMS 0.1234 → 0.5678
 **Solution**: Run `poetry install` in the phase5_enhancement directory
 
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement
+cd path\to\audiobook-pipeline-styletts-personal\phase5_enhancement
 poetry install
 ```
 
@@ -297,3 +297,5 @@ If you encounter issues:
 **Last Updated**: October 30, 2025  
 **Version**: 2.0 - Integrated Phrase Cleanup  
 **Status**: ✅ Production Ready
+
+

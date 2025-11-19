@@ -17,26 +17,6 @@ from pipeline_common import PipelineState, play_alert_beep, play_success_beep
 # ============================================================================
 # PATTERN 1: Simple Phase Update
 # ============================================================================
-
-def pattern1_before(pipeline_json):
-    """❌ OLD WAY - Unsafe"""
-    import json
-
-    # Load
-    with open(pipeline_json, 'r') as f:
-        pipeline = json.load(f)
-
-    # Modify
-    pipeline['phase1'] = {
-        'status': 'success',
-        'metrics': {'duration': 42.0}
-    }
-
-    # Write (NOT ATOMIC!)
-    with open(pipeline_json, 'w') as f:
-        json.dump(pipeline, f, indent=4)
-
-
 def pattern1_after(pipeline_json):
     """✅ NEW WAY - Safe"""
     state = PipelineState(pipeline_json)
@@ -52,32 +32,6 @@ def pattern1_after(pipeline_json):
 # ============================================================================
 # PATTERN 2: Error Handling with Rollback
 # ============================================================================
-
-def pattern2_before(pipeline_json):
-    """❌ OLD WAY - State corrupted on error"""
-    import json
-
-    with open(pipeline_json, 'r') as f:
-        pipeline = json.load(f)
-
-    # Modify
-    pipeline['phase2']['status'] = 'running'
-
-    # Write partial state
-    with open(pipeline_json, 'w') as f:
-        json.dump(pipeline, f, indent=4)
-
-    # If this fails, state says "running" but phase actually failed!
-    run_extraction()
-
-    # Update to success
-    with open(pipeline_json, 'r') as f:
-        pipeline = json.load(f)
-    pipeline['phase2']['status'] = 'success'
-    with open(pipeline_json, 'w') as f:
-        json.dump(pipeline, f, indent=4)
-
-
 def pattern2_after(pipeline_json):
     """✅ NEW WAY - Atomic commit or rollback"""
     state = PipelineState(pipeline_json)
@@ -104,32 +58,6 @@ def run_extraction():
 # ============================================================================
 # PATTERN 3: Reading and Updating Multiple Phases
 # ============================================================================
-
-def pattern3_before(pipeline_json):
-    """❌ OLD WAY - Multiple read/write cycles"""
-    import json
-
-    # Read phase 2 output
-    with open(pipeline_json, 'r') as f:
-        pipeline = json.load(f)
-    text_path = pipeline['phase2']['files']['book.pdf']['extracted_text_path']
-
-    # Process chunks
-    chunks = create_chunks(text_path)
-
-    # Update phase 3
-    with open(pipeline_json, 'r') as f:
-        pipeline = json.load(f)
-
-    pipeline['phase3'] = {
-        'status': 'success',
-        'chunks': chunks
-    }
-
-    with open(pipeline_json, 'w') as f:
-        json.dump(pipeline, f, indent=4)
-
-
 def pattern3_after(pipeline_json):
     """✅ NEW WAY - Single transaction"""
     state = PipelineState(pipeline_json)
@@ -157,35 +85,6 @@ def create_chunks(text_path):
 # ============================================================================
 # PATTERN 4: Orchestrator Loop
 # ============================================================================
-
-def pattern4_before(pipeline_json, input_file):
-    """❌ OLD WAY - Manual state management"""
-    import json
-
-    phases = ['phase1', 'phase2', 'phase3', 'phase4', 'phase5']
-
-    for phase_name in phases:
-        print(f"Running {phase_name}...")
-
-        # Read state
-        with open(pipeline_json, 'r') as f:
-            pipeline = json.load(f)
-
-        # Run phase
-        try:
-            result = run_phase(phase_name, pipeline, input_file)
-
-            # Update state
-            pipeline[phase_name] = result
-
-            with open(pipeline_json, 'w') as f:
-                json.dump(pipeline, f, indent=4)
-
-            print(f"✓ {phase_name} complete")
-        except Exception as e:
-            print(f"✗ {phase_name} failed: {e}")
-            break
-
 
 def pattern4_after(pipeline_json, input_file):
     """✅ NEW WAY - Clean transaction handling"""

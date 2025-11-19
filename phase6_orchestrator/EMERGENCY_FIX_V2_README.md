@@ -36,7 +36,7 @@ Found 0 completed audio chunks from pipeline.json
 - From: `phase5_enhancement/`
 - Path: `../../pipeline.json`
 - Resolves to: `Pipeline/pipeline.json` (WRONG!)
-- Should be: `audiobook-pipeline-chatterbox/pipeline.json`
+- Should be: `audiobook-pipeline-styletts-personal/pipeline.json`
 
 Phase 5 was reading a non-existent or wrong pipeline.json!
 
@@ -134,3 +134,4 @@ v2 fixes **both** the Pydantic validation issue AND the pipeline path issue. Pha
 ---
 
 **Ready:** Run `.\emergency_fix_v2.bat` 🚀
+

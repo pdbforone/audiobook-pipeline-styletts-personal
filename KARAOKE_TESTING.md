@@ -16,7 +16,7 @@ Follow these steps to test the new karaoke subtitle feature.
 ### Command (Linux/Mac)
 
 ```bash
-cd /home/user/audiobook-pipeline-chatterbox/phase5_enhancement
+cd /path/to/audiobook-pipeline-styletts-personal/phase5_enhancement
 
 poetry run python -m phase5_enhancement.subtitles \
   --audio "../Gift of The Magi.mp3" \
@@ -218,7 +218,7 @@ ffplay test_karaoke_30sec.mp4
 Mode: KARAOKE (Word-by-word highlighting)
 
 [1/4] Checking audio file...
-  ✓ Found: C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\Gift of The Magi.mp3
+  ✓ Found: path\to\audiobook-pipeline-styletts-personal\Gift of The Magi.mp3
 
 [2/4] Generating subtitles with faster-whisper...
   Karaoke mode enabled - generating word-level timestamps...
@@ -232,7 +232,7 @@ Mode: KARAOKE (Word-by-word highlighting)
   Font: Arial (32px)
   Style: Karaoke word-by-word highlighting (yellow -> white)
   Rendering video (this may take 5-10 minutes)...
-  ✓ Video created: C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\Gift_of_The_Magi_ELL_KARAOKE.mp4
+  ✓ Video created: path\to\audiobook-pipeline-styletts-personal\Gift_of_The_Magi_ELL_KARAOKE.mp4
 
 ==== SUCCESS ====
 
@@ -364,3 +364,5 @@ If any test fails, gather:
 4. faster-whisper version: `poetry show faster-whisper`
 5. FFmpeg version: `ffmpeg -version`
 6. Sample ASS file (first 50 lines)
+
+

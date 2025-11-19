@@ -14,7 +14,7 @@ Follow these steps in order to integrate phrase cleanup into Phase 5.
 ### Step 1: Run Installation Script
 
 ```powershell
-C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement\install_integrated.bat
+path\to\audiobook-pipeline-styletts-personal\phase5_enhancement\install_integrated.bat
 ```
 
 **What happens**:
@@ -38,7 +38,7 @@ C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement\install
 ### Step 3: Run Comparison Test
 
 ```powershell
-C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement\test_integration.bat
+path\to\audiobook-pipeline-styletts-personal\phase5_enhancement\test_integration.bat
 ```
 
 **What to check**:
@@ -59,7 +59,7 @@ C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement\test_in
 ### Step 5: Process Full Audiobook
 
 ```powershell
-C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\step2_run_phase5.bat
+path\to\audiobook-pipeline-styletts-personal\step2_run_phase5.bat
 ```
 
 **Monitor during processing**:
@@ -97,7 +97,7 @@ If you want to run the entire pipeline (Phases 1-5) automatically:
 ### Step 7: Test Orchestrator
 
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox
+cd path\to\audiobook-pipeline-styletts-personal
 poetry run python -m phase6_orchestrator --pipeline pipeline_magi.json --phase 5
 ```
 
@@ -176,3 +176,5 @@ copy src\phase5_enhancement\config.yaml.backup_before_integration src\phase5_enh
 **Version**: 2.0  
 **Date**: October 30, 2025  
 **Status**: ✅ Ready for Use
+
+

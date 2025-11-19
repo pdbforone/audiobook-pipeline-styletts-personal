@@ -2,7 +2,7 @@
 
 ## 1. Check Phase 3 Output (10 seconds)
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 python check_phase3_output.py
 ```
 
@@ -10,7 +10,7 @@ python check_phase3_output.py
 
 ## 2. Test Phase 4 (varies by chunk count)
 ```bash
-python orchestrator.py "C:\Users\myson\Pipeline\The Analects of Confucius.pdf" --phases 4
+python orchestrator.py "path\to\The Analects of Confucius.pdf" --phases 4
 ```
 
 **What to Look For:**
@@ -39,3 +39,5 @@ python orchestrator.py "C:\Users\myson\Pipeline\The Analects of Confucius.pdf" -
 3. **Better logging** - shows exactly what file_id is being used
 
 That's it! Test now with: `python check_phase3_output.py`
+
+

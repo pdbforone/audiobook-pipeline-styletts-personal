@@ -88,7 +88,7 @@ File ID: 'The_Analects_of_Confucius_20240228_converted_with_pdfplumber'
 
 ### Step 2: Run Phase 4 with Fixed Orchestrator
 ```bash
-python orchestrator.py "C:\Users\myson\Pipeline\The Analects of Confucius.pdf" --phases 4
+python orchestrator.py "path\to\The Analects of Confucius.pdf" --phases 4
 ```
 
 **Expected behavior:**
@@ -214,3 +214,5 @@ The fix makes Phase 4 work by:
 4. ✅ Logs show what's actually happening
 
 Run `python check_phase3_output.py` first to see what's in your pipeline.json!
+
+

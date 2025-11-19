@@ -49,7 +49,7 @@
 - Always provide alternatives, fallbacks, and tradeoffs.
 
 ## Current Pipeline Reality (Nov 2025)
-- Repo: `C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal`; state file `pipeline.json` in root with backups under `.pipeline/backups/`.
+- Repo: `path\to\audiobook-pipeline-styletts-personal`; state file `pipeline.json` in root with backups under `.pipeline/backups/`.
 - UI: `ui/app.py` (Gradio); phases still runnable via per-phase CLIs; Phase 4 has engine runner and env setup scripts.
 - TTS engines: XTTS v2 (primary) and Kokoro-onnx (CPU fallback) under `phase4_tts/engines/`; F5-TTS references in some docs are historical.
 - Phase 2/3 structure-aware flow: structure detector lives in `phase2-extraction/src/phase2_extraction/structure_detector.py`; chunking uses `phase3-chunking/src/phase3_chunking/structure_chunking.py` with ~5k word caps.
@@ -92,7 +92,7 @@
 ## Documentation Reality Checks
 - `README_EXCELLENCE.md` and `PROJECT_OVERVIEW.md` reflect the current CPU-only, XTTS + Kokoro setup and personal-use scope.
 - `STRUCTURE_ENHANCEMENT_README.md` now documents the correct personal repo paths for Phase 2/3 tests.
-- `MASTER_GUIDE.md` references video tooling in `audiobook-pipeline-chatterbox`; keep contextual but note it is a sibling repo, not this pipeline.
+- `MASTER_GUIDE.md` references video tooling in `audiobook-pipeline-styletts-personal`; keep contextual but note it is a sibling repo, not this pipeline.
 
 ## Phase 1 Validation Refactor (Feb 2026)
 - Phase1 validation now modular: classify_file/pdf, validate_{pdf,epub,docx,txt}, repair_*, extract_metadata, write_artifacts, persist_metadata.
@@ -100,3 +100,6 @@
 - Atomic pipeline writes via `safe_update_json` with cross-platform locking + deep merge; duplicate hashes flagged without overwriting other phases; `log_error` standardizes error persistence.
 - PDF classification heuristic uses text length, density, replacement-char ratio, and alphabetic token ratio; logs classification stats.
 - Shared helper `compute_sha256` in utils for Phase1/2 consistency; tests updated for new flow and JSON merge behavior (install dev deps to run).
+
+
+

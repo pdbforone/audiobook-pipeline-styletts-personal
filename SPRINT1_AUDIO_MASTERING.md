@@ -59,7 +59,7 @@ Both features are **optional** (disabled by default) for A/B testing against you
 ### Step 1: Install PyTorch (CPU-only)
 
 ```bash
-cd /home/user/audiobook-pipeline-chatterbox/phase5_enhancement
+cd /path/to/audiobook-pipeline-styletts-personal/phase5_enhancement
 
 # Install PyTorch CPU version FIRST (required for DeepFilterNet)
 poetry run pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
@@ -292,3 +292,4 @@ enable_matchering: false     # Saves ~5-10 minutes
 
 **Status:** ✅ Ready for testing  
 **Next:** Install dependencies and A/B test on one audiobook
+

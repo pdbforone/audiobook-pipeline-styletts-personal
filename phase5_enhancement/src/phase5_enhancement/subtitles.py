@@ -6,8 +6,9 @@ Generates .srt and .vtt subtitles from final audiobook with quality validation.
 
 import json
 import logging
+import os
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import List, Dict, Any, Optional, Tuple
 import argparse
 import tempfile
@@ -17,12 +18,29 @@ from faster_whisper import WhisperModel
 from pydub import AudioSegment
 import webvtt
 
+from pipeline_common import PipelineState
+
 from .models import SubtitleConfig
 from .subtitle_aligner import align_timestamps, detect_drift
 from .subtitle_validator import calculate_wer, validate_coverage, format_srt, format_vtt
 from .subtitle_karaoke import KaraokeGenerator
 
 logger = logging.getLogger(__name__)
+
+
+def serialize_path_for_pipeline(path: Path) -> str:
+    """Normalize paths for pipeline.json (handles WSL ↔ Windows)."""
+    resolved = Path(path).resolve()
+    if os.name == "nt":
+        return str(resolved)
+
+    parts = resolved.parts
+    if len(parts) >= 3 and parts[0] == "/" and parts[1] == "mnt" and len(parts[2]) == 1:
+        drive = parts[2].upper()
+        win_path = PureWindowsPath(f"{drive}:/", *parts[3:])
+        return str(win_path)
+
+    return str(resolved)
 
 
 @lru_cache(maxsize=3)
@@ -41,6 +59,7 @@ class SubtitleGenerator:
         self.audio_duration = None
         self.segments = []
         self.metrics = {}
+        self._phase_start_ts: Optional[float] = None
 
     def initialize(self):
         """Initialize Whisper model and validate inputs."""
@@ -395,11 +414,62 @@ class SubtitleGenerator:
             json.dump(self.metrics, f, indent=2)
 
         logger.info(f"Saved metrics: {metrics_path}")
+        return metrics_path
+
+    def _persist_pipeline_state(
+        self,
+        status: str,
+        artifacts: Dict[str, Optional[Path]],
+        metrics: Dict[str, Any],
+        errors: Optional[List[str]] = None,
+    ) -> None:
+        """Record Phase 5.5 results in pipeline.json using PipelineState."""
+        pipeline_path = getattr(self.config, "pipeline_json", None)
+        if not pipeline_path:
+            return
+
+        state = PipelineState(pipeline_path, validate_on_read=False)
+        end_ts = time.time()
+        start_ts = self._phase_start_ts
+        timestamps = {
+            "start": start_ts,
+            "end": end_ts,
+            "duration": (end_ts - start_ts) if start_ts else None,
+        }
+
+        normalized_artifacts = {}
+        for key, value in artifacts.items():
+            if value:
+                normalized_artifacts[key] = serialize_path_for_pipeline(value)
+
+        normalized_errors: List[Dict[str, str]] = []
+        for item in errors or []:
+            if isinstance(item, dict):
+                normalized_errors.append(item)
+            else:
+                normalized_errors.append({"message": str(item)})
+
+        with state.transaction(operation="phase5_5_subtitles") as txn:
+            txn.update_phase(
+                self.config.file_id,
+                "phase5_5",
+                status,
+                timestamps,
+                normalized_artifacts,
+                metrics or {},
+                normalized_errors,
+                chunks=[],
+                extra_fields={
+                    "model_size": self.config.model_size,
+                    "karaoke_enabled": self.enable_karaoke,
+                },
+            )
 
     def generate(self) -> Dict[str, Any]:
         """Main generation pipeline."""
         logger.info("=== Phase 5.5: Subtitle Generation ===")
         total_start = time.perf_counter()
+        self._phase_start_ts = time.time()
 
         try:
             # Initialize
@@ -420,7 +490,7 @@ class SubtitleGenerator:
                 final_segments, 
                 raw_segments=raw_segments if self.enable_karaoke else None
             )
-            self.save_metrics()
+            metrics_path = self.save_metrics()
 
             # Calculate total time
             total_duration = time.perf_counter() - total_start
@@ -434,6 +504,18 @@ class SubtitleGenerator:
             logger.info(f"Segments: {metrics['segment_count']}")
             if self.enable_karaoke:
                 logger.info(f"Karaoke mode: ENABLED (ASS file generated)")
+
+            self._persist_pipeline_state(
+                "success",
+                {
+                    "srt_file": srt_path,
+                    "vtt_file": vtt_path,
+                    "ass_file": ass_path,
+                    "metrics_file": metrics_path,
+                },
+                self.metrics,
+                errors=[],
+            )
 
             result = {
                 'status': 'success',
@@ -449,6 +531,12 @@ class SubtitleGenerator:
 
         except Exception as e:
             logger.error(f"Subtitle generation failed: {e}", exc_info=True)
+            self._persist_pipeline_state(
+                "failed",
+                artifacts={},
+                metrics=self.metrics or {},
+                errors=[str(e)],
+            )
             return {
                 'status': 'failed',
                 'error': str(e)
@@ -478,6 +566,8 @@ def main():
                        help='Disable timestamp drift correction')
     parser.add_argument('--karaoke', action='store_true',
                        help='Generate karaoke-style word highlighting (ASS format)')
+    parser.add_argument('--pipeline-json', type=Path, default=None,
+                       help='Optional path to pipeline.json for Phase 5.5 status recording')
 
     args = parser.parse_args()
 
@@ -496,7 +586,8 @@ def main():
         reference_text_path=args.reference_text,
         use_aeneas_alignment=args.use_aeneas,
         enable_checkpoints=not args.no_checkpoints,
-        enable_drift_correction=not args.no_drift_correction
+        enable_drift_correction=not args.no_drift_correction,
+        pipeline_json=args.pipeline_json,
     )
 
     # Generate subtitles

@@ -10,8 +10,8 @@ C:.
 └───__pycache__
         models.cpython-312.pyc
 
-(phase5-enhancement-py3.12) PS C:\Users\myson\Pipeline\audiobook-pipeline\phase5_enhancement\src\phase5_enhancement> cd..
-(phase5-enhancement-py3.12) PS C:\Users\myson\Pipeline\audiobook-pipeline\phase5_enhancement\src> tree /F
+(phase5-enhancement-py3.12) PS path\to\audiobook-pipeline-styletts-personal\phase5_enhancement\src\phase5_enhancement> cd..
+(phase5-enhancement-py3.12) PS path\to\audiobook-pipeline-styletts-personal\phase5_enhancement\src> tree /F
 Folder PATH listing
 Volume serial number is B8DC-BD4D
 C:.
@@ -29,8 +29,8 @@ C:.
     └───__pycache__
             models.cpython-312.pyc
 
-(phase5-enhancement-py3.12) PS C:\Users\myson\Pipeline\audiobook-pipeline\phase5_enhancement\src> cd..
-(phase5-enhancement-py3.12) PS C:\Users\myson\Pipeline\audiobook-pipeline\phase5_enhancement> tree /F
+(phase5-enhancement-py3.12) PS path\to\audiobook-pipeline-styletts-personal\phase5_enhancement\src> cd..
+(phase5-enhancement-py3.12) PS path\to\audiobook-pipeline-styletts-personal\phase5_enhancement> tree /F
 Folder PATH listing
 Volume serial number is B8DC-BD4D
 C:.
@@ -66,8 +66,8 @@ C:.
         test_main.py
         __init__.py
 
-(phase5-enhancement-py3.12) PS C:\Users\myson\Pipeline\audiobook-pipeline\phase5_enhancement> cd..
-(phase5-enhancement-py3.12) PS C:\Users\myson\Pipeline\audiobook-pipeline> tree /F
+(phase5-enhancement-py3.12) PS path\to\audiobook-pipeline-styletts-personal\phase5_enhancement> cd..
+(phase5-enhancement-py3.12) PS path\to\audiobook-pipeline-styletts-personal> tree /F
 Folder PATH listing
 Volume serial number is B8DC-BD4D
 C:.
@@ -479,4 +479,6 @@ C:.
     └───tests
             test_main.py
             __init__.py
+
+
 

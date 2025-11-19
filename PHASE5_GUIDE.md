@@ -34,7 +34,7 @@ Output:
 
 ### Method 1: Via Orchestrator (RECOMMENDED)
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 
 python orchestrator.py ..\input\The_Analects_of_Confucius_20240228.pdf --phases 5 --pipeline-json ..\pipeline.json
 ```
@@ -61,7 +61,7 @@ Duration: 3600.5 seconds (60 minutes)
 
 ### Method 2: Direct Execution (For Testing)
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase5_enhancement
+cd path\to\audiobook-pipeline-styletts-personal\phase5_enhancement
 
 # Install dependencies (if not already)
 poetry install --no-root
@@ -79,7 +79,7 @@ poetry run python src\phase5_enhancement\main.py --config config.yaml
 
 ### Method 3: Test Single Chunk First
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase5_enhancement
+cd path\to\audiobook-pipeline-styletts-personal\phase5_enhancement
 
 # Test on chunk_441 only
 poetry run python src\phase5_enhancement\main.py --chunk_id 441 --skip_concatenation
@@ -275,7 +275,7 @@ python -c "import json; p=json.load(open('../pipeline.json')); m=p.get('phase5',
 
 3. **Copy to final destination** (optional):
    ```bash
-   copy processed\audiobook.mp3 C:\Users\myson\Music\Audiobooks\
+   copy processed\audiobook.mp3 path\to\Music\Audiobooks\
    ```
 
 4. **Review pipeline.json** for full pipeline summary:
@@ -327,3 +327,5 @@ python orchestrator.py ..\input\The_Analects_of_Confucius_20240228.pdf --phases 
 ---
 
 **Ready to run!** Use Method 1 (orchestrator) for production, or Method 3 (single chunk) for testing first.
+
+

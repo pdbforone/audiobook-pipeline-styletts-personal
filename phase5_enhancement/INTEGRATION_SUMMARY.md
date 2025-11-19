@@ -26,7 +26,7 @@ The `pyproject.toml` already includes all necessary dependencies:
 Run the installation script:
 
 ```powershell
-C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement\install_integrated.bat
+path\to\audiobook-pipeline-styletts-personal\phase5_enhancement\install_integrated.bat
 ```
 
 This will:
@@ -41,7 +41,7 @@ This will:
 Run the comparison test:
 
 ```powershell
-C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement\test_integration.bat
+path\to\audiobook-pipeline-styletts-personal\phase5_enhancement\test_integration.bat
 ```
 
 This will process the same chunk twice (with and without cleanup) so you can:
@@ -55,7 +55,7 @@ This will process the same chunk twice (with and without cleanup) so you can:
 Once verified, run the full processing:
 
 ```powershell
-C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\step2_run_phase5.bat
+path\to\audiobook-pipeline-styletts-personal\step2_run_phase5.bat
 ```
 
 Phase 5 will now:
@@ -161,14 +161,14 @@ cleanup_whisper_model: "base"  # Options: tiny, base, small, medium, large
 ### Standalone Usage
 
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement
+cd path\to\audiobook-pipeline-styletts-personal\phase5_enhancement
 poetry run python -m phase5_enhancement.main
 ```
 
 ### With Orchestrator (Recommended)
 
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox
+cd path\to\audiobook-pipeline-styletts-personal
 poetry run python -m phase6_orchestrator --pipeline pipeline_magi.json
 ```
 
@@ -319,3 +319,5 @@ Run the installation script and watch the magic happen! 🎧✨
 **Created**: October 30, 2025  
 **Version**: 2.0 - Integrated Phrase Cleanup  
 **Status**: ✅ Ready for Production
+
+

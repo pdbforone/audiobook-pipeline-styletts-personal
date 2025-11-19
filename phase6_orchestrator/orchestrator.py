@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional, Tuple
 # Add parent directory to path for pipeline_common
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from pipeline_common import PipelineState, StateError, ensure_phase_and_file, ensure_phase_block
+from pipeline_common.policy_engine import PolicyEngine
 from pydantic import BaseModel, Field, ValidationError, ConfigDict
 
 try:
@@ -61,6 +62,22 @@ RUN_SUMMARY: Dict[str, Any] = {
     "backup_subtitles_used": False,
     "budget_exceeded": False,
 }
+
+
+def _policy_call(
+    policy_engine: Optional[PolicyEngine],
+    method: str,
+    *args: Any,
+) -> None:
+    """Invoke a policy hook defensively so orchestration never crashes."""
+    if not policy_engine:
+        return
+    try:
+        hook = getattr(policy_engine, method, None)
+        if hook:
+            hook(*args)
+    except Exception:
+        logger.debug("Policy hook %s failed", method, exc_info=True)
 
 
 class SubtitleConfig(BaseModel):
@@ -459,48 +476,6 @@ def check_conda_environment(env_name: str) -> Tuple[bool, Optional[str]]:
         return False, f"Conda check failed: {str(e)}"
 
 
-def load_pipeline_json(json_path: Path) -> Dict:
-    """
-    Load pipeline.json with atomic state manager.
-
-    Returns:
-        Dictionary with pipeline data, or empty dict on error
-    """
-    try:
-        state = PipelineState(json_path, validate_on_read=False)
-        data = state.read()
-
-        if data:
-            logger.info(f"Loaded pipeline.json: {len(data)} phase(s) recorded")
-        else:
-            logger.info(f"Pipeline JSON not found: {json_path} (will create on first run)")
-
-        return data
-
-    except StateError as e:
-        logger.error(f"Corrupt pipeline.json: {e}")
-
-        # Try to restore from backup
-        try:
-            state = PipelineState(json_path)
-            backups = state.list_backups()
-            if backups:
-                logger.info(f"Found {len(backups)} backup(s), restoring most recent...")
-                if state.restore_backup(backups[0]):
-                    logger.info("✓ Restored from backup")
-                    return state.read()
-        except Exception as restore_error:
-            logger.warning(f"Backup restore failed: {restore_error}")
-
-        # Last resort: start fresh
-        logger.warning("Starting with empty pipeline state")
-        return {}
-
-    except Exception as e:
-        logger.error(f"Failed to load pipeline.json: {e}")
-        return {}
-
-
 def collect_file_phase_view(data: Dict[str, Any], file_id: str) -> Dict[str, Any]:
     """Return a phase-indexed view of the pipeline for a given file_id."""
     phases = {}
@@ -513,20 +488,32 @@ def collect_file_phase_view(data: Dict[str, Any], file_id: str) -> Dict[str, Any
     return phases
 
 
-def should_skip_phase2(file_path: Path, file_id: str, pipeline_json: Path) -> bool:
+def build_file_phase_view(state: PipelineState, file_id: str) -> Dict[str, Any]:
+    """Read pipeline.json via PipelineState and build a per-file, phase-indexed view."""
+    snapshot = read_state_snapshot(state, warn=False)
+    return collect_file_phase_view(snapshot, file_id)
+
+
+def read_state_snapshot(state: PipelineState, *, warn: bool = True) -> Dict[str, Any]:
+    """Safely read the canonical pipeline state."""
+    try:
+        return state.read()
+    except StateError as exc:
+        if warn:
+            logger.warning("Failed to read pipeline state: %s", exc)
+        return {}
+    except Exception as exc:  # pragma: no cover - defensive logging
+        if warn:
+            logger.warning("Unexpected pipeline state error: %s", exc)
+        return {}
+
+
+def should_skip_phase2(file_path: Path, file_id: str, state: PipelineState) -> bool:
     """
     Decide whether to skip Phase 2 based on existing successful extraction and matching hash.
     Uses the source_hash from Phase 2 (preferred) or Phase 1 hash as fallback.
     """
-    if not pipeline_json.exists():
-        return False
-
-    try:
-        pipeline_data = load_pipeline_json(pipeline_json)
-    except Exception as exc:
-        logger.warning("Phase 2 reuse: could not load pipeline.json (%s); will run Phase 2.", exc)
-        return False
-
+    pipeline_data = read_state_snapshot(state, warn=False)
     phase2_entry = pipeline_data.get("phase2", {}).get("files", {}).get(file_id, {})
     if phase2_entry.get("status") != "success":
         return False
@@ -567,19 +554,11 @@ def should_skip_phase2(file_path: Path, file_id: str, pipeline_json: Path) -> bo
     return False
 
 
-def should_skip_phase3(file_id: str, pipeline_json: Path) -> bool:
+def should_skip_phase3(file_id: str, state: PipelineState) -> bool:
     """
     Decide whether to skip Phase 3 based on existing successful chunking and matching text hash.
     """
-    if not pipeline_json.exists():
-        return False
-
-    try:
-        data = load_pipeline_json(pipeline_json)
-    except Exception as exc:
-        logger.warning("Phase 3 reuse: could not load pipeline.json (%s); will run Phase 3.", exc)
-        return False
-
+    data = read_state_snapshot(state, warn=False)
     phase3_entry = data.get("phase3", {}).get("files", {}).get(file_id, {})
     if phase3_entry.get("status") != "success":
         return False
@@ -625,26 +604,20 @@ def should_skip_phase3(file_id: str, pipeline_json: Path) -> bool:
     return False
 
 
-def check_phase_status(pipeline_data: Dict, phase_num: int, file_id: str) -> str:
+def check_phase_status(state: PipelineState, phase_num: int, file_id: str) -> str:
     """
     Check status of a phase for a specific file.
     
     Returns:
         "success", "failed", "partial", or "pending"
     """
+    snapshot = read_state_snapshot(state, warn=False)
     phase_key = f"phase{phase_num}"
-    phase_data = pipeline_data.get(phase_key, {})
+    phase_data = snapshot.get(phase_key, {})
     files = phase_data.get("files", {})
     
-    # Try exact match first
     if file_id in files:
         return files[file_id].get("status", "pending")
-    
-    # Try fuzzy match
-    for key in files.keys():
-        if file_id in key or key in file_id:
-            logger.info(f"Phase {phase_num}: Using key '{key}' for file_id '{file_id}'")
-            return files[key].get("status", "pending")
 
     # Fall back to overall status if no file-specific data exists
     overall_status = phase_data.get("status")
@@ -689,36 +662,23 @@ def load_phase3_chunks(file_id: str, pipeline_json: Path) -> Tuple[str, List[str
     pipeline = state.read()
     phase3_files = pipeline.get("phase3", {}).get("files", {})
 
-    resolved_id = file_id
-    chunks: List[str] = []
-
-    if file_id in phase3_files:
-        chunks = phase3_files[file_id].get("chunk_paths", [])
-    else:
-        for key, entry in phase3_files.items():
-            if file_id in key or key in file_id:
-                logger.info(f"Using Phase 3 file_id: '{key}'")
-                resolved_id = key
-                chunks = entry.get("chunk_paths", [])
-                break
-
-    if not chunks:
+    entry = phase3_files.get(file_id)
+    if not entry:
         raise RuntimeError(
             f"No chunks found for '{file_id}'. Available keys: {list(phase3_files.keys())}"
         )
 
-    return resolved_id, chunks
+    chunks = entry.get("chunk_paths", [])
+    if not chunks:
+        raise RuntimeError(f"Phase 3 entry for '{file_id}' contains no chunk_paths.")
+
+    return file_id, chunks
 
 
 def _find_phase_file_entry(data: Dict[str, Any], phase_key: str, file_id: str) -> Tuple[str, Optional[Dict[str, Any]]]:
-    """Locate a phase entry for a given file_id with lenient matching."""
+    """Locate a phase entry for a given file_id."""
     files = data.get(phase_key, {}).get("files", {}) or {}
-    if file_id in files:
-        return file_id, files[file_id]
-    for key, value in files.items():
-        if file_id in key or key in file_id:
-            return key, value
-    return file_id, None
+    return file_id, files.get(file_id)
 
 
 def get_phase4_output_dir(phase_dir: Path, pipeline_json: Path, file_id: str) -> Path:
@@ -863,10 +823,13 @@ def run_phase_with_retry(
     file_path: Path,
     file_id: str,
     pipeline_json: Path,
+    *,
+    state: PipelineState,
     max_retries: int = 2,
     voice_id: Optional[str] = None,
     pipeline_mode: str = "commercial",
     tts_engine: Optional[str] = None,
+    policy_engine: Optional[PolicyEngine] = None,
 ) -> bool:
     """
     Run a phase with retry logic.
@@ -884,9 +847,11 @@ def run_phase_with_retry(
     Returns:
         True if successful, False otherwise
     """
+    phase_label = f"phase{phase_num}"
     for attempt in range(max_retries + 1):
         if attempt > 0:
             logger.info(f"Retry attempt {attempt}/{max_retries} for Phase {phase_num}")
+            _policy_call(policy_engine, "before_retry", phase_label, file_id, attempt, state)
             time.sleep(2)  # Brief pause before retry
             if phase_num == 4:
                 phase_dir = find_phase_dir(4)
@@ -901,12 +866,16 @@ def run_phase_with_retry(
             voice_id,
             pipeline_mode,
             tts_engine,
+            state=state,
+            policy_engine=policy_engine,
         )
         
         if success:
             return True
     
     logger.error(f"Phase {phase_num} failed after {max_retries + 1} attempts")
+    error = RuntimeError(f"Phase {phase_num} exhausted retries")
+    _policy_call(policy_engine, "after_failure", phase_label, file_id, error, state)
     return False
 
 
@@ -918,6 +887,9 @@ def run_phase(
     voice_id: Optional[str] = None,
     pipeline_mode: str = "commercial",
     tts_engine: Optional[str] = None,
+    *,
+    state: PipelineState,
+    policy_engine: Optional[PolicyEngine] = None,
 ) -> bool:
     """
     Run a single phase.
@@ -946,7 +918,7 @@ def run_phase(
             return False
 
         logger.info(f"Phase 3: Using chunking variant for {engine}: {phase_dir}")
-        return run_phase_standard(phase_num, phase_dir, file_path, file_id, pipeline_json)
+        return run_phase_standard(phase_num, phase_dir, file_path, file_id, pipeline_json, state)
 
     # Standard phase directory lookup
     phase_dir = find_phase_dir(phase_num)
@@ -992,7 +964,7 @@ def run_phase(
         RUN_SUMMARY["chunk_integrity_passed"] = True
 
     # Standard phases (1, 2, 5) use Poetry
-    return run_phase_standard(phase_num, phase_dir, file_path, file_id, pipeline_json)
+    return run_phase_standard(phase_num, phase_dir, file_path, file_id, pipeline_json, state)
 
 
 def run_phase_standard(
@@ -1000,15 +972,16 @@ def run_phase_standard(
     phase_dir: Path,
     file_path: Path,
     file_id: str,
-    pipeline_json: Path
+    pipeline_json: Path,
+    state: PipelineState,
 ) -> bool:
     """Run a standard phase using Poetry."""
 
     # Fast-path reuse for Phase 2: if extraction already exists with matching hash, skip.
-    if phase_num == 2 and should_skip_phase2(file_path, file_id, pipeline_json):
+    if phase_num == 2 and should_skip_phase2(file_path, file_id, state):
         return True
     # Fast-path reuse for Phase 3: if chunks already exist with matching text hash, skip.
-    if phase_num == 3 and should_skip_phase3(file_id, pipeline_json):
+    if phase_num == 3 and should_skip_phase3(file_id, state):
         return True
 
     # Special-case Phase 3b (xtts chunking): standalone script, no Poetry env
@@ -1685,22 +1658,18 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
         phase2_data = pipeline_data.get('phase2', {})
         phase2_files = phase2_data.get('files', {}) or {}
         text_file = None
-        if phase2_files:
-            phase2_file_id = file_id if file_id in phase2_files else next(iter(phase2_files))
-            phase2_entry = phase2_files.get(phase2_file_id, {})
+        phase2_entry = phase2_files.get(file_id)
+        if phase2_entry:
             text_file = (
                 phase2_entry.get('extracted_text_path')
                 or phase2_entry.get('path')
                 or phase2_entry.get('output_file')
             )
-            if file_id not in phase2_files and phase2_entry:
-                logger.warning(
-                    "Phase 5.5: file_id '%s' not found in Phase 2, using '%s'",
-                    file_id,
-                    phase2_file_id,
-                )
         else:
-            logger.warning("Phase 5.5: No phase2.files entries found in pipeline.json")
+            if not phase2_files:
+                logger.warning("Phase 5.5: No phase2.files entries found in pipeline.json")
+            else:
+                logger.warning("Phase 5.5: file_id '%s' not found in Phase 2 entries", file_id)
 
         if not text_file:
             text_file = Path("phase2-extraction") / "extracted_text" / f"{file_id}.txt"
@@ -1719,6 +1688,7 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
             '--output-dir', str(phase5_dir / 'subtitles'),
             '--model', 'small'  # Balance of speed and accuracy
         ]
+        cmd.extend(['--pipeline-json', str(pipeline_json)])
 
         # Add reference text if available for WER calculation
         if text_file and Path(text_file).exists():
@@ -1787,7 +1757,7 @@ def run_phase5_5_subtitles(phase5_dir: Path, file_id: str, pipeline_json: Path, 
         metrics = {}
         if metrics_path.exists():
             with open(metrics_path, 'r') as f:
-                metrics = json.load(f)
+                metrics = json.loads(f.read())
 
         # Backup alignment if coverage/drift are weak
         backup_used = maybe_backup_align_subtitles(
@@ -1966,6 +1936,7 @@ def run_pipeline(
     no_resume: bool = False,
     progress_callback=None,
     concat_only: bool = False,
+    policy_engine: Optional[PolicyEngine] = None,
 ) -> Dict:
     """
     Programmatic interface to run the audiobook pipeline.
@@ -2006,12 +1977,13 @@ def run_pipeline(
     else:
         pipeline_json = Path(pipeline_json).resolve()
 
+    orchestrator_config = get_orchestrator_config()
     if phases is None:
         phases = orchestrator_config.phases_to_run
 
-    # Load orchestrator config and update if needed
-    orchestrator_config = get_orchestrator_config()
+    policy_engine = policy_engine or PolicyEngine()
     pipeline_mode = orchestrator_config.pipeline_mode.lower()
+
     RUN_SUMMARY.update(
         {
             "phase4_reused": False,
@@ -2023,8 +1995,13 @@ def run_pipeline(
         }
     )
 
-    # Load pipeline.json (skip if no_resume is True)
-    pipeline_data = {} if no_resume else load_pipeline_json(pipeline_json)
+    # Prepare canonical pipeline state access
+    try:
+        state = PipelineState(pipeline_json, validate_on_read=True)
+    except Exception as exc:  # pragma: no cover - fallback path
+        logger.warning("Falling back to non-validating pipeline state: %s", exc)
+        state = PipelineState(pipeline_json, validate_on_read=False)
+    resume_enabled = not no_resume
 
     # Concat-only hint for Phase 5
     if concat_only:
@@ -2040,28 +2017,37 @@ def run_pipeline(
         if progress_callback:
             progress_callback(phase_num, 0.0, f"Starting Phase {phase_num}...")
 
-        # Check resume status
-        status = check_phase_status(pipeline_data, phase_num, file_id)
-        if status == "success":
-            logger.info(f"Skipping Phase {phase_num} (already completed)")
-            completed_phases.append(phase_num)
-            if progress_callback:
-                progress_callback(phase_num, 100.0, "Already completed")
-            continue
+        # Check resume status (phase-first view)
+        if resume_enabled:
+            status = check_phase_status(state, phase_num, file_id)
+            if status == "success":
+                logger.info(f"Skipping Phase {phase_num} (already completed)")
+                completed_phases.append(phase_num)
+                if progress_callback:
+                    progress_callback(phase_num, 100.0, "Already completed")
+                continue
+            elif status in {"failed", "partial"}:
+                logger.info(f"Retrying Phase {phase_num} (previous status: {status})")
 
         # Run phase with retries
         logger.info(f"Running Phase {phase_num}...")
+        phase_label = f"phase{phase_num}"
+        _policy_call(policy_engine, "before_phase", phase_label, file_id, state)
 
         success = run_phase_with_retry(
             phase_num,
             file_path,
             file_id,
             pipeline_json,
+            state=state,
             max_retries=max_retries,
             voice_id=voice_id,
             pipeline_mode=pipeline_mode,
             tts_engine=tts_engine,
+            policy_engine=policy_engine,
         )
+
+        _policy_call(policy_engine, "after_phase", phase_label, file_id, state)
 
         if not success:
             return {
@@ -2087,12 +2073,17 @@ def run_pipeline(
         logger.info("Running Phase 5.5 (Subtitles)...")
         phase5_dir = find_phase_dir(5)
         if phase5_dir:
+            subtitle_phase_label = "phase5.5"
+            _policy_call(policy_engine, "before_phase", subtitle_phase_label, file_id, state)
+
             success = run_phase5_5_subtitles(
                 phase5_dir,
                 file_id,
                 pipeline_json,
                 enable_subtitles=True
             )
+
+            _policy_call(policy_engine, "after_phase", subtitle_phase_label, file_id, state)
             if not success:
                 logger.warning("Phase 5.5 (Subtitles) failed - continuing anyway")
 
@@ -2102,10 +2093,8 @@ def run_pipeline(
     if phase5_dir:
         audiobook_path = resolve_phase5_audiobook_path(file_id, pipeline_json, phase5_dir)
 
-    # Reload pipeline data for metadata
-    pipeline_data = load_pipeline_json(pipeline_json)
-
-    file_phase_view = collect_file_phase_view(pipeline_data, file_id)
+    # Build per-file metadata view from canonical state
+    file_phase_view = build_file_phase_view(state, file_id)
     return {
         "success": True,
         "audiobook_path": str(audiobook_path) if audiobook_path else None,
@@ -2208,6 +2197,8 @@ Examples:
     
     # Resolve pipeline.json path
     pipeline_json = (args.pipeline_json or orchestrator_config.pipeline_path).resolve()
+    state = PipelineState(pipeline_json, validate_on_read=False)
+    policy_engine = PolicyEngine()
     
     # Display header (use -> instead of → for Windows compatibility)
     phases_to_run = args.phases or orchestrator_config.phases_to_run
@@ -2225,8 +2216,7 @@ Pipeline Mode: {pipeline_mode}
 """
     print_panel(header.strip(), "Configuration", "bold cyan")
     
-    # Load pipeline.json
-    pipeline_data = load_pipeline_json(pipeline_json) if not args.no_resume else {}
+    resume_enabled = not args.no_resume
 
     # Configure Phase 5 concat-only hint
     if args.phase5_concat_only:
@@ -2257,8 +2247,8 @@ Pipeline Mode: {pipeline_mode}
             break
         
         # Check resume status
-        if not args.no_resume:
-            status = check_phase_status(pipeline_data, phase_num, file_id)
+        if resume_enabled:
+            status = check_phase_status(state, phase_num, file_id)
             if status == "success":
                 print_status(f"[green]OK Skipping {phase_name} (already completed)[/green]")
                 completed_phases.append(phase_num)
@@ -2269,15 +2259,22 @@ Pipeline Mode: {pipeline_mode}
         # Run phase with retries (use > instead of ▶ for Windows compatibility)
         print_status(f"\n[bold cyan]> Running {phase_name}...[/bold cyan]")
         
+        phase_label = f"phase{phase_num}"
+        _policy_call(policy_engine, "before_phase", phase_label, file_id, state)
+
         success = run_phase_with_retry(
             phase_num,
             file_path,
             file_id,
             pipeline_json,
+            state=state,
             max_retries=args.max_retries,
             voice_id=args.voice,
             pipeline_mode=pipeline_mode,
+            policy_engine=policy_engine,
         )
+
+        _policy_call(policy_engine, "after_phase", phase_label, file_id, state)
         
         if not success:
             play_sound(success=False)
@@ -2319,12 +2316,17 @@ Pipeline Mode: {pipeline_mode}
         print_status(f"\n[bold cyan]> Running Phase 5.5 (Subtitles)...[/bold cyan]")
         phase5_dir = find_phase_dir(5)
         if phase5_dir:
+            subtitle_phase_label = "phase5.5"
+            _policy_call(policy_engine, "before_phase", subtitle_phase_label, file_id, state)
+
             success = run_phase5_5_subtitles(
                 phase5_dir,
                 file_id,
                 pipeline_json,
                 enable_subtitles=True
             )
+
+            _policy_call(policy_engine, "after_phase", subtitle_phase_label, file_id, state)
             if success:
                 print_status(f"[green]OK Phase 5.5 (Subtitles) completed successfully[/green]")
             else:

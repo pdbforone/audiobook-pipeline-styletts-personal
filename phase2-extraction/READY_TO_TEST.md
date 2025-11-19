@@ -19,7 +19,7 @@
 
 ### Option 1: Automatic (Easiest)
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction
+cd path\to\audiobook-pipeline-styletts-personal\phase2-extraction
 python quick_test.py
 ```
 
@@ -241,7 +241,7 @@ After running tests, verify:
 ## 🚀 Run This Now
 
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction
+cd path\to\audiobook-pipeline-styletts-personal\phase2-extraction
 python test_extraction_accuracy.py
 ```
 
@@ -257,3 +257,5 @@ This will show you which extraction method is best for Systematic Theology.
 ---
 
 **The tools are ready. Run the test and share the results!**
+
+

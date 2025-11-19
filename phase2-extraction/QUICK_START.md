@@ -3,7 +3,7 @@
 ## TL;DR - Just Run This
 
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction
+cd path\to\audiobook-pipeline-styletts-personal\phase2-extraction
 python test_all_extraction_methods.py
 ```
 
@@ -198,7 +198,7 @@ Multi-Pass → 40% confidence → Consensus → 65% confidence → Check if:
    ```bash
    # Copy the Systematic_Theology_multipass.txt to extracted_text/
    # and update pipeline.json
-   python process_systematic_theology_FIXED.py
+   python deprecated/phase2-extraction/process_systematic_theology_FIXED.py
    ```
 
 ---
@@ -228,3 +228,5 @@ A: The PDF might be encrypted, protected, or corrupted. Check with Adobe Reader,
 5. If poor (<70%), investigate PDF issues (encryption, scanning, etc.)
 
 **The extractors will "work harder, check their work, and correct mistakes" automatically!**
+
+

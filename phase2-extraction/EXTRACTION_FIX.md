@@ -8,7 +8,7 @@ Add `pypdf` library which has better font encoding support.
 
 ## Installation
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction
+cd path\to\audiobook-pipeline-styletts-personal\phase2-extraction
 poetry add pypdf
 ```
 
@@ -73,7 +73,7 @@ if classification == "text" or classification == "mixed":
 After making changes:
 ```bash
 # Re-run Phase 2 on the problematic file
-poetry run python -m phase2_extraction.extraction --file_id "Systematic_Theology" --file "C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\input\Systematic Theology.pdf"
+poetry run python -m phase2_extraction.extraction --file_id "Systematic_Theology" --file "path\to\audiobook-pipeline-styletts-personal\input\Systematic Theology.pdf"
 ```
 
 ## Expected Results
@@ -117,3 +117,5 @@ NOT gibberish like:
 ```
  ▯▯▯▯▯ 1: ▯▯▯▯▯▯▯▯▯▯ to ▯▯▯▯▯▯▯▯ ▯▯▯▯▯▯▯
 ```
+
+

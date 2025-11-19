@@ -59,7 +59,7 @@
 
 ### Test 1: Verify Structure Detection
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase2-extraction
+cd path\to\audiobook-pipeline-styletts-personal\phase2-extraction
 python -m phase2_extraction.extraction `
   --file_id "The_Analects_of_Confucius_20240228" `
   --json_path "../pipeline.json"
@@ -67,7 +67,7 @@ python -m phase2_extraction.extraction `
 
 ### Test 2: Verify Structure-Based Chunking
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase3-chunking
+cd path\to\audiobook-pipeline-styletts-personal\phase3-chunking
 python -m phase3_chunking.main `
   --file_id "The_Analects_of_Confucius_20240228" `
   --json_path "../pipeline.json" `
@@ -116,3 +116,5 @@ print(f"Before: 109 chunks | After: {len(p3['chunk_paths'])} chunks")
 ✅ **Timeout prevention** - 5000-word cap  
 
 **Test it now with your Analects PDF!**
+
+

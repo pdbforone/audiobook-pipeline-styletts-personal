@@ -231,7 +231,7 @@ elif warnings:
     print("\n💡 RECOMMENDATION:")
     print("   Text is readable but has minor issues that might affect TTS quality.")
     print("   Consider re-extracting with pypdf for optimal results.")
-    print("\n   To proceed anyway: python process_systematic_theology_FIXED.py")
+    print("\n   To proceed anyway: python deprecated/phase2-extraction/process_systematic_theology_FIXED.py")
     print("   To re-extract: python complete_fix_CORRECTED.py")
     exit_code = 0
 else:
@@ -240,7 +240,7 @@ else:
     print("   Text is clean, well-formatted, and suitable for TTS synthesis.")
     print("\n💡 NEXT STEP:")
     print("   Process through pipeline for tracking:")
-    print("   python process_systematic_theology_FIXED.py")
+    print("   python deprecated/phase2-extraction/process_systematic_theology_FIXED.py")
     exit_code = 0
 
 print("\n" + "=" * 80)

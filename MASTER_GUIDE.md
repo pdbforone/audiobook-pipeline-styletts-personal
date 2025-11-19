@@ -1,6 +1,6 @@
 # 🎬 Complete ELL Audiobook Video System - INSTALLED ✅
 
-**Location:** `C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\`  
+**Location:** `path\to\audiobook-pipeline-styletts-personal\`  
 **Status:** Ready to use immediately
 
 ---
@@ -27,7 +27,7 @@
 ### Create "Gift of The Magi" Video:
 
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox
+cd path\to\audiobook-pipeline-styletts-personal
 .\generate_gift_of_magi_video.ps1
 ```
 
@@ -303,7 +303,7 @@ Track these overall:
 
 ### File Locations:
 ```
-audiobook-pipeline-chatterbox/
+audiobook-pipeline-styletts-personal/
 ├── generate_gift_of_magi_video.ps1    ← Use NOW
 ├── phase65_video_assembly.py          ← Use for future books
 ├── VIDEO_GENERATOR_README.md          ← Detailed guide
@@ -328,7 +328,7 @@ ls output\
 
 ### Right Now (5 min):
 ```powershell
-cd C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox
+cd path\to\audiobook-pipeline-styletts-personal
 .\generate_gift_of_magi_video.ps1
 ```
 
@@ -380,3 +380,5 @@ You now have:
 *System installed: November 2024*  
 *Status: ✅ Production Ready*  
 *Next: Run the PowerShell script!*
+
+

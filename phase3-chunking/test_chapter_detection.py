@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 from typing import List, Tuple
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 def detect_chapters(text: str) -> List[Tuple[str, str]]:
     """
     Detect chapter boundaries in text.
@@ -59,7 +61,7 @@ def test_chapter_detection():
     """Test chapter detection on the Analects"""
     
     # Read the extracted text
-    text_file = Path("C:/Users/myson/Pipeline/audiobook-pipeline/phase2-extraction/src/extracted_text/The_Analects_of_Confucius_20240228.txt")
+    text_file = REPO_ROOT / "phase2-extraction" / "extracted_text" / "The_Analects_of_Confucius_20240228.txt"
     
     with open(text_file, 'r', encoding='utf-8') as f:
         text = f.read()

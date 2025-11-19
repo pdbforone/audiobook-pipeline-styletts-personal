@@ -46,13 +46,13 @@ This now shows:
 
 ### Step 2: Run Phase 4
 ```bash
-python orchestrator.py "C:\Users\myson\Pipeline\The Analects of Confucius.pdf" --phases 4
+python orchestrator.py "path\to\The Analects of Confucius.pdf" --phases 4
 ```
 
 **Expected output:**
 ```
 [INFO] Processing 109 chunks for file_id='The Analects of Confucius'
-[INFO] First chunk: C:\Users\myson\Pipeline\audiobook-pipeline\chunks\The Analects of Confucius_20240228_chunk_001.txt
+[INFO] First chunk: path\to\audiobook-pipeline-styletts-personal\chunks\The Analects of Confucius_20240228_chunk_001.txt
 [INFO] Updating pipeline.json with absolute chunk paths...
 [INFO] Pipeline.json updated with absolute paths
 [INFO]   Chunk 1/109
@@ -80,13 +80,15 @@ Phase 4 opens: ✓ Success!
 ## Quick Test Now
 
 ```bash
-cd C:\Users\myson\Pipeline\audiobook-pipeline\phase6_orchestrator
+cd path\to\audiobook-pipeline-styletts-personal\phase6_orchestrator
 python check_phase3_output.py
 ```
 
 Then:
 ```bash
-python orchestrator.py "C:\Users\myson\Pipeline\The Analects of Confucius.pdf" --phases 4
+python orchestrator.py "path\to\The Analects of Confucius.pdf" --phases 4
 ```
 
 This should work now! 🚀
+
+

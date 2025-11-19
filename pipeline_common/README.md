@@ -509,7 +509,7 @@ Potential improvements (not implemented yet):
 
 ## License
 
-Part of the audiobook-pipeline-chatterbox project.
+Part of the audiobook-pipeline-styletts-personal project.
 
 ---
 
@@ -522,3 +522,4 @@ Built with inspiration from:
 - Redis's AOF persistence
 
 Designed for reliability, not features. Every line justified.
+

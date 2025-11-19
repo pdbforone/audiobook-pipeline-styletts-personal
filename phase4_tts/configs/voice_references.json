@@ -125,7 +125,7 @@
       "notes": "Atmospheric horror - legendary actress voice"
     },
     "greenman": {
-      "local_path": "C:/Users/myson/Pipeline/greenman_ref.wav",
+      "local_path": "voice_samples/custom/greenman_ref.wav",
       "description": "Greenman reference voice",
       "narrator_name": "Greenman",
       "preferred_profiles": [
