@@ -38,6 +38,7 @@ MODULE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = MODULE_ROOT.parent.parent
 DEFAULT_CHARS_PER_MINUTE = 1050  # Shared speaking cadence assumption
 from pipeline_common.astromech_notify import play_success_beep, play_alert_beep
+from io_helpers import atomic_write_json, ensure_absolute_path, validate_audio_file
 
 # Add engines + shared utils to path
 sys.path.insert(0, str(MODULE_ROOT.parent))
@@ -94,6 +95,8 @@ class ChunkResult:
     engine_used: Optional[str]
     rt_factor: Optional[float] = None
     audio_duration: Optional[float] = None
+    text_len: Optional[int] = None
+    est_dur: Optional[float] = None
     latency_fallback_used: bool = False
     voice_used: Optional[str] = None
     error: Optional[str] = None
@@ -491,6 +494,7 @@ def synthesize_chunk_with_engine(
     validation_reason: Optional[str] = None
     validation_details: Optional[Dict[str, Any]] = None
     effective_cpm = chars_per_minute or DEFAULT_CHARS_PER_MINUTE
+    text_len = len(chunk.text)
 
     if chunk.voice_override and voice_assets:
         voice_asset = voice_assets.get(chunk.voice_override)
@@ -531,6 +535,8 @@ def synthesize_chunk_with_engine(
             engine_used=None,
             rt_factor=None,
             audio_duration=None,
+            text_len=text_len,
+            est_dur=est_dur_sec,
             latency_fallback_used=False,
             voice_used=voice_used,
             validation_tier=None,
@@ -582,6 +588,8 @@ def synthesize_chunk_with_engine(
             engine_used=effective_engine,
             rt_factor=None,
             audio_duration=None,
+            text_len=text_len,
+            est_dur=est_dur_sec,
             latency_fallback_used=False,
             voice_used=voice_used,
             error=str(exc),
@@ -605,6 +613,8 @@ def synthesize_chunk_with_engine(
             engine_used=effective_engine,
             rt_factor=None,
             audio_duration=None,
+            text_len=text_len,
+            est_dur=est_dur_sec,
             latency_fallback_used=False,
             voice_used=voice_used,
             error="text too long",
@@ -643,6 +653,8 @@ def synthesize_chunk_with_engine(
             engine_used=None,
             rt_factor=None,
             audio_duration=None,
+            text_len=text_len,
+            est_dur=est_dur_sec,
             latency_fallback_used=False,
             voice_used=voice_used,
             error=str(exc),
@@ -725,6 +737,26 @@ def synthesize_chunk_with_engine(
 
     output_path = output_dir / f"{chunk.chunk_id}.wav"
     sf.write(output_path, audio, sample_rate)
+    try:
+        validate_audio_file(output_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Chunk %s output validation failed: %s", chunk.chunk_id, exc)
+        return ChunkResult(
+            chunk_id=chunk.chunk_id,
+            success=False,
+            output_path=output_path,
+            engine_used=used_engine,
+            rt_factor=rt_factor,
+            audio_duration=audio_duration,
+            text_len=text_len,
+            est_dur=est_dur_sec,
+            latency_fallback_used=latency_fallback_used,
+            voice_used=voice_used,
+            error="output_validation_failed",
+            validation_tier=validation_tier,
+            validation_reason="corrupt_output",
+            validation_details={"error": str(exc)},
+        )
 
     # Validation pipeline
     tier1_result = None
@@ -824,6 +856,8 @@ def synthesize_chunk_with_engine(
         engine_used=used_engine,
         rt_factor=rt_factor,
         audio_duration=audio_duration,
+        text_len=text_len,
+        est_dur=est_dur_sec,
         latency_fallback_used=latency_fallback_used,
         voice_used=voice_used,
         validation_tier=validation_tier,
@@ -878,6 +912,19 @@ def update_phase4_summary(
         extra = " High latency fallback usage (>20%)."
         advisory = (advisory + extra) if advisory else ("High latency fallback usage (>20%). " "Consider Kokoro.")
 
+    chunk_details: List[Dict[str, Any]] = []
+    for result in results:
+        chunk_details.append(
+            {
+                "chunk_id": result.chunk_id,
+                "text_len": result.text_len,
+                "est_dur": result.est_dur,
+                "engine": result.engine_used,
+                "rt_factor": result.rt_factor,
+                "audio_path": serialize_path_for_pipeline(result.output_path) if result.output_path else None,
+            }
+        )
+
     file_entry: Dict[str, Any] = {
         "status": "success" if failed == 0 else "partial",
         "voice_id": voice_id,
@@ -904,6 +951,7 @@ def update_phase4_summary(
         "validation_failures": validation_failures,
         "tier1_failures": tier1_failures,
         "tier2_failures": tier2_failures,
+        "chunks_metadata": chunk_details,
     }
 
     for result in results:
@@ -915,6 +963,8 @@ def update_phase4_summary(
             "voice_used": result.voice_used,
             "rt_factor": result.rt_factor,
             "audio_seconds": result.audio_duration,
+            "text_len": result.text_len,
+            "est_dur": result.est_dur,
             "latency_fallback_used": result.latency_fallback_used,
             "errors": [] if result.success else [result.error or "unknown error"],
             "validation_tier": result.validation_tier,
@@ -929,11 +979,7 @@ def update_phase4_summary(
     else:
         phase4["status"] = "partial"
 
-    pipeline_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = pipeline_path.with_suffix(".tmp")
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-    tmp_path.replace(pipeline_path)
+    atomic_write_json(pipeline_path, data)
 
 
 def write_run_summary(
@@ -972,10 +1018,7 @@ def write_run_summary(
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     summary_path = output_dir / "summary.json"
-    tmp_path = summary_path.with_suffix(".tmp")
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
-    tmp_path.replace(summary_path)
+    atomic_write_json(summary_path, payload)
 
 
 ENGINE_IMPORT_MAP: Dict[str, Tuple[str, str]] = {
@@ -1022,7 +1065,7 @@ def build_engine_manager(device: str, engines: Optional[List[str]] = None) -> En
     return manager
 
 
-def main() -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Phase 4: Multi-Engine TTS Synthesis")
     parser.add_argument("--file_id", required=True, help="File identifier (matches phase3 entry)")
     parser.add_argument(
@@ -1137,7 +1180,7 @@ def main() -> int:
         help="Override Tier 2 always-validate last N chunks.",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     json_path = Path(args.json_path).resolve()
     config_path = MODULE_ROOT.parent / args.config
@@ -1517,6 +1560,34 @@ def main() -> int:
         else:
             play_alert_beep(silence_mode=False)
     return exit_code
+
+
+def execute_phase4(
+    file_id: str,
+    json_path: str,
+    engine: str = "auto",
+    voice: Optional[str] = None,
+    language: Optional[str] = None,
+    workers: Optional[int] = None,
+    resume: bool = False,
+) -> int:
+    """
+    Standardized callable entry point so orchestrators can invoke Phase 4.
+    """
+    argv = [
+        f"--file_id={file_id}",
+        f"--json_path={json_path}",
+        f"--engine={engine or 'auto'}",
+    ]
+    if voice:
+        argv.append(f"--voice={voice}")
+    if language:
+        argv.append(f"--language={language}")
+    if workers:
+        argv.append(f"--workers={workers}")
+    if resume:
+        argv.append("--resume")
+    return main(argv)
 
 
 if __name__ == "__main__":

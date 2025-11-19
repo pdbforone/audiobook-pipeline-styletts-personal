@@ -3,6 +3,8 @@
 ## Overview
 `pipeline.json` is the pipeline’s single source of truth. Each phase updates a well-defined section so downstream stages (and tooling such as the orchestrator or batch runner) can reason about inputs, outputs, metrics, and errors without ad‑hoc scraping of logs.
 
+The **canonical, phase-first schema** now lives at `pipeline_common/schema.json` (version `3.0.0`) and is enforced by `pipeline_common.PipelineState`. All readers should expect the top-level `phase*` blocks with per-file maps, plus consistent metadata (`pipeline_version`, `created_at`, `last_updated`). Use `pipeline_common.adapter.upgrade_pipeline_file` to migrate legacy `pipeline.json` files safely.
+
 ## Top-Level Structure
 ```json
 {
@@ -20,7 +22,8 @@
   "phase5": { /* Phase 5 Schema */ },
   "phase5_5": { /* Phase 5.5 Schema */ },
   "phase6": { /* Optional orchestration telemetry */ },
-  "phase7": { /* Optional batch telemetry */ }
+  "phase7": { /* Optional batch telemetry */ },
+  "batch_runs": [ /* Batch summaries */ ]
 }
 ```
 

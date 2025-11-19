@@ -10,11 +10,12 @@ and a clear API boundary to the orchestrator pipeline.
 from __future__ import annotations
 
 import atexit
+from dataclasses import dataclass
 import logging
 import signal
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, List, Optional, Tuple
 
 import gradio as gr
 import yaml
@@ -153,6 +154,30 @@ CUSTOM_CSS = """
 
 """
 
+
+@dataclass
+class UIState:
+    """Session-scoped UI state to avoid cross-user leaking."""
+
+    pipeline_api: PipelineAPI
+    worker: PipelineWorker
+    active_job: Optional[str] = None
+    phase4_page: int = 1
+    phase4_page_size: int = 20
+    phase5_page: int = 1
+    phase5_page_size: int = 10
+
+    @property
+    def is_running(self) -> bool:
+        return self.worker.is_running
+
+    def mark_job(self, job: str) -> None:
+        self.active_job = job
+
+    def clear_job(self) -> None:
+        self.active_job = None
+
+
 class StudioUI:
     """Main UI orchestrator with explicit state injection."""
 
@@ -160,13 +185,15 @@ class StudioUI:
         self.voice_manager = VoiceManager(VOICE_CONFIG_PATH, CUSTOM_VOICE_DIR)
         self.settings_manager = SettingsManager(SETTINGS_PATH, PROJECT_ROOT)
         self.settings: UISettings = self.settings_manager.load()
-        self.pipeline_api = PipelineAPI(PROJECT_ROOT, log_files=LOG_FILES)
-        self.worker = PipelineWorker()
         self.presets = self._load_presets()
 
     # ------------------------------------------------------------------ #
     # Utility helpers
     # ------------------------------------------------------------------ #
+    def _create_ui_state(self) -> UIState:
+        """Create a session-scoped state container."""
+        return UIState(pipeline_api=PipelineAPI(PROJECT_ROOT, log_files=LOG_FILES), worker=PipelineWorker())
+
     @staticmethod
     def _show_stop_button():
         return gr.update(visible=True)
@@ -174,6 +201,21 @@ class StudioUI:
     @staticmethod
     def _hide_stop_button():
         return gr.update(visible=False)
+
+    @staticmethod
+    def _safe_progress(progress_fn: Any, value: float, desc: Optional[str] = None) -> None:
+        """Best-effort progress updates that never throw."""
+        if not progress_fn:
+            return
+        try:
+            progress_fn(value, desc=desc)
+        except Exception:
+            logger.debug("Progress callback failed", exc_info=True)
+
+    @staticmethod
+    def _run_background(func: Callable[..., Awaitable[Any]], *args, **kwargs):
+        """Schedule coroutine work without blocking the Gradio event loop."""
+        return gr.utils.run_coro_in_background(func, *args, **kwargs)
 
     def _build_voice_gallery_html(self) -> str:
         html = '<div style="display: grid; gap: 1rem;">'
@@ -209,8 +251,8 @@ class StudioUI:
             logger.warning("Failed to load mastering presets: %s", exc)
             return ["audiobook_intimate", "audiobook_dynamic", "podcast_standard"]
 
-    def _format_status(self, file_id: Optional[str]) -> str:
-        status = self.pipeline_api.get_status(file_id)
+    def _format_status(self, pipeline_api: PipelineAPI, file_id: Optional[str]) -> str:
+        status = pipeline_api.get_status(file_id)
         if not status:
             return "Select a file to view pipeline status."
 
@@ -257,8 +299,8 @@ class StudioUI:
         chunk_text = "\n".join(chunk_section) if chunk_section else "- No chunk rows in this page."
         return f"{chr(10).join(header_lines)}\n{pagination}\n\n{chunk_text}"
 
-    def _resume_message(self) -> Tuple[bool, str]:
-        incomplete = self.pipeline_api.check_incomplete_work()
+    def _resume_message(self, pipeline_api: PipelineAPI) -> Tuple[bool, str]:
+        incomplete = pipeline_api.check_incomplete_work()
         if not incomplete:
             return False, ""
 
@@ -281,12 +323,21 @@ You can:
     # ------------------------------------------------------------------ #
     # Callbacks
     # ------------------------------------------------------------------ #
-    def handle_cancel(self) -> str:
-        self.pipeline_api.request_cancel()
-        self.worker.cancel()
-        return "⚠️ **Cancellation requested.** The pipeline will stop after the current step."
+    def handle_cancel(self, ui_state: UIState) -> Tuple[str, UIState]:
+        if ui_state.active_job and ui_state.active_job != "single":
+            return "⚠️ Batch generation is running; wait for it to finish or stop it from the batch tab.", ui_state
+
+        if not ui_state.worker.is_running:
+            return "ℹ️ No active generation to cancel.", ui_state
+
+        ui_state.pipeline_api.request_cancel()
+        ui_state.worker.cancel()
+        ui_state.clear_job()
+        return "⚠️ **Cancellation requested.** The pipeline will stop after the current step.", ui_state
+
     async def handle_create_audiobook(
         self,
+        ui_state: UIState,
         book_file: str,
         voice_selection: str,
         engine_selection: str,
@@ -301,20 +352,20 @@ You can:
         phase4: bool,
         phase5: bool,
         progress=gr.Progress(track_tqdm=True),
-    ) -> Tuple[Optional[str], str]:
+    ) -> Tuple[Optional[str], str, UIState]:
         if not book_file:
-            return None, "❌ Please upload a book file."
+            return None, "❌ Please upload a book file.", ui_state
 
-        if self.worker.is_running:
-            return None, "⚠️ Another pipeline run is already in progress."
+        if ui_state.worker.is_running:
+            return None, "⚠️ Another pipeline run is already in progress.", ui_state
 
         voice_meta = self.voice_manager.get_voice(voice_selection)
         if not voice_meta:
-            return None, "❌ Please select a voice."
+            return None, "❌ Please select a voice.", ui_state
 
         phases = [p for p, enabled in zip([1, 2, 3, 4, 5], [phase1, phase2, phase3, phase4, phase5]) if enabled]
         if not phases:
-            return None, "❌ Please select at least one phase to run."
+            return None, "❌ Please select at least one phase to run.", ui_state
 
         engine = ENGINE_MAP.get(engine_selection, "xtts")
         file_path = Path(book_file)
@@ -324,13 +375,10 @@ You can:
         async def runner(cancel_event, update_progress):
             def progress_hook(value: float, desc: Optional[str] = None):
                 update_progress(value, desc)
-                try:
-                    progress(value, desc=desc)
-                except Exception:
-                    logger.debug("Progress update failed", exc_info=True)
+                self._safe_progress(progress, value, desc)
 
-            self.pipeline_api.reset_cancel()
-            result = await self.pipeline_api.run_pipeline_async(
+            ui_state.pipeline_api.reset_cancel()
+            result = await ui_state.pipeline_api.run_pipeline_async(
                 file_path=file_path,
                 voice_id=voice_meta.voice_id,
                 tts_engine=engine,
@@ -345,19 +393,25 @@ You can:
             )
             return result
 
+        ui_state.mark_job("single")
         try:
-            result = await self.worker.start(runner)
+            task = self._run_background(ui_state.worker.start, runner)
+            result = await task
         except RuntimeError as exc:
-            return None, f"⚠️ {exc}"
+            ui_state.clear_job()
+            return None, f"⚠️ {exc}", ui_state
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception("Audiobook generation failed")
-            return None, f"❌ Error: {exc}"
+            ui_state.clear_job()
+            return None, f"❌ Error: {exc}", ui_state
+        finally:
+            ui_state.clear_job()
 
         if not result.get("success"):
             error = result.get("error", "Unknown error")
             if error == "cancelled":
-                return None, "⚠️ **Generation cancelled.** Partial progress was saved."
-            return None, f"❌ Error: {error}"
+                return None, "⚠️ **Generation cancelled.** Partial progress was saved.", ui_state
+            return None, f"❌ Error: {error}", ui_state
 
         audiobook_path = result.get("audiobook_path", "phase5_enhancement/processed/")
         options_list = []
@@ -386,9 +440,10 @@ You can:
 
 **Output:**
 - Path: `{audiobook_path}`
-"""
+""", ui_state
     async def handle_batch_audiobooks(
         self,
+        ui_state: UIState,
         book_files: List[str],
         voice_selection: str,
         engine_selection: str,
@@ -402,19 +457,19 @@ You can:
         phase4: bool,
         phase5: bool,
         progress=gr.Progress(track_tqdm=True),
-    ) -> str:
+    ) -> Tuple[str, UIState]:
         if not book_files:
-            return "❌ Please upload one or more book files."
-        if self.worker.is_running:
-            return "⚠️ Another pipeline run is already in progress."
+            return "❌ Please upload one or more book files.", ui_state
+        if ui_state.worker.is_running:
+            return "⚠️ Another pipeline run is already in progress.", ui_state
 
         voice_meta = self.voice_manager.get_voice(voice_selection)
         if not voice_meta:
-            return "❌ Please select a voice."
+            return "❌ Please select a voice.", ui_state
 
         phases = [p for p, enabled in zip([1, 2, 3, 4, 5], [phase1, phase2, phase3, phase4, phase5]) if enabled]
         if not phases:
-            return "❌ Please select at least one phase to run."
+            return "❌ Please select at least one phase to run.", ui_state
 
         engine = ENGINE_MAP.get(engine_selection, "xtts")
         retries = int(max_retries)
@@ -423,25 +478,23 @@ You can:
         async def runner(cancel_event, update_progress):
             results = []
             total = len(book_files)
+            ui_state.pipeline_api.reset_cancel()
             for idx, book in enumerate(book_files, start=1):
                 if cancel_event.is_set():
                     results.append(f"- ❌ Cancelled before processing `{Path(book).name}`")
                     break
 
                 file_path = Path(book)
-                progress((idx - 1) / total, desc=f"Batch {idx}/{total}: {file_path.name}")
+                self._safe_progress(progress, (idx - 1) / total, f"Batch {idx}/{total}: {file_path.name}")
                 update_progress((idx - 1) / total, f"Starting {file_path.name}")
 
                 inner_progress = gr.Progress(track_tqdm=True)
 
                 def progress_hook(value: float, desc: Optional[str] = None):
                     update_progress(value, desc)
-                    try:
-                        inner_progress(value, desc=desc)
-                    except Exception:
-                        logger.debug("Batch progress update failed", exc_info=True)
+                    self._safe_progress(inner_progress, value, desc)
 
-                res = await self.pipeline_api.run_pipeline_async(
+                res = await ui_state.pipeline_api.run_pipeline_async(
                     file_path=file_path,
                     voice_id=voice_meta.voice_id,
                     tts_engine=engine,
@@ -461,16 +514,23 @@ You can:
                 else:
                     results.append(f"- ❌ `{file_path.name}` failed: {res.get('error','unknown error')}")
 
-            progress(1.0, desc="Batch complete")
+            self._safe_progress(progress, 1.0, "Batch complete")
             return "\n".join(results)
 
+        ui_state.mark_job("batch")
         try:
-            return await self.worker.start(runner)
+            task = self._run_background(ui_state.worker.start, runner)
+            result = await task
+            return result, ui_state
         except RuntimeError as exc:
-            return f"⚠️ {exc}"
+            ui_state.clear_job()
+            return f"⚠️ {exc}", ui_state
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception("Batch processing failed")
-            return f"❌ Error: {exc}"
+            ui_state.clear_job()
+            return f"❌ Error: {exc}", ui_state
+        finally:
+            ui_state.clear_job()
 
     def handle_add_voice(
         self,
@@ -512,24 +572,58 @@ You can:
 {voice.notes or 'No notes.'}
 """
 
-    def handle_status_refresh(self, file_id: str) -> str:
+    def handle_status_refresh(self, ui_state: UIState, file_id: str) -> str:
         try:
-            return self._format_status(file_id)
+            return self._format_status(ui_state.pipeline_api, file_id)
         except Exception as exc:
             logger.warning("Failed to refresh status: %s", exc)
             return f"❌ Unable to refresh status: {exc}"
 
-    def handle_phase4_refresh(self, file_id: str, page: float, page_size: float) -> str:
+    def handle_phase4_refresh(self, ui_state: UIState, file_id: str, page: float, page_size: float) -> str:
         try:
-            summary = self.pipeline_api.get_phase4_summary(file_id, int(page), int(page_size))
+            page_int = max(1, int(page))
+            page_size_int = max(1, min(100, int(page_size)))
+            summary = ui_state.pipeline_api.get_phase4_summary(file_id, page_int, page_size_int)
+            if summary and page_int > summary.total_pages:
+                page_int = summary.total_pages or 1
+                summary = ui_state.pipeline_api.get_phase4_summary(file_id, page_int, page_size_int)
             return self._format_phase4_summary(summary)
         except Exception as exc:
             logger.warning("Failed to refresh phase 4 summary: %s", exc)
             return f"❌ Unable to refresh Phase 4 summary: {exc}"
 
-    def handle_log_refresh(self, log_key: str) -> str:
+    def handle_phase5_refresh(self, page: float, page_size: float) -> str:
+        processed_dir = PROJECT_ROOT / "phase5_enhancement" / "processed"
         try:
-            return self.pipeline_api.tail_log(log_key)
+            files = sorted(list(processed_dir.glob("*.mp3")) + list(processed_dir.glob("enhanced_*.wav")))
+            if not files:
+                return "No Phase 5 outputs found yet."
+
+            page_int = max(1, int(page))
+            page_size_int = max(1, min(100, int(page_size)))
+            total_pages = max(1, (len(files) + page_size_int - 1) // page_size_int)
+            if page_int > total_pages:
+                page_int = total_pages
+
+            start = (page_int - 1) * page_size_int
+            subset = files[start : start + page_size_int]
+            lines = []
+            for fpath in subset:
+                try:
+                    size_mb = fpath.stat().st_size / (1024 * 1024)
+                    lines.append(f"- {fpath.name} ({size_mb:.1f} MB)")
+                except Exception:
+                    lines.append(f"- {fpath.name}")
+
+            header = f"### Phase 5 Outputs\nPage {page_int}/{total_pages} (showing {len(subset)} of {len(files)})"
+            return f"{header}\n\n" + ("\n".join(lines) if lines else "- No files on this page.")
+        except Exception as exc:
+            logger.warning("Failed to refresh phase 5 outputs: %s", exc)
+            return f"❌ Unable to read Phase 5 outputs: {exc}"
+
+    def handle_log_refresh(self, ui_state: UIState, log_key: str) -> str:
+        try:
+            return ui_state.pipeline_api.tail_log(log_key)
         except Exception as exc:
             logger.warning("Failed to refresh log: %s", exc)
             return f"❌ Unable to read log: {exc}"
@@ -559,10 +653,12 @@ You can:
     def build_ui(self):
         app_theme = gr.themes.Soft(primary_hue="blue", secondary_hue="orange")
         voice_choices = self.voice_manager.list_dropdown()
-        file_ids = self.pipeline_api.get_file_ids()
-        incomplete_detected, incomplete_msg = self._resume_message()
+        initial_state = self._create_ui_state()
+        file_ids = initial_state.pipeline_api.get_file_ids()
+        incomplete_detected, incomplete_msg = self._resume_message(initial_state.pipeline_api)
 
         with gr.Blocks(theme=app_theme, css=CUSTOM_CSS, title="🎙️ Personal Audiobook Studio") as app:
+            ui_state = gr.State(initial_state)
             gr.HTML(
                 """
                 <div class="header">
@@ -580,14 +676,20 @@ You can:
                         choices=file_ids,
                         value=file_ids[0] if file_ids else None,
                         label="Tracked File (from pipeline.json)",
-                    )
+                )
                     refresh_status_btn = gr.Button("🔄 Refresh", variant="secondary")
 
                 status_markdown = gr.Markdown(
-                    self._format_status(file_ids[0]) if file_ids else "Select a file to view pipeline status."
+                    self._format_status(initial_state.pipeline_api, file_ids[0])
+                    if file_ids
+                    else "Select a file to view pipeline status."
                 )
-                status_file_dropdown.change(self.handle_status_refresh, inputs=status_file_dropdown, outputs=status_markdown)
-                refresh_status_btn.click(self.handle_status_refresh, inputs=status_file_dropdown, outputs=status_markdown)
+                status_file_dropdown.change(
+                    self.handle_status_refresh, inputs=[ui_state, status_file_dropdown], outputs=status_markdown
+                )
+                refresh_status_btn.click(
+                    self.handle_status_refresh, inputs=[ui_state, status_file_dropdown], outputs=status_markdown
+                )
 
                 with gr.Accordion("Phase 4 Summary (paged)", open=False):
                     with gr.Row():
@@ -597,18 +699,31 @@ You can:
 
                     status_file_dropdown.change(
                         self.handle_phase4_refresh,
-                        inputs=[status_file_dropdown, phase4_page, phase4_page_size],
+                        inputs=[ui_state, status_file_dropdown, phase4_page, phase4_page_size],
                         outputs=phase4_summary_md,
                     )
                     phase4_page.change(
                         self.handle_phase4_refresh,
-                        inputs=[status_file_dropdown, phase4_page, phase4_page_size],
+                        inputs=[ui_state, status_file_dropdown, phase4_page, phase4_page_size],
                         outputs=phase4_summary_md,
                     )
                     phase4_page_size.change(
                         self.handle_phase4_refresh,
-                        inputs=[status_file_dropdown, phase4_page, phase4_page_size],
+                        inputs=[ui_state, status_file_dropdown, phase4_page, phase4_page_size],
                         outputs=phase4_summary_md,
+                    )
+
+                with gr.Accordion("Phase 5 Outputs (paged)", open=False):
+                    with gr.Row():
+                        phase5_page = gr.Slider(1, 200, value=1, step=1, label="Output page")
+                        phase5_page_size = gr.Slider(5, 50, value=10, step=1, label="Rows per page")
+                    phase5_summary_md = gr.Markdown(self.handle_phase5_refresh(1, 10))
+
+                    phase5_page.change(
+                        self.handle_phase5_refresh, inputs=[phase5_page, phase5_page_size], outputs=phase5_summary_md
+                    )
+                    phase5_page_size.change(
+                        self.handle_phase5_refresh, inputs=[phase5_page, phase5_page_size], outputs=phase5_summary_md
                     )
 
                 with gr.Accordion("Log tail (CPU-safe monitoring)", open=False):
@@ -621,8 +736,8 @@ You can:
                         log_refresh = gr.Button("🔄 Refresh", variant="secondary")
                     log_viewer = gr.Textbox(label="Last 200 lines", lines=12, value="")
 
-                    log_dropdown.change(self.handle_log_refresh, inputs=log_dropdown, outputs=log_viewer)
-                    log_refresh.click(self.handle_log_refresh, inputs=log_dropdown, outputs=log_viewer)
+                    log_dropdown.change(self.handle_log_refresh, inputs=[ui_state, log_dropdown], outputs=log_viewer)
+                    log_refresh.click(self.handle_log_refresh, inputs=[ui_state, log_dropdown], outputs=log_viewer)
             # SINGLE BOOK TAB
             with gr.Tab("📖 Single Book"):
                 gr.Markdown("## Create a Single Audiobook")
@@ -722,6 +837,7 @@ You can:
                 generate_click = generate_btn.click(
                     fn=self.handle_create_audiobook,
                     inputs=[
+                        ui_state,
                         book_input,
                         voice_dropdown,
                         engine_dropdown,
@@ -736,13 +852,15 @@ You can:
                         phase4_check,
                         phase5_check,
                     ],
-                    outputs=[audio_output, status_output],
+                    outputs=[audio_output, status_output, ui_state],
                 )
 
                 generate_btn.click(fn=self._show_stop_button, inputs=None, outputs=[stop_btn])
                 generate_click.then(fn=self._hide_stop_button, inputs=None, outputs=[stop_btn])
-                stop_btn.click(fn=self.handle_cancel, inputs=None, outputs=[stop_status], cancels=[generate_click])
-                stop_btn.click(fn=self._show_stop_button, inputs=None, outputs=[stop_status])
+                stop_btn.click(
+                    fn=self.handle_cancel, inputs=[ui_state], outputs=[stop_status, ui_state], cancels=[generate_click]
+                )
+                stop_btn.click(fn=self._hide_stop_button, inputs=None, outputs=[stop_btn])
 
                 voice_dropdown.change(fn=self.handle_voice_details, inputs=[voice_dropdown], outputs=[voice_details])
             # BATCH TAB
@@ -816,6 +934,7 @@ You can:
                 batch_run_btn.click(
                     fn=self.handle_batch_audiobooks,
                     inputs=[
+                        ui_state,
                         batch_files,
                         batch_voice,
                         batch_engine,
@@ -829,7 +948,7 @@ You can:
                         b_phase4,
                         b_phase5,
                     ],
-                    outputs=[batch_status],
+                    outputs=[batch_status, ui_state],
                 )
 
             # VOICE TAB

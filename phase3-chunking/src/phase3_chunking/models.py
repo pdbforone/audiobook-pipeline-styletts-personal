@@ -15,6 +15,8 @@ class ChunkRecord(BaseModel):
     errors: List[str] = []
     timestamps: Dict[str, float] = {}
     chunk_metrics: Optional[Dict[str, Any]] = None  # Chunk size/duration metrics
+    # Structured per-chunk metadata to keep downstream phases consistent
+    chunk_metadata: List[Dict[str, Any]] = Field(default_factory=list)
     source_hash: Optional[str] = None  # Hash of source text to enable reuse
     
     # NEW: Genre-aware fields

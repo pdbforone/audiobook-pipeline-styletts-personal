@@ -2,11 +2,24 @@ import hashlib
 import json
 import logging
 import os
+import sys
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+try:
+    from pipeline_common import canonicalize_state, validate_pipeline_schema
+except Exception:  # pragma: no cover - fallback when pipeline_common is unavailable
+    canonicalize_state = lambda data, **kwargs: data  # type: ignore
+
+    def validate_pipeline_schema(data, **kwargs):  # type: ignore
+        return None
 
 try:
     import msvcrt
@@ -102,6 +115,11 @@ def safe_update_json(json_path: Path, updates: Dict[str, Any]) -> Dict[str, Any]
             existing = {}
 
         merged = _deep_merge(existing, updates)
+        try:
+            merged = canonicalize_state(merged)
+            validate_pipeline_schema(merged)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Skipped canonical schema enforcement: %s", exc)
         tmp_path = json_path.with_suffix(json_path.suffix + ".tmp")
         tmp_path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
         os.replace(tmp_path, json_path)

@@ -9,12 +9,24 @@ import os
 import sys
 import warnings
 import hashlib
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Any
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
     from filelock import FileLock
 except ImportError:
     FileLock = None
+
+try:
+    from pipeline_common import canonicalize_state, validate_pipeline_schema
+except Exception:  # pragma: no cover - fallback when pipeline_common is not importable
+    canonicalize_state = lambda payload, **kwargs: payload  # type: ignore
+
+    def validate_pipeline_schema(payload, **kwargs):  # type: ignore
+        return None
 
 # Smart import: works both as script and as module
 try:
@@ -32,6 +44,7 @@ try:
         calculate_chunk_metrics,
     )
     from .structure_chunking import chunk_by_structure, should_use_structure_chunking
+    from .io_utils import atomic_write_json, ensure_absolute_path
 except ImportError:
     from models import ChunkRecord, ValidationConfig, Phase3Config
     from voice_selection import select_voice, validate_voice_id
@@ -47,6 +60,7 @@ except ImportError:
         calculate_chunk_metrics,
     )
     from structure_chunking import chunk_by_structure, should_use_structure_chunking
+    from io_utils import atomic_write_json, ensure_absolute_path
 from pipeline_common.astromech_notify import play_success_beep, play_alert_beep
 
 # Configure logging
@@ -58,6 +72,51 @@ logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore", category=UserWarning, module="textstat.textstat")
 
+# Shared cadence assumption so downstream durations line up
+DEFAULT_CHARS_PER_MINUTE = 1050
+
+
+def _read_chunk_text_length(path: Path) -> Optional[int]:
+    """Best-effort text length reader that tolerates missing/corrupt files."""
+    try:
+        return len(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        logger.warning("Chunk file missing when computing metadata: %s", path)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to read chunk %s for length calculation: %s", path, exc)
+    return None
+
+
+def build_chunk_metadata(chunks: List[str], chunk_paths: List[str]) -> List[Dict[str, Any]]:
+    """Standardize chunk metadata for downstream phases."""
+    metadata: List[Dict[str, Any]] = []
+    for idx, path_str in enumerate(chunk_paths):
+        path_obj = ensure_absolute_path(path_str)
+        chunk_id = derive_chunk_id_from_path(path_obj, idx)
+        text_len: Optional[int] = None
+        if chunks and idx < len(chunks):
+            text_len = len(chunks[idx])
+        if text_len is None:
+            text_len = _read_chunk_text_length(path_obj)
+        est_dur = (text_len / DEFAULT_CHARS_PER_MINUTE) * 60.0 if text_len else None
+        metadata.append(
+            {
+                "chunk_id": chunk_id,
+                "text_len": text_len,
+                "est_dur": est_dur,
+                "engine": None,
+                "rt_factor": None,
+                "path": str(path_obj),
+            }
+        )
+    return metadata
+
+
+def ensure_chunk_metadata(record: ChunkRecord, chunk_paths: List[str], chunks: Optional[List[str]] = None) -> None:
+    """Populate chunk_metadata if missing to keep schema stable."""
+    if getattr(record, "chunk_metadata", None):
+        return
+    record.chunk_metadata = build_chunk_metadata(chunks or [], chunk_paths)
 
 def compute_sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
     """Compute SHA256 for change detection and reuse checks."""
@@ -238,6 +297,12 @@ def persist_phase3_result(
                 ),
             }
 
+        try:
+            data = canonicalize_state(data)
+            validate_pipeline_schema(data)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Phase 3 canonical schema enforcement skipped: %s", exc)
+
         with open(json_path_abs, "w") as handle:
             json.dump(data, handle, indent=2)
         logger.info(f"Updated pipeline JSON: {json_path_abs}")
@@ -297,7 +362,7 @@ def run_phase3(file_id: str, pipeline: dict, config: Phase3Config) -> ChunkRecor
         except Exception as exc:
             raise FileNotFoundError(f"No text path found for {file_id}: {exc}")
 
-    text_path_abs = Path(text_path).resolve()
+    text_path_abs = ensure_absolute_path(text_path)
     if not text_path_abs.exists():
         raise FileNotFoundError(f"Text file not found: {text_path_abs}")
 
@@ -314,7 +379,10 @@ def run_phase3(file_id: str, pipeline: dict, config: Phase3Config) -> ChunkRecor
     # Reuse check
     existing_phase3 = pipeline_data.get("phase3", {}).get("files", {}).get(file_id, {})
     existing_hash = existing_phase3.get("text_hash") or existing_phase3.get("source_hash")
-    existing_paths = existing_phase3.get("chunk_paths") or []
+    existing_paths = [
+        str(ensure_absolute_path(p))
+        for p in existing_phase3.get("chunk_paths") or []
+    ]
     if (
         existing_phase3
         and existing_hash
@@ -345,8 +413,10 @@ def run_phase3(file_id: str, pipeline: dict, config: Phase3Config) -> ChunkRecor
                 text_hash=existing_hash,
                 structure_mode_used=existing_phase3.get("structure_mode_used", False),
                 chunk_voice_overrides=existing_phase3.get("chunk_voice_overrides", {}),
+                chunk_metadata=existing_phase3.get("chunk_metadata", []),
             )
         record.text_hash = text_hash
+        ensure_chunk_metadata(record, existing_paths)
         chunk_ids = [derive_chunk_id_from_path(Path(p), idx) for idx, p in enumerate(existing_paths)]
         persist_phase3_result(
             json_path,
@@ -490,8 +560,9 @@ def run_phase3(file_id: str, pipeline: dict, config: Phase3Config) -> ChunkRecor
     if not chunks:
         raise ValueError("No chunks created from text")
 
-    chunk_paths = save_chunks(str(text_path_abs), chunks, chunks_dir)
+    chunk_paths = [str(ensure_absolute_path(p)) for p in save_chunks(str(text_path_abs), chunks, chunks_dir)]
     chunk_ids = [derive_chunk_id_from_path(Path(p), idx) for idx, p in enumerate(chunk_paths)]
+    chunk_metadata = build_chunk_metadata(chunks, chunk_paths)
 
     readability = assess_readability(chunks)
     chunk_metrics = calculate_chunk_metrics(chunks, config)
@@ -546,6 +617,7 @@ def run_phase3(file_id: str, pipeline: dict, config: Phase3Config) -> ChunkRecor
         errors=errors,
         timestamps={"start": start_time, "end": end_time, "duration": duration},
         chunk_metrics=chunk_metrics,
+        chunk_metadata=chunk_metadata,
         suggested_voice=selected_voice,
         applied_profile=None if detected_genre == "auto" else detected_genre,
         genre_confidence=genre_confidence,
@@ -603,6 +675,29 @@ def process_chunking(
     if not file_id:
         file_id = derive_file_id_from_path(Path(text_path))
 
+    pipeline = load_pipeline_state(json_path)
+    return run_phase3(file_id=file_id, pipeline=pipeline, config=cfg)
+
+
+def execute_phase3(
+    file_id: str,
+    json_path: str,
+    config: Optional[Phase3Config] = None,
+    resume: bool = False,
+) -> ChunkRecord:
+    """
+    Standardized entry point for Phase 3 to align with downstream phases.
+
+    Args:
+        file_id: File identifier (matches phase2/phase4 entries)
+        json_path: Path to pipeline.json
+        config: Optional Phase3Config overrides
+        resume: When true, reuse existing config.resume flag if present
+    """
+    cfg = config or Phase3Config()
+    cfg.json_path = json_path
+    if resume and hasattr(cfg, "resume"):
+        cfg.resume = True
     pipeline = load_pipeline_state(json_path)
     return run_phase3(file_id=file_id, pipeline=pipeline, config=cfg)
 
@@ -791,11 +886,10 @@ def _merge_to_json_impl(record: ChunkRecord, json_path_abs: Path, file_id: str, 
         }
     
     try:
-        with open(json_path_abs, "w") as f:
-            json.dump(data, f, indent=2)
+        atomic_write_json(json_path_abs, data)
         logger.info(f"Updated pipeline JSON: {json_path_abs}")
     except Exception as e:
-        logger.error(f"Failed to write JSON: {e}")
+        logger.error(f"Failed to write JSON atomically: {e}")
         raise
 
 

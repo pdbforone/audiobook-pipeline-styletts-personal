@@ -305,6 +305,10 @@ class AudioMetadata(BaseModel):
     chunk_id: int
     wav_path: str
     enhanced_path: Optional[str] = None
+    text_len: Optional[int] = None
+    est_dur: Optional[float] = None
+    engine: Optional[str] = None
+    rt_factor: Optional[float] = None
     snr_pre: Optional[float] = None
     snr_post: Optional[float] = None
     rms_pre: Optional[float] = None

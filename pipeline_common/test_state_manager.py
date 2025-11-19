@@ -56,7 +56,12 @@ def state_manager(state_path):
 @pytest.fixture
 def relaxed_state_manager(state_path):
     """PipelineState with structural validation disabled (for legacy writes)."""
-    return PipelineState(state_path, validate_on_read=False, structural_validation=False)
+    return PipelineState(
+        state_path,
+        validate_on_read=False,
+        structural_validation=False,
+        enforce_canonical_schema=False,
+    )
 
 
 class TestBasicOperations:
@@ -78,7 +83,11 @@ class TestBasicOperations:
         state_manager.write(test_data, validate=False)
         read_data = state_manager.read()
 
-        assert read_data == test_data
+        assert read_data["phase1"]["status"] == "success"
+        assert read_data["file_id"] == "test_file"
+        assert read_data["pipeline_version"] == test_data["pipeline_version"]
+        assert "created_at" in read_data
+        assert "last_updated" in read_data
 
     def test_atomic_write_no_corruption(self, state_manager, state_path):
         """Write creates temp file and atomically renames"""
@@ -94,7 +103,7 @@ class TestBasicOperations:
         assert state_path.exists()
         with open(state_path) as f:
             data = json.load(f)
-        assert data == test_data
+        assert data["phase1"]["status"] == "success"
 
 
 class TestTransactions:
@@ -423,7 +432,7 @@ class TestHelpers:
             txn.data['file_id'] = 'abc'
 
         history = state_manager.get_transaction_history()
-        commit_records = [r for r in history if r['operation'] == 'commit']
+        commit_records = [r for r in history if r['operation'].endswith('_commit')]
         assert len(commit_records) > 0
 
     def test_log_records_rollbacks(self, state_manager):
@@ -436,7 +445,7 @@ class TestHelpers:
             pass
 
         history = state_manager.get_transaction_history()
-        rollback_records = [r for r in history if r['operation'] == 'rollback']
+        rollback_records = [r for r in history if r['operation'].endswith('_rollback')]
         assert len(rollback_records) > 0
 
 

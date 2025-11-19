@@ -13,12 +13,24 @@ from __future__ import annotations
 import json
 import logging
 import platform
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 import yaml
+try:
+    from pipeline_common import canonicalize_state, validate_pipeline_schema
+except Exception:  # pragma: no cover - defensive fallback when pipeline_common not installed
+    canonicalize_state = lambda data, **kwargs: data  # type: ignore
+
+    def validate_pipeline_schema(data, **kwargs):  # type: ignore
+        return None
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
     import magic
@@ -121,6 +133,12 @@ def safe_update_json(pipeline_path: Path, phase_name: str, data: Dict[str, Any])
                         return base
                     
                     current[phase_name] = deep_merge(current[phase_name], data)
+
+                    try:
+                        current = canonicalize_state(current)
+                        validate_pipeline_schema(current)
+                    except Exception as exc:  # pragma: no cover - defensive
+                        logger.warning("Pipeline schema enforcement skipped: %s", exc)
                     
                     # Write back
                     f.seek(0)

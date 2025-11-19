@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Audiobook Pipeline State",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "pipeline_version": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": "2.0.0"
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "last_updated": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "file_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "input_file": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tts_profile": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tts_voice": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "patternProperties": {
+    "^phase[1-7](_5)?$": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "pending",
+            "running",
+            "success",
+            "partial",
+            "partial_success",
+            "failed",
+            "error",
+            "skipped",
+            "unknown"
+          ]
+        },
+        "errors": {
+          "type": "array"
+        },
+        "metrics": {
+          "type": "object"
+        },
+        "timestamps": {
+          "type": "object"
+        },
+        "files": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "status": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "pending",
+                  "running",
+                  "success",
+                  "partial",
+                  "partial_success",
+                  "failed",
+                  "error",
+                  "skipped",
+                  "unknown"
+                ]
+              },
+              "errors": {
+                "type": "array"
+              },
+              "timestamps": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

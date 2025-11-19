@@ -37,6 +37,12 @@ else:  # pragma: no cover - platform specific
     import fcntl
 
 from .models import PYDANTIC_AVAILABLE, PipelineSchema
+from .schema import (
+    CANONICAL_SCHEMA_VERSION,
+    PHASE_KEYS as _SCHEMA_PHASE_KEYS,
+    canonicalize_state,
+    validate_pipeline_schema,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,16 +51,7 @@ JsonDict = Dict[str, Any]
 TransactionRecord = Dict[str, Any]
 
 # Known phase keys for summaries
-_PHASE_KEYS: tuple[str, ...] = (
-    "phase1",
-    "phase2",
-    "phase3",
-    "phase4",
-    "phase5",
-    "phase5_5",
-    "phase6",
-    "phase7",
-)
+_PHASE_KEYS: tuple[str, ...] = _SCHEMA_PHASE_KEYS
 
 # Default sections expected in a valid pipeline.json
 DEFAULT_REQUIRED_SECTIONS: tuple[str, ...] = (
@@ -200,6 +197,7 @@ class PipelineState:
         backup_before_write: bool = True,
         required_sections: Optional[Iterable[str]] = None,
         structural_validation: bool = True,
+        enforce_canonical_schema: bool = True,
     ) -> None:
         """
         Args:
@@ -209,12 +207,14 @@ class PipelineState:
             backup_before_write: Whether to create a backup before writes.
             required_sections: Top-level keys that must be present when data is not empty.
             structural_validation: Enforce minimal structural validation on reads/writes.
+            enforce_canonical_schema: Normalize + validate against the canonical schema on writes.
         """
         self.path = Path(path).resolve()
         self.lock_path = self.path.with_suffix(f"{self.path.suffix}.lock")
         self.validate_on_read = validate_on_read
         self.structural_validation = structural_validation
         self.backup_before_write = backup_before_write
+        self.enforce_canonical_schema = enforce_canonical_schema
         self.required_sections: tuple[str, ...] = tuple(required_sections or DEFAULT_REQUIRED_SECTIONS)
 
         self.backup_manager = StateBackupManager(self.path, max_backups=max_backups)
@@ -285,6 +285,8 @@ class PipelineState:
             self._validate_basic(data)
             if run_validation:
                 self._validate_schema(data)
+            if self.enforce_canonical_schema:
+                data = canonicalize_state(data, touch_timestamps=False)
 
             self._log_transaction("read", True)
             return data
@@ -433,7 +435,10 @@ class PipelineState:
         """
         if not isinstance(data, dict):
             raise StateValidationError("State payload must be a JSON object.")
-        return deepcopy(data)
+        normalized = deepcopy(data)
+        if self.enforce_canonical_schema:
+            normalized = canonicalize_state(normalized)
+        return normalized
 
     def _log_transaction(
         self, operation: str, success: bool, details: Optional[TransactionRecord] = None
@@ -460,6 +465,17 @@ class PipelineState:
                 expected = "', '".join(self.required_sections[:4])
                 raise StateValidationError(
                     f"State missing expected top-level sections (e.g., '{expected}')."
+                )
+
+    def _ensure_phase_blocks_are_objects(self, data: JsonDict) -> None:
+        """Ensure user-provided phase blocks are dicts before canonicalisation."""
+        for phase_key in _PHASE_KEYS:
+            block = data.get(phase_key)
+            if block is None:
+                continue
+            if not isinstance(block, dict):
+                raise StateValidationError(
+                    f"{phase_key} must be an object (received {type(block).__name__})."
                 )
 
         if self.structural_validation:
@@ -492,6 +508,10 @@ class PipelineState:
     def _validate_schema(self, data: JsonDict) -> None:
         """Optional Pydantic validation."""
         self._validate_basic(data)
+        try:
+            validate_pipeline_schema(data)
+        except ValueError as exc:
+            raise StateValidationError(f"Schema validation failed: {exc}") from exc
         if not PYDANTIC_AVAILABLE:
             logger.debug("Pydantic not available - skipping strict validation.")
             return
@@ -503,6 +523,8 @@ class PipelineState:
 
     def _write_atomic(self, data: JsonDict, validate: bool = True, operation: str = "write") -> None:
         """Perform an atomic write with optional validation and backups."""
+        if validate:
+            self._ensure_phase_blocks_are_objects(data)
         normalized = self._normalize_for_write(data)
         if validate:
             self._validate_schema(normalized)
@@ -561,11 +583,15 @@ class StateTransaction:
         self._lock_cm.__enter__()
         try:
             self.original_data = self.state.read(validate=self.state.validate_on_read)
-            working_copy = (
-                self.state._normalize_for_write(self.seed_data)
-                if self.seed_data is not None
-                else deepcopy(self.original_data)
-            )
+            if self.seed_data is not None:
+                seed_requires_validation = (
+                    True if self.validate_override is None else self.validate_override
+                )
+                if seed_requires_validation:
+                    self.state._ensure_phase_blocks_are_objects(self.seed_data)
+                working_copy = self.state._normalize_for_write(self.seed_data)
+            else:
+                working_copy = deepcopy(self.original_data)
             self.data = working_copy
             return self
         except Exception:
@@ -575,9 +601,10 @@ class StateTransaction:
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
         try:
             if exc_type is not None:
+                rollback_label = f"{self.operation}_rollback"
                 self.state._log_transaction(
-                    "rollback",
-                    True,
+                    rollback_label,
+                    False,
                     {
                         "operation": self.operation,
                         "reason": str(exc_val) if exc_val else repr(exc_type),
@@ -586,24 +613,31 @@ class StateTransaction:
                 return False
 
             validate_flag = True if self.validate_override is None else self.validate_override
-            self.state._write_atomic(self.data, validate=validate_flag, operation="commit")
+            commit_label = f"{self.operation}_commit"
+            self.state._write_atomic(
+                self.data,
+                validate=validate_flag,
+                operation=commit_label,
+            )
             self.committed = True
             self.state._log_transaction(
-                "commit",
+                commit_label,
                 True,
                 {"changed_keys": self._get_changed_keys(), "operation": self.operation},
             )
             return False
         except StateValidationError:
             self.state._log_transaction(
-                "commit",
+                f"{self.operation}_commit",
                 False,
                 {"operation": self.operation, "error": "validation_error"},
             )
             raise
         except Exception as exc:
             self.state._log_transaction(
-                "commit", False, {"operation": self.operation, "error": str(exc)}
+                f"{self.operation}_commit",
+                False,
+                {"operation": self.operation, "error": str(exc)},
             )
             raise StateTransactionError(f"{self.operation} failed to commit") from exc
         finally:

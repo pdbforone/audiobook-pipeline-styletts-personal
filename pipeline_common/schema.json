@@ -1,0 +1,281 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Audiobook Pipeline State",
+  "version": "3.0.0",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "pipeline_version",
+    "phases"
+  ],
+  "properties": {
+    "pipeline_version": {
+      "type": "string",
+      "default": "3.0.0"
+    },
+    "created_at": {
+      "type": ["string", "null"]
+    },
+    "last_updated": {
+      "type": ["string", "null"]
+    },
+    "file_id": {
+      "type": ["string", "null"]
+    },
+    "input_file": {
+      "type": ["string", "null"]
+    },
+    "tts_profile": {
+      "type": ["string", "null"]
+    },
+    "tts_voice": {
+      "type": ["string", "null"]
+    },
+    "voice_overrides": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "phases": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "batch_runs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/batchRun"
+      },
+      "default": []
+    }
+  },
+  "patternProperties": {
+    "^(phase[1-5](?:_5)?|phase6|phase7)$": {
+      "$ref": "#/definitions/phaseBlock"
+    }
+  },
+  "definitions": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "running",
+        "success",
+        "partial",
+        "partial_success",
+        "failed",
+        "error",
+        "skipped",
+        "unknown"
+      ]
+    },
+    "timestamp": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "start": {
+          "type": ["number", "string", "null"]
+        },
+        "end": {
+          "type": ["number", "string", "null"]
+        },
+        "duration": {
+          "type": ["number", "string", "null"]
+        }
+      }
+    },
+    "artifactContainer": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": true
+        },
+        {
+          "type": "array",
+          "items": {}
+        }
+      ]
+    },
+    "chunkEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "chunk_id": {
+          "type": ["string", "number"]
+        },
+        "text_len": {
+          "type": ["number", "null"]
+        },
+        "est_dur": {
+          "type": ["number", "null"]
+        },
+        "engine": {
+          "type": ["string", "null"]
+        },
+        "rt_factor": {
+          "type": ["number", "null"]
+        },
+        "audio_path": {
+          "type": ["string", "null"]
+        },
+        "status": {
+          "$ref": "#/definitions/status"
+        },
+        "errors": {
+          "type": "array",
+          "items": {}
+        }
+      }
+    },
+    "phaseFile": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "status",
+        "timestamps",
+        "artifacts",
+        "metrics",
+        "errors"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/definitions/status"
+        },
+        "timestamps": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "artifacts": {
+          "$ref": "#/definitions/artifactContainer"
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "errors": {
+          "type": "array",
+          "items": {}
+        },
+        "chunks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/chunkEntry"
+          }
+        }
+      }
+    },
+    "phaseBlock": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "status",
+        "timestamps",
+        "artifacts",
+        "metrics",
+        "errors"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/definitions/status"
+        },
+        "timestamps": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "artifacts": {
+          "$ref": "#/definitions/artifactContainer"
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "errors": {
+          "type": "array",
+          "items": {}
+        },
+        "files": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/phaseFile"
+          }
+        },
+        "chunks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/chunkEntry"
+          }
+        }
+      }
+    },
+    "batchFileEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "status",
+        "timestamps",
+        "artifacts",
+        "metrics",
+        "errors"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/definitions/status"
+        },
+        "timestamps": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "artifacts": {
+          "$ref": "#/definitions/artifactContainer"
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "errors": {
+          "type": "array",
+          "items": {}
+        }
+      }
+    },
+    "batchRun": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "run_id",
+        "status",
+        "timestamps",
+        "metrics",
+        "errors",
+        "files"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/status"
+        },
+        "timestamps": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "errors": {
+          "type": "array",
+          "items": {}
+        },
+        "artifacts": {
+          "$ref": "#/definitions/artifactContainer"
+        },
+        "files": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/batchFileEntry"
+          }
+        }
+      }
+    }
+  }
+}

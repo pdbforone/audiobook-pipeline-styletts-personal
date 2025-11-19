@@ -42,6 +42,7 @@ except ImportError:
 
 from .models import EnhancementConfig, AudioMetadata
 from .phrase_cleaner import PhraseCleaner, PhraseCleanerConfig
+from .io_utils import atomic_replace, ensure_absolute_path, validate_audio_file
 
 # Ensure repo root is importable so we can access pipeline_common regardless of cwd
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -980,7 +981,7 @@ def run_ffmpeg(cmd: list[str], desc: str) -> None:
         raise RuntimeError(f"FFmpeg {desc} failed")
 
 
-def main():
+def main(argv: Optional[list[str]] = None):
     parser = argparse.ArgumentParser(
         description="Phase 5: Audio Enhancement with Integrated Phrase Cleanup"
     )
@@ -1028,7 +1029,7 @@ def main():
         action="store_true",
         help="Silence astromech notifications (beeps are ON by default)",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     try:
         config = load_config(args.config)
@@ -1377,38 +1378,51 @@ def main():
                     # 3) Encode final MP3
                     mp3_dir = output_dir / "mp3"
                     mp3_dir.mkdir(parents=True, exist_ok=True)
-                    mp3_path = mp3_dir / "audiobook.mp3"
-                    encode_cmd = [
-                        "ffmpeg",
-                        "-y",
-                        "-loglevel",
-                        "warning",
-                        "-i",
-                        str(current),
-                        "-ac",
-                        "1",
-                        "-ar",
-                        str(config.sample_rate),
-                        "-c:a",
-                        "libmp3lame",
-                        "-b:a",
-                        str(config.mp3_bitrate),
-                        "-id3v2_version",
-                        "3",
-                        "-metadata",
-                        f"title={config.audiobook_title}",
-                        "-metadata",
-                        f"artist={config.audiobook_author}",
-                        "-metadata",
-                        "album=Audiobook",
-                        "-metadata",
-                        "genre=Audiobook",
-                        str(mp3_path),
-                    ]
-                    run_ffmpeg(encode_cmd, "final mp3 encode")
-                    embed_metadata(str(mp3_path), config)
-                    final_output_path = str(mp3_path)
-                    logger.info(f"Final audiobook created: {mp3_path}")
+                    mp3_path = ensure_absolute_path(mp3_dir / "audiobook.mp3")
+                    temp_mp3 = mp3_path.with_suffix(".tmp")
+                    reuse_final = False
+                    if config.resume_on_failure and mp3_path.exists():
+                        try:
+                            validate_audio_file(mp3_path)
+                            final_output_path = str(mp3_path)
+                            reuse_final = True
+                            logger.info("Reusing existing mastered MP3 at %s", mp3_path)
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning("Existing MP3 failed validation (%s); re-encoding.", exc)
+                    if not reuse_final:
+                        encode_cmd = [
+                            "ffmpeg",
+                            "-y",
+                            "-loglevel",
+                            "warning",
+                            "-i",
+                            str(current),
+                            "-ac",
+                            "1",
+                            "-ar",
+                            str(config.sample_rate),
+                            "-c:a",
+                            "libmp3lame",
+                            "-b:a",
+                            str(config.mp3_bitrate),
+                            "-id3v2_version",
+                            "3",
+                            "-metadata",
+                            f"title={config.audiobook_title}",
+                            "-metadata",
+                            f"artist={config.audiobook_author}",
+                            "-metadata",
+                            "album=Audiobook",
+                            "-metadata",
+                            "genre=Audiobook",
+                            str(temp_mp3),
+                        ]
+                        run_ffmpeg(encode_cmd, "final mp3 encode")
+                        validate_audio_file(temp_mp3)
+                        atomic_replace(mp3_path, temp_mp3)
+                        embed_metadata(str(mp3_path), config)
+                        final_output_path = str(mp3_path)
+                        logger.info(f"Final audiobook created: {mp3_path}")
 
                 finally:
                     # Cleanup intermediate WAVs/batch lists
@@ -1560,6 +1574,23 @@ def main():
         if args.play_notification:
             play_alert_beep()
         return 1
+
+
+def execute_phase5(
+    file_id: str,
+    json_path: str,
+    config_path: str = "config.yaml",
+    resume: bool = True,
+) -> int:
+    """
+    Standardized callable entry point for orchestration.
+    """
+    argv = [
+        f"--file_id={file_id}",
+        f"--pipeline-json={json_path}",
+        f"--config={config_path}",
+    ]
+    return main(argv)
 
 
 if __name__ == "__main__":

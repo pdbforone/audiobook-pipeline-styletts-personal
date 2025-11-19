@@ -58,6 +58,18 @@ class PipelineAPI:
             logger.exception("Unexpected state read failure: %s", exc)
             return {}
 
+    def _collect_file_ids(self, data: Dict[str, Any]) -> List[str]:
+        """Return all known file_ids from the canonical phase-first schema."""
+        file_ids: set[str] = set()
+        for phase_key in ["phase1", "phase2", "phase3", "phase4", "phase5"]:
+            phase_block = data.get(phase_key) or {}
+            files = phase_block.get("files") or {}
+            if isinstance(files, dict):
+                file_ids.update(files.keys())
+        if not file_ids and isinstance(data.get("file_id"), str):
+            file_ids.add(data["file_id"])
+        return sorted(file_ids)
+
     def write_state(self, data: Dict[str, Any], validate: bool = True) -> bool:
         """Persist pipeline state atomically."""
         try:
@@ -70,8 +82,7 @@ class PipelineAPI:
     def get_file_ids(self) -> List[str]:
         data = self._read_state()
         try:
-            phase1 = data.get("phase1", {}).get("files", {}) or {}
-            return sorted(list(phase1.keys()))
+            return self._collect_file_ids(data)
         except Exception as exc:
             logger.warning("Failed to list file ids: %s", exc)
             return []
@@ -79,17 +90,12 @@ class PipelineAPI:
     def check_incomplete_work(self) -> Optional[IncompleteWork]:
         data = self._read_state()
         try:
-            for file_id, book_data in data.items():
-                if file_id == "metadata" or not isinstance(book_data, dict):
-                    continue
-
+            for file_id in self._collect_file_ids(data):
                 phases_complete: List[int] = []
                 phases_incomplete: List[int] = []
 
                 for phase in [1, 2, 3, 4, 5]:
-                    phase_key = f"phase{phase}"
-                    phase_block = book_data.get(phase_key, {})
-                    status = phase_block.get("status", "unknown") if isinstance(phase_block, dict) else "unknown"
+                    status = self._phase_status(data, file_id, phase)
                     if status == "success":
                         phases_complete.append(phase)
                     else:
