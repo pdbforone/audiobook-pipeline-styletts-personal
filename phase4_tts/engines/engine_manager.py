@@ -4,6 +4,7 @@ Coordinates multiple TTS engines and provides unified interface
 """
 
 import logging
+import time
 from typing import Dict, Optional, List, Tuple, Union
 from pathlib import Path
 import numpy as np
@@ -79,6 +80,8 @@ class EngineManager:
         language: str = "en",
         fallback: bool = True,
         return_engine: bool = False,
+        est_dur_sec: Optional[float] = None,
+        rtf_fallback_threshold: Optional[float] = None,
         **kwargs
     ) -> Union[np.ndarray, Tuple[np.ndarray, str]]:
         """
@@ -104,12 +107,46 @@ class EngineManager:
         # Try primary engine
         try:
             tts_engine = self.get_engine(engine)
+            start_time = time.time()
             audio = tts_engine.synthesize(
                 text=text,
                 reference_audio=reference_audio,
                 language=language,
                 **kwargs
             )
+            elapsed = time.time() - start_time
+            # Optional RTF-based fallback: if primary is unusually slow and fallback allowed, try first fallback engine.
+            if (
+                fallback
+                and est_dur_sec
+                and rtf_fallback_threshold
+                and est_dur_sec > 0
+            ):
+                rt_factor = elapsed / est_dur_sec
+                if rt_factor > rtf_fallback_threshold:
+                    fallback_order = self._get_fallback_order(engine)
+                    if fallback_order:
+                        fb = fallback_order[0]
+                        logger.warning(
+                            "Engine '%s' RTF %.2f > %.2f; attempting fallback '%s'",
+                            engine,
+                            rt_factor,
+                            rtf_fallback_threshold,
+                            fb,
+                        )
+                        try:
+                            fb_engine = self.get_engine(fb)
+                            fb_audio = fb_engine.synthesize(
+                                text=text,
+                                reference_audio=reference_audio,
+                                language=language,
+                                **kwargs
+                            )
+                            if return_engine:
+                                return fb_audio, fb
+                            return fb_audio
+                        except Exception as fb_exc:  # noqa: BLE001
+                            logger.warning("Fallback '%s' failed after slow RTF on '%s': %s", fb, engine, fb_exc)
             if return_engine:
                 return audio, engine
             return audio

@@ -65,6 +65,7 @@
   - Phase 4: added `--prefer_kokoro` flag to default to Kokoro for throughput when engine was xtts.
   - Phase 2: added source-hash cache at `~/.cache/phase2_extract` to reuse extraction text/metadata when inputs are unchanged (bypassed with `--force`).
   - Phase 5: RNNoise now enabled by default; added optional pydub compression + limiter (threshold -24 dBFS, ratio 4:1, ceiling -1 dBFS) post-denoise/pre-LUFS normalize; config toggles added.
+  - Phase 4: EngineManager supports optional RTF-based fallback (if primary RT > 1.1x estimated duration, will attempt first fallback engine); main now passes estimated duration from text. CPU guard also watches RAM (>=85%) when downscaling workers.
   - Phase 5: RNNoise now enabled by default; optional pydub-based compression+limiter added (threshold -24 dBFS, ratio 4:1, ceiling -1 dBFS) applied after denoise and before LUFS normalize.
 
 ## Operational Heuristics (Dec 2025)

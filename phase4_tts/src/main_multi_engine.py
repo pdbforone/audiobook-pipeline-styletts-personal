@@ -370,6 +370,7 @@ def synthesize_chunk_with_engine(
     """Synthesize text for a single chunk using requested engine with fallback."""
     chunk_kwargs = dict(engine_kwargs) if engine_kwargs else {}
     existing_out = output_dir / f"{chunk.chunk_id}.wav"
+    est_dur_sec = max(1.0, (len(chunk.text.split()) / 150.0) * 60.0)
 
     # Resume support: skip already-rendered chunks
     if skip_existing and existing_out.exists():
@@ -393,6 +394,8 @@ def synthesize_chunk_with_engine(
             language=language,
             fallback=allow_fallback,
             return_engine=True,
+            est_dur_sec=est_dur_sec,
+            rtf_fallback_threshold=1.1,
             **chunk_kwargs,
         )
     except Exception as exc:  # pylint: disable=broad-except
@@ -816,7 +819,7 @@ def main() -> int:
     if args.play_notification and not args.silence_notifications:
         logger.info("Astromech notifications: ON (use --silence_notifications to mute).")
     if cpu_guard:
-        logger.info("CPU guard: enabled (threshold %.1f%%; requires psutil).", cpu_guard_high)
+        logger.info("CPU guard: enabled (CPU threshold %.1f%%; RAM guard 85%%; requires psutil).", cpu_guard_high)
 
     voice_references = prepare_voice_references(
         voice_config_path=str(voices_config_path),
@@ -932,7 +935,9 @@ def main() -> int:
 
                 if cpu_guard and allowed_workers > 1 and psutil is not None:
                     cpu_usage = psutil.cpu_percent(interval=None)
-                    if cpu_usage >= cpu_guard_high:
+                    ram_usage = psutil.virtual_memory().percent
+                    hot = cpu_usage >= cpu_guard_high or ram_usage >= 85.0
+                    if hot:
                         cpu_high_streak += 1
                     else:
                         cpu_high_streak = 0
@@ -941,9 +946,10 @@ def main() -> int:
                         allowed_workers -= 1
                         cpu_high_streak = 0
                         logger.warning(
-                            "CPU guard: reducing workers to %d due to high CPU usage (%.1f%% over threshold %.1f).",
+                            "CPU/RAM guard: reducing workers to %d (CPU %.1f%%, RAM %.1f%%; threshold CPU %.1f%%, RAM 85%%).",
                             allowed_workers,
                             cpu_usage,
+                            ram_usage,
                             cpu_guard_high,
                         )
 
