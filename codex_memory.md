@@ -62,11 +62,13 @@
   - Phase 5.5 subtitles: optional aeneas forced alignment when reference text is provided (`--use-aeneas` / `use_aeneas_alignment`).
   - Phase 4 runtime guard: optional CPU usage-based downscale (`--cpu_guard`, auto-enabled by `--cpu_safe`) using psutil; reduces workers on sustained high CPU, never below 1; warns and skips if psutil missing.
   - Phase docs: Phase 1 (`phase1-validation/README.md`), Phase 2 (`phase2-extraction/README.md`), Phase 3 (`phase3-chunking/README.md`), Phase 4 (`phase4_tts/README.md`), Phase 5 (`phase5_enhancement/README.md`), Phase 6 (`phase6_orchestrator/README.md`), Phase 7 (`phase7_batch/README.md`), and consolidated map `PHASE_DOCS.md` (phase entrypoints and doc pointers).
-  - Phase 4: added `--prefer_kokoro` flag to default to Kokoro for throughput when engine was xtts.
-  - Phase 2: added source-hash cache at `~/.cache/phase2_extract` to reuse extraction text/metadata when inputs are unchanged (bypassed with `--force`).
-  - Phase 5: RNNoise now enabled by default; added optional pydub compression + limiter (threshold -24 dBFS, ratio 4:1, ceiling -1 dBFS) post-denoise/pre-LUFS normalize; config toggles added.
-  - Phase 4: EngineManager supports optional RTF-based fallback (if primary RT > 1.1x estimated duration, will attempt first fallback engine); main now passes estimated duration from text. CPU guard also watches RAM (>=85%) when downscaling workers.
-  - Phase 5: RNNoise now enabled by default; optional pydub-based compression+limiter added (threshold -24 dBFS, ratio 4:1, ceiling -1 dBFS) applied after denoise and before LUFS normalize.
+- Phase 4: added `--prefer_kokoro` flag to default to Kokoro for throughput when engine was xtts.
+- Phase 2: added source-hash cache at `~/.cache/phase2_extract` to reuse extraction text/metadata when inputs are unchanged (bypassed with `--force`).
+- Phase 5: RNNoise now enabled by default; added optional pydub compression + limiter (threshold -24 dBFS, ratio 4:1, ceiling -1 dBFS) post-denoise/pre-LUFS normalize; config toggles added.
+- Phase 4: EngineManager supports optional RTF-based fallback (if primary RT > 1.1x estimated duration, will attempt first fallback engine); main now passes estimated duration from text. CPU guard also watches RAM (>=85%) when downscaling workers.
+- Phase 5: RNNoise now enabled by default; optional pydub-based compression+limiter added (threshold -24 dBFS, ratio 4:1, ceiling -1 dBFS) applied after denoise and before LUFS normalize.
+- Phase 3 -> Phase 4 voice flow: Phase 3 now records `chunk_voice_overrides` (per chunk_id) and `suggested_voice`; Phase 4 honors per-chunk overrides and tracks `voice_used` per chunk in pipeline.json.
+- Phase 4 UX: added tqdm progress bar when available; emits lightweight `summary.json` in the output dir with RT percentiles/fallback rate. Kokoro model/voices can be pointed via `KOKORO_MODEL_PATH` / `KOKORO_VOICES_PATH`.
 
 ## Operational Heuristics (Dec 2025)
 - Preferred XTTS v2 CPU chunk length 12–18 s using sentence/semantic boundaries; split long sentences at semicolons/emdashes. Current tuning: min_chunk_words=30, max_chunk_words=75; char limits min=420, soft=780, hard=950, emergency=1250; duration model 2700 chars/min & 210 wpm; max_duration 20 s (soft target 18 s).
