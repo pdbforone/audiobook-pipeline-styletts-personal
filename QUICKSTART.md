@@ -94,8 +94,9 @@ python -m phase4_tts.src.main_multi_engine \
   --json_path ../pipeline.json \
   --cpu_safe \
   --auto_engine \
-  --resume
-# cpu_safe caps workers to 3, enables latency fallback, and now records RT percentiles + advisories in pipeline.json.
+  --resume \
+  --rt_budget_hours 1.0
+# cpu_safe caps workers to 3, enables latency fallback, records RT percentiles + advisories, and rt_budget issues warnings when ETA exceeds the budget.
 ```
 
 ### Apply Professional Mastering

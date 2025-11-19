@@ -541,12 +541,12 @@ def update_phase4_summary(
     rt_p90 = float(np.percentile(rt_factors, 90)) if rt_factors else None
     rt_p99 = float(np.percentile(rt_factors, 99)) if rt_factors else None
     advisory: Optional[str] = None
-    if rt_p90 and rt_p90 > slow_rt_threshold:
+    if completed and rt_p90 and rt_p90 > slow_rt_threshold:
         advisory = (
             f"High RT: p90={rt_p90:.2f}x > threshold {slow_rt_threshold:.1f}. "
             "Consider --cpu_safe, --workers 2, --auto_engine, or lowering slow-rt-threshold."
         )
-    if fallback_rate is not None and fallback_rate > 0.2:
+    if completed and fallback_rate is not None and fallback_rate > 0.2:
         extra = " High latency fallback usage (>20%)."
         advisory = (advisory + extra) if advisory else ("High latency fallback usage (>20%). " "Consider Kokoro.")
 
@@ -697,6 +697,11 @@ def main() -> int:
         action="store_true",
         help="CPU-friendly preset: clamp workers to Ryzen-safe values, force latency fallbacks on, and enable auto-engine selection.",
     )
+    parser.add_argument(
+        "--rt_budget_hours",
+        type=float,
+        help="Optional wall-clock budget (hours). If estimated time exceeds budget, suggest safer settings and prefer Kokoro.",
+    )
 
     args = parser.parse_args()
 
@@ -715,6 +720,7 @@ def main() -> int:
     )
     if cpu_safe:
         enable_latency_fallback = True  # Always allow faster fallback when CPU-safe mode is requested.
+    rt_budget_hours = args.rt_budget_hours
     slow_rt_threshold = float(
         args.slow_rt_threshold
         if args.slow_rt_threshold is not None
@@ -741,6 +747,9 @@ def main() -> int:
     engine_requested = args.engine
     engine_selected = engine_requested
     auto_engine_enabled = args.auto_engine or cpu_safe
+    est_audio_seconds = estimate_audio_seconds(
+        chunks, chars_per_min=int(config.get("chars_per_minute", DEFAULT_CHARS_PER_MINUTE))
+    )
     if auto_engine_enabled:
         engine_selected, reason = choose_engine_auto(
             chunks,
@@ -754,6 +763,29 @@ def main() -> int:
         logger.info("Auto-engine disabled. Using requested engine: %s", engine_requested)
     if cpu_safe:
         logger.info("CPU-safe mode: enforcing conservative throughput (workers capped, latency fallback always on).")
+    if rt_budget_hours:
+        rt_factor_hint = float(config.get("rt_xtts_factor", 3.2) if engine_selected == "xtts" else config.get("rt_kokoro_factor", 1.3))
+        est_wall = est_audio_seconds * rt_factor_hint
+        budget_seconds = rt_budget_hours * 3600.0
+        if est_wall > budget_seconds:
+            logger.warning(
+                "Estimated wall-clock %.1fh exceeds RT budget %.1fh (engine=%s). Consider Kokoro, cpu_safe, or fewer workers.",
+                est_wall / 3600.0,
+                rt_budget_hours,
+                engine_selected,
+            )
+            if cpu_safe and engine_selected == "xtts":
+                logger.info("CPU-safe + budget: biasing to Kokoro for throughput.")
+                engine_selected = "kokoro"
+            best_case_rt = float(min(config.get("rt_xtts_factor", 3.2), config.get("rt_kokoro_factor", 1.3)))
+            best_case_wall = est_audio_seconds * best_case_rt
+            if best_case_wall > budget_seconds:
+                logger.warning(
+                    "Even best-case (fastest RT factor %.2f) estimated wall %.1fh exceeds budget %.1fh. Expect overrun.",
+                    best_case_rt,
+                    best_case_wall / 3600.0,
+                    rt_budget_hours,
+                )
 
     if args.play_notification is None:
         args.play_notification = True  # Default ON unless explicitly disabled elsewhere

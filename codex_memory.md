@@ -72,6 +72,13 @@
 - Mastering (narration): target -18 to -16 LUFS with soft-knee limiter; avoid stacking heavy denoise + limiter unless noisy input demands it.
 - Notification assets: Droid beeps generated locally at `assets/notifications/droid_success.wav` and `assets/notifications/droid_alert.wav` for UI/alerts (pure numpy/soundfile, CPU-safe).
 - Astromech notifications: `pipeline_common.astromech_notify` with Phase 3/4/5 CLI flag `--play_notification` to trigger success/alert beeps (winsound/sounddevice fallback).
+- Phase 4 telemetry: pipeline.json stores per-chunk `rt_factor`, `audio_seconds`, `latency_fallback_used`; file-level aggregates now include `avg_rt_factor`, `rt_p50`, `rt_p90`, `rt_p99`, `fallback_rate`, `latency_fallback_chunks`, and `advisory` (advisories require successful chunks).
+- Phase 4 budget + safeguards: `--cpu_safe` keeps workers≤3, forces latency fallback, tightens RT threshold (~3.5), enables auto-engine. `--rt_budget_hours` estimates wall time; warns on overruns, can bias to Kokoro in cpu_safe, and warns if even best-case RT exceeds budget. Adaptive worker scaling (cpu_safe) reduces workers after two slow chunks. Chunk softening remains TODO to avoid chunk ID drift.
+
+## UI Updates (Jan 2026)
+- Gradio Status tab now includes paged Phase 4 chunk summary (avoids loading full pipeline.json) and log-tail viewer (xtts_chunk.log, orchestrator.log, phase5 enhancement log).
+- Voice add flow consolidated: `_normalize_voice_id` + `_resolve_audio_source`, validates audio type, writes `voice_references.json` with narrator/tags/notes, refreshes dropdowns.
+- Helpers in `ui/app.py`: `_tail_log` for safe last-N-lines; `build_phase4_summary` for paged summaries handling mixed dict/list chunk entries.
 
 ## Documentation Reality Checks
 - `README_EXCELLENCE.md` and `PROJECT_OVERVIEW.md` reflect the current CPU-only, XTTS + Kokoro setup and personal-use scope.

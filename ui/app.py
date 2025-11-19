@@ -12,14 +12,9 @@ import json
 import logging
 import signal
 import atexit
-<<<<<<< ours
 import re
 import shutil
 from datetime import datetime
-=======
-import shutil
-import re
->>>>>>> theirs
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any
 import yaml
@@ -35,6 +30,11 @@ from pipeline_common import PipelineState
 VOICE_CONFIG_PATH = PROJECT_ROOT / "phase4_tts" / "configs" / "voice_references.json"
 CUSTOM_VOICE_DIR = PROJECT_ROOT / "voice_samples" / "custom"
 ALLOWED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg", ".m4a"}
+LOG_FILES = {
+    "Phase 4 (XTTS)": PROJECT_ROOT / "xtts_chunk.log",
+    "Pipeline (orchestrator)": PROJECT_ROOT / "phase6_orchestrator" / "orchestrator.log",
+    "Phase 5 (enhancement)": PROJECT_ROOT / "phase5_enhancement" / "enhancement.log",
+}
 
 # Setup logging
 logging.basicConfig(
@@ -590,18 +590,11 @@ def create_batch_audiobooks(
     return "\n".join(results)
 
 
-<<<<<<< ours
 def _normalize_voice_id(raw_id: str) -> str:
     """Normalize user-provided voice ID into snake_case."""
     slug = re.sub(r"[^a-z0-9_]+", "_", (raw_id or "").strip().lower())
     slug = re.sub(r"_+", "_", slug)
     return slug.strip("_")
-=======
-def _slugify_voice_id(value: str) -> str:
-    """Normalize user input into a valid voice_id."""
-    value = value.strip().lower()
-    value = re.sub(r"[^a-z0-9]+", "_", value)
-    return value.strip("_")
 
 
 def _resolve_audio_source(upload: Any) -> Optional[Path]:
@@ -639,7 +632,8 @@ def _resolve_audio_source(upload: Any) -> Optional[Path]:
                 return candidate
 
     return None
->>>>>>> theirs
+
+
 
 
 def add_voice(
@@ -647,15 +641,12 @@ def add_voice(
     voice_file,
     narrator_name: str,
     genre_tags: str
-<<<<<<< ours
 ) -> Tuple[str, str, gr.Dropdown, gr.Dropdown]:
-    """Add a new voice to the library"""
-
-    config_path = PROJECT_ROOT / "phase4_tts" / "configs" / "voice_references.json"
+    """Add a new voice to the library with robust path handling and metadata."""
 
     def _build_response(message: str, select_choice: Optional[str] = None):
         choices = state.get_voice_list()
-        dropdown_kwargs = {"choices": choices}
+        dropdown_kwargs: Dict[str, Any] = {"choices": choices}
         if select_choice and select_choice in choices:
             dropdown_kwargs["value"] = select_choice
 
@@ -670,180 +661,76 @@ def add_voice(
     if not voice_name or not voice_file:
         return _build_response("❌ Please provide a voice ID and audio sample")
 
-    normalized_id = _normalize_voice_id(voice_name)
-    if not normalized_id:
+    voice_id = _normalize_voice_id(voice_name)
+    if not voice_id:
         return _build_response("❌ Voice ID must contain letters or numbers")
 
-    uploaded_path = Path(voice_file if isinstance(voice_file, (str, Path)) else getattr(voice_file, "name", ""))
-    if not uploaded_path or not uploaded_path.exists():
-        return _build_response("❌ Uploaded audio file is not accessible")
+    source_path = _resolve_audio_source(voice_file)
+    if not source_path or not source_path.exists():
+        return _build_response("❌ Uploaded audio file could not be found on disk")
 
-    allowed_exts = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
-    ext = uploaded_path.suffix.lower()
-    if ext not in allowed_exts:
-        return _build_response(f"❌ Unsupported audio format '{ext}'. Please upload WAV/MP3/FLAC/OGG/M4A")
+    extension = (source_path.suffix or "").lower() or ".wav"
+    if extension not in ALLOWED_AUDIO_EXTENSIONS:
+        allowed = ", ".join(sorted(ALLOWED_AUDIO_EXTENSIONS))
+        return _build_response(f"❌ Unsupported audio type '{extension}'. Please upload one of: {allowed}")
 
-    if not config_path.exists():
+    if not VOICE_CONFIG_PATH.exists():
         return _build_response("❌ Voice reference configuration is missing")
 
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            config_data = json.load(f)
+        with open(VOICE_CONFIG_PATH, "r", encoding="utf-8") as f:
+            config = json.load(f)
     except json.JSONDecodeError as exc:
         return _build_response(f"❌ Unable to parse voice configuration: {exc}")
+    except Exception as exc:
+        return _build_response(f"❌ Failed to read voice configuration: {exc}")
 
-    voice_refs = config_data.setdefault("voice_references", {})
-    if normalized_id in voice_refs:
-        return _build_response(f"❌ Voice ID '{normalized_id}' already exists")
+    voice_refs = config.setdefault("voice_references", {})
+    if voice_id in voice_refs:
+        return _build_response(f"❌ Voice ID '{voice_id}' already exists")
 
-    destination_dir = PROJECT_ROOT / "voice_samples" / "custom"
-    destination_dir.mkdir(parents=True, exist_ok=True)
-    destination_path = destination_dir / f"{normalized_id}{ext}"
+    CUSTOM_VOICE_DIR.mkdir(parents=True, exist_ok=True)
+    destination = CUSTOM_VOICE_DIR / f"{voice_id}{extension}"
 
     try:
-        shutil.copy(uploaded_path, destination_path)
+        shutil.copy2(source_path, destination)
     except Exception as exc:
-        logger.error("Failed to copy new voice sample", exc_info=True)
+        logger.exception("Failed to copy new voice sample")
         return _build_response(f"❌ Failed to store audio sample: {exc}")
 
     tags = [tag.strip() for tag in (genre_tags or "").split(",") if tag.strip()]
-    narrator = (narrator_name or "").strip() or normalized_id.replace("_", " ").title()
+    narrator = (narrator_name or "").strip() or voice_id.replace("_", " ").title()
     description = f"Custom voice for {', '.join(tags)}" if tags else "Custom voice added via UI"
     notes = f"Added via UI on {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"
+    local_path = destination.relative_to(PROJECT_ROOT).as_posix()
 
-    new_entry = {
-        "local_path": destination_path.relative_to(PROJECT_ROOT).as_posix(),
+    voice_refs[voice_id] = {
+        "local_path": local_path,
         "narrator_name": narrator,
-        "preferred_profiles": tags,
+        "preferred_profiles": tags or ["custom"],
         "description": description,
         "notes": notes,
     }
-
-    voice_refs[normalized_id] = new_entry
-    config_data["voice_references"] = dict(sorted(voice_refs.items()))
+    config["voice_references"] = dict(sorted(voice_refs.items()))
 
     try:
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(config_data, f, indent=2, ensure_ascii=False)
+        with open(VOICE_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
             f.write("\n")
     except Exception as exc:
-        logger.error("Failed to update voice configuration", exc_info=True)
+        logger.exception("Failed to update voice configuration")
         return _build_response(f"❌ Could not save voice configuration: {exc}")
 
-    # Refresh in-memory state and build dropdown option for the new voice
     state.voices = state._load_voices()
-    refreshed_meta = state.voices.get(normalized_id, new_entry)
+    refreshed_meta = state.voices.get(voice_id, voice_refs[voice_id])
     profiles_preview = ", ".join(refreshed_meta.get("preferred_profiles", []))
-    dropdown_choice = f"{normalized_id}: {refreshed_meta.get('narrator_name', 'Unknown')} ({profiles_preview})"
+    dropdown_choice = f"{voice_id}: {refreshed_meta.get('narrator_name', 'Unknown')} ({profiles_preview})"
 
     message = (
-        f"✅ Voice '{normalized_id}' added successfully!"
-        f"\n\nNarrator: {narrator}\nStored at: {new_entry['local_path']}"
+        f"✅ Voice '{voice_id}' added successfully!"
+        f"\n\nNarrator: {narrator}\nStored at: {local_path}"
     )
     return _build_response(message, dropdown_choice)
-=======
-) -> Tuple[str, str, dict, dict]:
-    """Add a new voice to the library"""
-    voice_id = _slugify_voice_id(voice_name or "")
-
-    if not voice_id:
-        return (
-            "❌ Please provide a valid voice ID",
-            _generate_voice_gallery_html(state.voices),
-            gr.update(),
-            gr.update(),
-        )
-
-    if not voice_file:
-        return (
-            "❌ Please upload a short audio sample",
-            _generate_voice_gallery_html(state.voices),
-            gr.update(),
-            gr.update(),
-        )
-
-    source_path = _resolve_audio_source(voice_file)
-    if not source_path:
-        return (
-            "❌ Uploaded audio file could not be found on disk",
-            _generate_voice_gallery_html(state.voices),
-            gr.update(),
-            gr.update(),
-        )
-
-    try:
-        config = {}
-        if VOICE_CONFIG_PATH.exists():
-            with open(VOICE_CONFIG_PATH, "r") as f:
-                config = json.load(f)
-
-        voice_refs = config.setdefault("voice_references", {})
-        if voice_id in voice_refs:
-            return (
-                f"❌ Voice ID '{voice_id}' already exists",
-                _generate_voice_gallery_html(state.voices),
-                gr.update(),
-                gr.update(),
-            )
-
-        CUSTOM_VOICE_DIR.mkdir(parents=True, exist_ok=True)
-
-        extension = source_path.suffix.lower()
-        if not extension:
-            extension = ".wav"
-
-        if extension not in ALLOWED_AUDIO_EXTENSIONS:
-            allowed = ", ".join(sorted(ALLOWED_AUDIO_EXTENSIONS))
-            return (
-                f"❌ Unsupported audio type '{extension or 'unknown'}'. Please upload one of: {allowed}",
-                _generate_voice_gallery_html(state.voices),
-                gr.update(),
-                gr.update(),
-            )
-
-        destination = CUSTOM_VOICE_DIR / f"{voice_id}{extension}"
-        shutil.copy2(source_path, destination)
-
-        genres = [tag.strip() for tag in (genre_tags or "").split(",") if tag.strip()]
-        narrator = narrator_name.strip() if narrator_name else voice_name
-        local_path = destination.relative_to(PROJECT_ROOT)
-
-        voice_refs[voice_id] = {
-            "local_path": str(local_path).replace("\\", "/"),
-            "narrator_name": narrator,
-            "preferred_profiles": genres or ["custom"],
-            "description": f"{narrator} - Custom upload via Personal Audiobook Studio",
-            "notes": "Added via UI"
-        }
-
-        with open(VOICE_CONFIG_PATH, "w") as f:
-            json.dump(config, f, indent=2)
-
-        state.voices = state._load_voices()
-        voice_choices = state.get_voice_list()
-        new_choice = next((item for item in voice_choices if item.startswith(f"{voice_id}:")), None)
-
-        success_msg = (
-            f"✅ Voice '{voice_id}' added successfully!\n\n"
-            f"Narrator: {narrator}\nGenres: {', '.join(genres) if genres else 'custom'}"
-        )
-
-        return (
-            success_msg,
-            _generate_voice_gallery_html(state.voices),
-            gr.Dropdown.update(choices=voice_choices, value=new_choice or None),
-            gr.Dropdown.update(choices=voice_choices, value=new_choice or None),
-        )
-
-    except Exception as e:
-        logger.exception("Failed to add voice")
-        return (
-            f"❌ Error adding voice: {str(e)}",
-            _generate_voice_gallery_html(state.voices),
-            gr.update(),
-            gr.update(),
-        )
->>>>>>> theirs
 
 
 def get_voice_details(voice_selection: str) -> str:
@@ -921,6 +808,50 @@ def build_ui():
 
             status_file_dropdown.change(_refresh_status, inputs=status_file_dropdown, outputs=status_markdown)
             refresh_status_btn.click(_refresh_status, inputs=status_file_dropdown, outputs=status_markdown)
+
+            with gr.Accordion("Phase 4 Summary (paged)", open=False):
+                with gr.Row():
+                    phase4_page = gr.Slider(1, 200, value=1, step=1, label="Chunk page")
+                    phase4_page_size = gr.Slider(5, 50, value=20, step=1, label="Rows per page")
+                phase4_summary_md = gr.Markdown("Select a file to view Phase 4 summary.")
+
+                def _refresh_phase4(file_id, page, page_size):
+                    return build_phase4_summary(file_id, page, page_size)
+
+                status_file_dropdown.change(
+                    _refresh_phase4,
+                    inputs=[status_file_dropdown, phase4_page, phase4_page_size],
+                    outputs=phase4_summary_md,
+                )
+                phase4_page.change(
+                    _refresh_phase4,
+                    inputs=[status_file_dropdown, phase4_page, phase4_page_size],
+                    outputs=phase4_summary_md,
+                )
+                phase4_page_size.change(
+                    _refresh_phase4,
+                    inputs=[status_file_dropdown, phase4_page, phase4_page_size],
+                    outputs=phase4_summary_md,
+                )
+
+            with gr.Accordion("Log tail (CPU-safe monitoring)", open=False):
+                with gr.Row():
+                    log_dropdown = gr.Dropdown(
+                        choices=list(LOG_FILES.keys()),
+                        value=next(iter(LOG_FILES.keys())) if LOG_FILES else None,
+                        label="Log file",
+                    )
+                    log_refresh = gr.Button("🔄 Refresh", variant="secondary")
+                log_viewer = gr.Textbox(label="Last 200 lines", lines=12, value="")
+
+                def _refresh_log(log_key):
+                    path = LOG_FILES.get(log_key)
+                    if not path:
+                        return "Select a log file."
+                    return _tail_log(path)
+
+                log_dropdown.change(_refresh_log, inputs=log_dropdown, outputs=log_viewer)
+                log_refresh.click(_refresh_log, inputs=log_dropdown, outputs=log_viewer)
 
         # =================================================================
         # TAB 1: SINGLE BOOK
@@ -1412,6 +1343,88 @@ def build_status_report(selected_file: Optional[str]) -> str:
 """
 
 
+def _tail_log(log_path: Path, lines: int = 200) -> str:
+    """Read the last N lines of a log file safely."""
+    if not log_path.exists():
+        return f"Log not found at {log_path}"
+
+    try:
+        with open(log_path, "rb") as f:
+            f.seek(0, 2)
+            end = f.tell()
+            block = 4096
+            buffer = b""
+            while len(buffer.splitlines()) <= lines and f.tell() > 0:
+                seek_pos = max(0, f.tell() - block)
+                f.seek(seek_pos)
+                buffer = f.read(end - seek_pos) + buffer
+                f.seek(seek_pos)
+                if seek_pos == 0:
+                    break
+            tail = b"\n".join(buffer.splitlines()[-lines:])
+        return tail.decode("utf-8", errors="replace") or "(empty log)"
+    except Exception as exc:
+        return f"Failed to read log: {exc}"
+
+
+def build_phase4_summary(selected_file: Optional[str], page: int = 1, page_size: int = 20) -> str:
+    """Summarize Phase 4 metrics without loading all chunk rows at once."""
+    data = _load_pipeline_data()
+    if not selected_file:
+        return "Select a file to view Phase 4 summary."
+
+    phase4_files = (data.get("phase4", {}) or {}).get("files", {}) or {}
+    entry = phase4_files.get(selected_file)
+    if not entry:
+        return f"No Phase 4 data for `{selected_file}` (run Phase 4 first)."
+
+    total_chunks = entry.get("total_chunks") or len([k for k in entry.keys() if k.startswith("chunk_")])
+    completed = entry.get("chunks_completed")
+    failed = entry.get("chunks_failed")
+    duration_sec = entry.get("duration_seconds")
+    requested_engine = entry.get("requested_engine") or entry.get("engine") or "unknown"
+    engines_used = entry.get("engines_used") or []
+
+    chunk_keys = sorted([k for k in entry.keys() if k.startswith("chunk_")])
+    page = max(1, int(page))
+    page_size = max(1, min(100, int(page_size)))
+    start = (page - 1) * page_size
+    end = start + page_size
+    subset = chunk_keys[start:end]
+
+    rows = []
+    for cid in subset:
+        meta = entry.get(cid)
+        status = "-"
+        engine = "-"
+        rt_factor = "-"
+        audio_path = "-"
+        if isinstance(meta, dict):
+            status = meta.get("status") or meta.get("state") or "-"
+            engine = meta.get("engine_used") or meta.get("engine") or "-"
+            rt = meta.get("rt_factor")
+            rt_factor = f"{rt:.2f}x" if isinstance(rt, (int, float)) else "-"
+            audio_path = meta.get("output_path") or meta.get("path") or meta.get("chunk_audio_path") or "-"
+        elif isinstance(meta, list) and meta:
+            audio_path = str(meta[0])
+        elif meta is not None:
+            audio_path = str(meta)
+        rows.append(f"- `{cid}` | engine={engine} | rt={rt_factor} | status={status} | {audio_path}")
+
+    total_pages = max(1, (len(chunk_keys) + page_size - 1) // page_size) if chunk_keys else 1
+    header_lines = [
+        f"### Phase 4 Summary for `{selected_file}`",
+        f"- Requested engine: **{requested_engine}** | Engines used: {', '.join(engines_used) if engines_used else 'n/a'}",
+        f"- Chunks: {completed or 0} completed / {failed or 0} failed / total {total_chunks}",
+    ]
+    if isinstance(duration_sec, (int, float)):
+        header_lines.append(f"- Duration: {duration_sec:.1f}s")
+    header = "\n".join(header_lines)
+    pagination = f"**Page {page}/{total_pages} (showing {len(subset)} of {len(chunk_keys)} chunks listed)**"
+    chunk_section = "\n".join(rows) if rows else "- No chunk rows in this page."
+    return f"{header}\n{pagination}\n\n{chunk_section}"
+
+
 # ============================================================================
 # MAIN ENTRY POINT
 # ============================================================================
@@ -1471,3 +1484,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
