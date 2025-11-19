@@ -25,6 +25,10 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import soundfile as sf
 import yaml
+try:
+    import psutil
+except ImportError:  # psutil is optional; CPU guard will be disabled if missing
+    psutil = None
 
 MODULE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = MODULE_ROOT.parent.parent
@@ -698,6 +702,16 @@ def main() -> int:
         help="CPU-friendly preset: clamp workers to Ryzen-safe values, force latency fallbacks on, and enable auto-engine selection.",
     )
     parser.add_argument(
+        "--cpu_guard",
+        action="store_true",
+        help="Dynamically reduce workers when system CPU usage is high (requires psutil; enabled automatically with --cpu_safe).",
+    )
+    parser.add_argument(
+        "--cpu_guard_high",
+        type=float,
+        help="CPU usage percent threshold to start downscaling workers (default 85%%; only used when cpu_guard is on).",
+    )
+    parser.add_argument(
         "--rt_budget_hours",
         type=float,
         help="Optional wall-clock budget (hours). If estimated time exceeds budget, suggest safer settings and prefer Kokoro.",
@@ -715,6 +729,8 @@ def main() -> int:
     normalize_numbers = bool(config.get("normalize_numbers", True))
     custom_overrides = config.get("custom_pronunciations", {}) or None
     cpu_safe = bool(args.cpu_safe)
+    cpu_guard = bool(args.cpu_guard or cpu_safe)
+    cpu_guard_high = float(args.cpu_guard_high if args.cpu_guard_high is not None else 85.0)
     enable_latency_fallback = not args.disable_latency_fallback and bool(
         config.get("enable_latency_fallback", True)
     )
@@ -791,6 +807,8 @@ def main() -> int:
         args.play_notification = True  # Default ON unless explicitly disabled elsewhere
     if args.play_notification and not args.silence_notifications:
         logger.info("Astromech notifications: ON (use --silence_notifications to mute).")
+    if cpu_guard:
+        logger.info("CPU guard: enabled (threshold %.1f%%; requires psutil).", cpu_guard_high)
 
     voice_references = prepare_voice_references(
         voice_config_path=str(voices_config_path),
@@ -828,6 +846,12 @@ def main() -> int:
         workers = cpu_worker_cap
     skip_existing = bool(args.resume)
 
+    if cpu_guard and psutil is None:
+        logger.warning(
+            "CPU guard requested but psutil is not installed; skipping CPU usage-based scaling."
+        )
+        cpu_guard = False
+
     logger.info("=" * 80)
     logger.info("Phase 4 Multi-Engine TTS")
     logger.info("File ID      : %s", resolved_file_id)
@@ -844,6 +868,7 @@ def main() -> int:
     results: List[ChunkResult] = []
     allowed_workers = workers
     slow_streak = 0
+    cpu_high_streak = 0
     pending = list(chunks)
     active_futures: Dict[Any, str] = {}
 
@@ -896,6 +921,23 @@ def main() -> int:
                         allowed_workers,
                         slow_rt_threshold,
                     )
+
+                if cpu_guard and allowed_workers > 1 and psutil is not None:
+                    cpu_usage = psutil.cpu_percent(interval=None)
+                    if cpu_usage >= cpu_guard_high:
+                        cpu_high_streak += 1
+                    else:
+                        cpu_high_streak = 0
+
+                    if cpu_high_streak >= 2:
+                        allowed_workers -= 1
+                        cpu_high_streak = 0
+                        logger.warning(
+                            "CPU guard: reducing workers to %d due to high CPU usage (%.1f%% over threshold %.1f).",
+                            allowed_workers,
+                            cpu_usage,
+                            cpu_guard_high,
+                        )
 
     duration = time.time() - start_time
     success_count = sum(1 for r in results if r.success)

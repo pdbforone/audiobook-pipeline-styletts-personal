@@ -58,8 +58,10 @@
 - Recent upgrades (Nov 2025):
   - Phase 3 sentence detection: spaCy primary with pySBD fallback for abbreviation/bullet-heavy text. Dependency: `pysbd`.
   - Phase 4 text prep: optional g2p_en number/abbrev normalization toggled in `config.yaml` (`enable_g2p`, `normalize_numbers`, `custom_pronunciations`). Dependency: `g2p-en`. Piper intentionally excluded until a vetted adult audiobook voice is available.
-- Phase 5 enhancement: added optional RNNoise denoise and Silero VAD speech coverage/trim toggles (`enable_rnnoise`, `enable_silero_vad`, `silero_vad_threshold`, `trim_silence_with_vad`). Dependencies: `rnnoise`, `silero-vad` (+ torch/torchaudio). DeepFilterNet and noisereduce remain supported. Metadata now records speech ratios.
+  - Phase 5 enhancement: added optional RNNoise denoise and Silero VAD speech coverage/trim toggles (`enable_rnnoise`, `enable_silero_vad`, `silero_vad_threshold`, `trim_silence_with_vad`). Dependencies: `rnnoise`, `silero-vad` (+ torch/torchaudio). DeepFilterNet and noisereduce remain supported. Metadata now records speech ratios.
   - Phase 5.5 subtitles: optional aeneas forced alignment when reference text is provided (`--use-aeneas` / `use_aeneas_alignment`).
+  - Phase 4 runtime guard: optional CPU usage-based downscale (`--cpu_guard`, auto-enabled by `--cpu_safe`) using psutil; reduces workers on sustained high CPU, never below 1; warns and skips if psutil missing.
+  - Phase docs: Phase 1 (`phase1-validation/README.md`), Phase 2 (`phase2-extraction/README.md`), Phase 3 (`phase3-chunking/README.md`), Phase 4 (`phase4_tts/README.md`), Phase 5 (`phase5_enhancement/README.md`), Phase 6 (`phase6_orchestrator/README.md`), Phase 7 (`phase7_batch/README.md`), and consolidated map `PHASE_DOCS.md` (phase entrypoints and doc pointers).
 
 ## Operational Heuristics (Dec 2025)
 - Preferred XTTS v2 CPU chunk length 12–18 s using sentence/semantic boundaries; split long sentences at semicolons/emdashes. Current tuning: min_chunk_words=30, max_chunk_words=75; char limits min=420, soft=780, hard=950, emergency=1250; duration model 2700 chars/min & 210 wpm; max_duration 20 s (soft target 18 s).

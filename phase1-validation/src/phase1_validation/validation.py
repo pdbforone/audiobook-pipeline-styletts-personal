@@ -188,6 +188,9 @@ def validate_and_repair(
     if not path.exists() or not os.access(file_path, os.R_OK):
         logger.error("File not accessible.")
         return None
+    if path.stat().st_size == 0:
+        logger.error("File is empty.")
+        return None
     if path.stat().st_size > max_size_mb * 1024 * 1024:
         logger.error("File exceeds size limit.")
         return None
@@ -239,13 +242,12 @@ def validate_and_repair(
             doc = fitz.open(file_path)
             page_count = len(doc)
             doc.close()
-            classify_pdf(file_path)  # Test open
         elif file_ext == ".epub":
             ebooklib.epub.read_epub(file_path)
         elif file_ext == ".docx":
             Document(file_path)
         elif file_ext == ".txt":
-            with open(file_path, "r") as f:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
                 f.read()
     except Exception:
         logger.info("File corrupted; attempting repair.")
@@ -312,6 +314,10 @@ def merge_to_json(
 
     if "phase1" not in data:
         data["phase1"] = {"files": {}, "hashes": [], "errors": [], "metrics": {}}
+    else:
+        # Deduplicate hashes to avoid unbounded growth on repeated writes
+        existing_hashes = data.get("phase1", {}).get("hashes", [])
+        data["phase1"]["hashes"] = list(dict.fromkeys(existing_hashes))
 
     if metadata.hash in data["phase1"]["hashes"]:
         data["phase1"]["errors"].append(
