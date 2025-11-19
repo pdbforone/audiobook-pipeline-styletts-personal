@@ -112,6 +112,15 @@ def derive_file_id_from_path(text_path: Path) -> str:
     return sanitized
 
 
+def derive_chunk_id_from_path(path: Path, index: int) -> str:
+    """Normalize chunk IDs (chunk_0001) for downstream phases."""
+    stem = path.stem
+    match = re.search(r"chunk[_-]?(\d+)", stem, flags=re.IGNORECASE)
+    if match:
+        return f"chunk_{int(match.group(1)):04d}"
+    return f"chunk_{index:04d}"
+
+
 def load_structure_from_json(json_path: str, file_id: str):
     """Load document structure from Phase 2 if available."""
     try:
@@ -289,6 +298,15 @@ def process_chunking(
     duration = end_time - start_time
     
     logger.info(f"Total processing time: {duration:.2f}s")
+
+    chunk_voice_overrides = {}
+    if selected_voice:
+        for idx, chunk_path_str in enumerate(chunk_paths):
+            try:
+                cid = derive_chunk_id_from_path(Path(chunk_path_str), idx)
+                chunk_voice_overrides[cid] = selected_voice
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to derive chunk_id for %s: %s", chunk_path_str, exc)
     
     record = ChunkRecord(
         text_path=str(text_path_abs),
@@ -305,6 +323,7 @@ def process_chunking(
         coherence_threshold=getattr(config, "coherence_threshold", None),
         flesch_threshold=getattr(config, "flesch_threshold", None),
         source_hash=current_hash,
+        chunk_voice_overrides=chunk_voice_overrides,
     )
     
     return record

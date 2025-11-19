@@ -8,12 +8,17 @@ Provides:
 - Helper functions
 """
 
+from __future__ import annotations
+
 import json
+import logging
 import platform
 import time
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, Callable, Any
-import logging
+from typing import Any, Callable, Dict, Optional
+
+import yaml
 
 try:
     import magic
@@ -23,8 +28,37 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_CONFIG = {"use_nemo": False}
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"
 
-def safe_update_json(pipeline_path: Path, phase_name: str, data: Dict) -> None:
+
+def load_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
+    """
+    Load Phase 2 configuration from YAML with sane defaults.
+
+    Args:
+        config_path: Optional explicit path to a YAML config file.
+
+    Returns:
+        Dict of configuration values with defaults applied.
+    """
+    config: Dict[str, Any] = DEFAULT_CONFIG.copy()
+    path = config_path or DEFAULT_CONFIG_PATH
+
+    if path and path.exists():
+        try:
+            loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            if isinstance(loaded, dict):
+                config.update(loaded)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning(f"Failed to read config from {path}: {exc}")
+    else:
+        logger.debug(f"No config file found at {path}, using defaults.")
+
+    return config
+
+
+def safe_update_json(pipeline_path: Path, phase_name: str, data: Dict[str, Any]) -> None:
     """
     Thread-safe pipeline.json updates with platform-aware locking.
     
@@ -77,7 +111,7 @@ def safe_update_json(pipeline_path: Path, phase_name: str, data: Dict) -> None:
                         current[phase_name] = {}
                     
                     # Deep merge: update nested dicts properly
-                    def deep_merge(base: Dict, update: Dict) -> Dict:
+                    def deep_merge(base: Dict[str, Any], update: Dict[str, Any]) -> Dict[str, Any]:
                         """Recursively merge update into base."""
                         for key, value in update.items():
                             if key in base and isinstance(base[key], dict) and isinstance(value, dict):
@@ -110,7 +144,7 @@ def safe_update_json(pipeline_path: Path, phase_name: str, data: Dict) -> None:
                 
                 return  # Success!
                 
-        except (IOError, OSError) as e:
+        except (IOError, OSError) as e:  # pragma: no cover - depends on platform locks
             if attempt < max_attempts - 1:
                 logger.warning(f"Pipeline update attempt {attempt+1} failed: {e}, retrying...")
                 time.sleep(delay)
@@ -119,7 +153,7 @@ def safe_update_json(pipeline_path: Path, phase_name: str, data: Dict) -> None:
                 raise
 
 
-def with_retry(func: Callable, max_attempts: int = 3, delay: float = 1.0) -> Any:
+def with_retry(func: Callable[[], Any], max_attempts: int = 3, delay: float = 1.0) -> Any:
     """
     Retry function on transient errors.
     
@@ -263,9 +297,9 @@ def format_duration(seconds: float) -> str:
 def log_error(
     pipeline_path: Path,
     phase_name: str,
-    error_code: str,
-    fix: str,
-    severity: str = "blocking"
+    file_id: str,
+    message: str,
+    severity: str = "blocking",
 ) -> None:
     """
     Log an error to pipeline.json in standardized format.
@@ -273,21 +307,19 @@ def log_error(
     Args:
         pipeline_path: Path to pipeline.json
         phase_name: Phase where error occurred
-        error_code: Short error identifier
-        fix: Human-readable fix instruction
+        file_id: File identifier related to the error
+        message: Human-readable message
         severity: 'blocking' or 'warning'
         
     Reason: Standardized error format makes debugging easier and
     ensures users get actionable fix instructions.
     """
-    from datetime import datetime
-    
     error_entry = {
-        "error": error_code,
-        "fix": fix,
+        "file_id": file_id,
+        "message": message,
         "phase": phase_name,
         "severity": severity,
-        "timestamp": datetime.utcnow().isoformat() + "Z"
+        "timestamp": datetime.utcnow().isoformat() + "Z",
     }
     
     try:
@@ -305,8 +337,8 @@ def log_error(
             json.dump(data, f, indent=2, ensure_ascii=False)
             f.truncate()
         
-        logger.error(f"[{error_code}] {fix}")
+        logger.error(f"[{phase_name}:{file_id}] {message}")
         
     except Exception as e:
         logger.error(f"Failed to log error to pipeline.json: {e}")
-        logger.error(f"Original error: [{error_code}] {fix}")
+        logger.error(f"Original error: [{phase_name}:{file_id}] {message}")

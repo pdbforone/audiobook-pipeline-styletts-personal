@@ -29,6 +29,10 @@ try:
     import psutil
 except ImportError:  # psutil is optional; CPU guard will be disabled if missing
     psutil = None
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
 
 MODULE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = MODULE_ROOT.parent.parent
@@ -65,6 +69,7 @@ class ChunkPayload:
     chunk_id: str
     text: str
     source_path: Path
+    voice_override: Optional[str] = None
 
 
 @dataclass(slots=True)
@@ -76,12 +81,33 @@ class ChunkResult:
     rt_factor: Optional[float] = None
     audio_duration: Optional[float] = None
     latency_fallback_used: bool = False
+    voice_used: Optional[str] = None
     error: Optional[str] = None
+
+
+@dataclass(slots=True)
+class VoiceAsset:
+    voice_id: str
+    reference_audio: Optional[Path]
+    engine_params: Dict[str, Any]
+    preferred_engine: Optional[str] = None
 
 
 def load_config(config_path: Path) -> Dict[str, Any]:
     with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def load_voices_config(voices_config_path: Path) -> Dict[str, Any]:
+    try:
+        with open(voices_config_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        logger.error("Voice config not found at %s", voices_config_path)
+        return {}
+    except json.JSONDecodeError as exc:
+        logger.error("Voice config at %s is invalid JSON: %s", voices_config_path, exc)
+        return {}
 
 
 def load_pipeline_json(json_path: Path) -> Dict[str, Any]:
@@ -197,6 +223,13 @@ def collect_chunks(
     resolved_key, phase3_entry = resolve_pipeline_file(pipeline_data, "phase3", file_id)
 
     chunk_paths = phase3_entry.get("chunk_paths", []) if phase3_entry else []
+    voice_overrides_map: Dict[str, str] = {}
+    if phase3_entry:
+        voice_overrides_map = (
+            phase3_entry.get("chunk_voice_overrides")
+            or phase3_entry.get("voice_overrides")
+            or {}
+        )
 
     # Fallback: glob phase3b_chunks if pipeline lacks phase3 entry (or empty)
     if not chunk_paths:
@@ -232,7 +265,15 @@ def collect_chunks(
             normalize_numbers=normalize_numbers,
             custom_overrides=custom_overrides,
         )
-        chunk_payloads.append(ChunkPayload(chunk_id, sanitized, chunk_path))
+        voice_override = None
+        if voice_overrides_map:
+            # Allow matching by chunk_id or file name (with/without extension)
+            voice_override = voice_overrides_map.get(chunk_id)
+            if not voice_override:
+                voice_override = voice_overrides_map.get(chunk_path.name)
+                if not voice_override:
+                    voice_override = voice_overrides_map.get(chunk_path.stem)
+        chunk_payloads.append(ChunkPayload(chunk_id, sanitized, chunk_path, voice_override))
 
     if chunk_index is not None:
         if chunk_index < 0 or chunk_index >= len(chunk_payloads):
@@ -256,7 +297,8 @@ def select_voice(
     file_id: str,
     voice_override: Optional[str],
     prepared_refs: Dict[str, str],
-    voices_config_path: Path
+    voices_config_path: Path,
+    voices_config: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, Optional[Path], Dict[str, Any]]:
     """Determine voice to use and return (voice_id, reference_path, engine_params).
 
@@ -265,8 +307,7 @@ def select_voice(
         - For built-in voices: reference_path is None, voice name is in engine_params
         - For custom clones: reference_path points to audio file
     """
-    with open(voices_config_path, "r", encoding="utf-8") as f:
-        voices_config = json.load(f)
+    voices_config = voices_config or load_voices_config(voices_config_path)
 
     voice_entries = voices_config.get("voice_references", {})
     built_in_voices = voices_config.get("built_in_voices", {})
@@ -330,7 +371,14 @@ def select_voice(
                 "Custom voice '%s' not found. Falling back to built-in: '%s'",
                 selected_voice, fallback_voice
             )
-            return select_voice(pipeline_json, file_id, fallback_voice, prepared_refs, voices_config_path)
+            return select_voice(
+                pipeline_json,
+                file_id,
+                fallback_voice,
+                prepared_refs,
+                voices_config_path,
+                voices_config=voices_config,
+            )
 
         # Otherwise fall back to custom voice
         fallback_voice = None
@@ -354,6 +402,47 @@ def select_voice(
     return selected_voice, reference_path, engine_params
 
 
+def build_voice_assets(
+    voices_config: Dict[str, Any],
+    prepared_refs: Dict[str, str],
+) -> Dict[str, VoiceAsset]:
+    """Precompute per-voice assets for fast lookup (used for per-chunk overrides)."""
+    assets: Dict[str, VoiceAsset] = {}
+    voice_entries = voices_config.get("voice_references", {}) or {}
+    built_in_voices = voices_config.get("built_in_voices", {}) or {}
+
+    for engine_name, engine_voices in built_in_voices.items():
+        for voice_name, voice_data in engine_voices.items():
+            params = {}
+            if engine_name == "xtts":
+                params["speaker"] = voice_name
+            elif engine_name == "kokoro":
+                params["voice"] = voice_name
+            params.update(voice_data.get("tts_engine_params", {}))
+            assets[voice_name] = VoiceAsset(
+                voice_id=voice_name,
+                reference_audio=None,
+                engine_params=params,
+                preferred_engine=engine_name,
+            )
+
+    for voice_name, voice_data in voice_entries.items():
+        ref_path = prepared_refs.get(voice_name)
+        params = dict(voice_data.get("tts_engine_params", {}))
+        if voice_name in assets:
+            if ref_path:
+                assets[voice_name].reference_audio = Path(ref_path)
+            continue
+        assets[voice_name] = VoiceAsset(
+            voice_id=voice_name,
+            reference_audio=Path(ref_path).resolve() if ref_path else None,
+            engine_params=params,
+            preferred_engine=None,
+        )
+
+    return assets
+
+
 def synthesize_chunk_with_engine(
     chunk: ChunkPayload,
     reference_audio: Path,
@@ -366,9 +455,41 @@ def synthesize_chunk_with_engine(
     slow_rt_threshold: float = 4.0,
     engine_kwargs: Optional[Dict[str, Any]] = None,
     skip_existing: bool = False,
+    voice_assets: Optional[Dict[str, VoiceAsset]] = None,
+    default_voice_id: Optional[str] = None,
 ) -> ChunkResult:
     """Synthesize text for a single chunk using requested engine with fallback."""
     chunk_kwargs = dict(engine_kwargs) if engine_kwargs else {}
+    effective_engine = engine_name
+    reference = reference_audio
+    voice_used = default_voice_id
+
+    if chunk.voice_override and voice_assets:
+        voice_asset = voice_assets.get(chunk.voice_override)
+        if voice_asset:
+            if voice_asset.engine_params:
+                chunk_kwargs.update(voice_asset.engine_params)
+            if voice_asset.reference_audio:
+                reference = voice_asset.reference_audio
+            if (
+                voice_asset.preferred_engine
+                and voice_asset.preferred_engine in engine_manager.engines
+            ):
+                effective_engine = voice_asset.preferred_engine
+            voice_used = voice_asset.voice_id
+            logger.info(
+                "Chunk %s overriding voice -> %s (engine=%s)",
+                chunk.chunk_id,
+                voice_asset.voice_id,
+                effective_engine,
+            )
+        else:
+            logger.warning(
+                "Chunk %s requested voice '%s' but it is not defined; using default voice '%s'.",
+                chunk.chunk_id,
+                chunk.voice_override,
+                voice_used,
+            )
     existing_out = output_dir / f"{chunk.chunk_id}.wav"
     est_dur_sec = max(1.0, (len(chunk.text.split()) / 150.0) * 60.0)
 
@@ -383,14 +504,15 @@ def synthesize_chunk_with_engine(
             rt_factor=None,
             audio_duration=None,
             latency_fallback_used=False,
+            voice_used=voice_used,
         )
 
     synth_start = time.time()
     try:
         audio_out, used_engine = engine_manager.synthesize(
             text=chunk.text,
-            reference_audio=reference_audio,
-            engine=engine_name,
+            reference_audio=reference,
+            engine=effective_engine,
             language=language,
             fallback=allow_fallback,
             return_engine=True,
@@ -408,6 +530,7 @@ def synthesize_chunk_with_engine(
             rt_factor=None,
             audio_duration=None,
             latency_fallback_used=False,
+            voice_used=voice_used,
             error=str(exc),
         )
 
@@ -450,7 +573,7 @@ def synthesize_chunk_with_engine(
             fallback_start = time.time()
             fallback_audio, fallback_engine = engine_manager.synthesize(
                 text=chunk.text,
-                reference_audio=reference_audio,
+                reference_audio=reference,
                 engine="kokoro",
                 language=language,
                 fallback=False,
@@ -513,6 +636,7 @@ def synthesize_chunk_with_engine(
         rt_factor=rt_factor,
         audio_duration=audio_duration,
         latency_fallback_used=latency_fallback_used,
+        voice_used=voice_used,
     )
 
 
@@ -536,6 +660,7 @@ def update_phase4_summary(
     completed = sum(1 for r in results if r.success)
     failed = total - completed
     engines_used = sorted({r.engine_used for r in results if r.engine_used})
+    voices_used = sorted({r.voice_used for r in results if r.voice_used})
     rt_factors = [
         r.rt_factor for r in results if r.success and r.rt_factor is not None and np.isfinite(r.rt_factor)
     ]
@@ -563,6 +688,7 @@ def update_phase4_summary(
         "requested_engine": requested_engine,
         "selected_engine": selected_engine,
         "engines_used": engines_used,
+        "voices_used": voices_used,
         "total_chunks": total,
         "chunks_completed": completed,
         "chunks_failed": failed,
@@ -586,6 +712,7 @@ def update_phase4_summary(
             "audio_path": serialize_path_for_pipeline(result.output_path) if result.output_path else None,
             "status": "success" if result.success else "failed",
             "engine_used": result.engine_used,
+            "voice_used": result.voice_used,
             "rt_factor": result.rt_factor,
             "audio_seconds": result.audio_duration,
             "latency_fallback_used": result.latency_fallback_used,
@@ -599,8 +726,51 @@ def update_phase4_summary(
     else:
         phase4["status"] = "partial"
 
-    with open(pipeline_path, "w", encoding="utf-8") as f:
+    pipeline_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = pipeline_path.with_suffix(".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+    tmp_path.replace(pipeline_path)
+
+
+def write_run_summary(
+    output_dir: Path,
+    results: List[ChunkResult],
+    duration_sec: float,
+    requested_engine: str,
+    selected_engine: str,
+    voice_id: str,
+) -> None:
+    """Persist a lightweight summary.json for quick inspection."""
+    rt_values = [
+        r.rt_factor for r in results if r.success and r.rt_factor is not None and np.isfinite(r.rt_factor)
+    ]
+    rt_p50 = float(np.percentile(rt_values, 50)) if rt_values else None
+    rt_p90 = float(np.percentile(rt_values, 90)) if rt_values else None
+    rt_p99 = float(np.percentile(rt_values, 99)) if rt_values else None
+    fallback_rate = sum(1 for r in results if r.latency_fallback_used and r.success) / max(
+        1, sum(1 for r in results if r.success)
+    )
+
+    payload = {
+        "requested_engine": requested_engine,
+        "selected_engine": selected_engine,
+        "voice_id": voice_id,
+        "duration_seconds": duration_sec,
+        "chunks_total": len(results),
+        "chunks_success": sum(1 for r in results if r.success),
+        "chunks_failed": sum(1 for r in results if not r.success),
+        "rt_p50": rt_p50,
+        "rt_p90": rt_p90,
+        "rt_p99": rt_p99,
+        "latency_fallback_rate": fallback_rate,
+    }
+    output_dir.mkdir(parents=True, exist_ok=True)
+    summary_path = output_dir / "summary.json"
+    tmp_path = summary_path.with_suffix(".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+    tmp_path.replace(summary_path)
 
 
 ENGINE_IMPORT_MAP: Dict[str, Tuple[str, str]] = {
@@ -840,13 +1010,20 @@ def main() -> int:
     if cpu_guard:
         logger.info("CPU guard: enabled (CPU threshold %.1f%%; RAM guard 85%%; requires psutil).", cpu_guard_high)
 
+    voices_config = load_voices_config(voices_config_path)
     voice_references = prepare_voice_references(
         voice_config_path=str(voices_config_path),
         cache_dir=str(MODULE_ROOT.parent / "voice_references"),
     )
     voice_id, reference_audio, engine_params = select_voice(
-        json_path, resolved_file_id, args.voice, voice_references, voices_config_path
+        json_path,
+        resolved_file_id,
+        args.voice,
+        voice_references,
+        voices_config_path,
+        voices_config=voices_config,
     )
+    voice_assets = build_voice_assets(voices_config, voice_references)
 
     base_output = Path(config.get("audio_chunks_dir", "audio_chunks")).resolve()
     output_dir = base_output / resolved_file_id
@@ -899,8 +1076,10 @@ def main() -> int:
     allowed_workers = workers
     slow_streak = 0
     cpu_high_streak = 0
+    total_chunks = len(chunks)
     pending = list(chunks)
     active_futures: Dict[Any, str] = {}
+    progress = tqdm(total=total_chunks, desc="Synth", unit="chunk") if tqdm else None
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         while pending or active_futures:
@@ -920,6 +1099,8 @@ def main() -> int:
                     slow_rt_threshold=slow_rt_threshold,
                     engine_kwargs=engine_params,
                     skip_existing=skip_existing,
+                    voice_assets=voice_assets,
+                    default_voice_id=voice_id,
                 )
                 active_futures[future] = chunk.chunk_id
 
@@ -931,6 +1112,17 @@ def main() -> int:
                 active_futures.pop(future, None)
                 result = future.result()
                 results.append(result)
+                if progress:
+                    progress.update(1)
+                if total_chunks:
+                    completed_so_far = len(results)
+                    if completed_so_far == total_chunks or completed_so_far % max(1, total_chunks // 10) == 0:
+                        logger.info(
+                            "Progress: %d/%d (%.1f%%)",
+                            completed_so_far,
+                            total_chunks,
+                            (completed_so_far / total_chunks) * 100.0,
+                        )
 
                 if (
                     cpu_safe
@@ -971,6 +1163,8 @@ def main() -> int:
                             ram_usage,
                             cpu_guard_high,
                         )
+    if progress:
+        progress.close()
 
     duration = time.time() - start_time
     success_count = sum(1 for r in results if r.success)
@@ -1019,6 +1213,14 @@ def main() -> int:
         results=results,
         output_dir=output_dir,
         duration_sec=duration,
+    )
+    write_run_summary(
+        output_dir=output_dir,
+        results=results,
+        duration_sec=duration,
+        requested_engine=engine_requested,
+        selected_engine=engine_selected,
+        voice_id=voice_id,
     )
 
     exit_code = 0 if failed_count == 0 else 1

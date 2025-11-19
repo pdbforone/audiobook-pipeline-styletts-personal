@@ -91,3 +91,10 @@
 - `README_EXCELLENCE.md` and `PROJECT_OVERVIEW.md` reflect the current CPU-only, XTTS + Kokoro setup and personal-use scope.
 - `STRUCTURE_ENHANCEMENT_README.md` now documents the correct personal repo paths for Phase 2/3 tests.
 - `MASTER_GUIDE.md` references video tooling in `audiobook-pipeline-chatterbox`; keep contextual but note it is a sibling repo, not this pipeline.
+
+## Phase 1 Validation Refactor (Feb 2026)
+- Phase1 validation now modular: classify_file/pdf, validate_{pdf,epub,docx,txt}, repair_*, extract_metadata, write_artifacts, persist_metadata.
+- New Pydantic metadata schema (size_bytes/sha256, classification, repair_attempted/repair_success, errors, timestamps, metrics; back-compat hash/file_size_bytes).
+- Atomic pipeline writes via `safe_update_json` with cross-platform locking + deep merge; duplicate hashes flagged without overwriting other phases; `log_error` standardizes error persistence.
+- PDF classification heuristic uses text length, density, replacement-char ratio, and alphabetic token ratio; logs classification stats.
+- Shared helper `compute_sha256` in utils for Phase1/2 consistency; tests updated for new flow and JSON merge behavior (install dev deps to run).

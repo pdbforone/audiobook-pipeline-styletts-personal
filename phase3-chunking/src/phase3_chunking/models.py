@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Dict, Optional, Any
 import logging
 
@@ -23,6 +23,8 @@ class ChunkRecord(BaseModel):
     suggested_voice: Optional[str] = None  # Selected voice ID for TTS (e.g., 'jim_locke')
     coherence_threshold: Optional[float] = None
     flesch_threshold: Optional[float] = None
+    # Per-chunk voice overrides keyed by chunk_id (e.g., chunk_0001 -> voice_name)
+    chunk_voice_overrides: Dict[str, str] = Field(default_factory=dict)
 
     class Config:
         arbitrary_types_allowed = True  # Allow 'any' type for chunk_metrics

@@ -16,25 +16,33 @@ Usage:
 import argparse
 import json
 import logging
-import sys
-import os
+from itertools import chain
+from datetime import datetime
 from pathlib import Path
 from time import perf_counter
-from typing import Optional, Dict, Tuple
-from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 # Extractors
-from .extractors import pdf, docx, epub, html, txt, ocr
+from .extractors import docx, epub, html, ocr, txt
 
 # Normalization and utilities
+from .extraction import extract_text_multipass
 from .normalize import normalize_text
+from .structure_detector import (
+    StructureNode,
+    calculate_section_boundaries,
+    detect_structure_heuristic,
+    extract_pdf_structure_by_fonts,
+    extract_pdf_toc,
+)
 from .utils import (
+    calculate_yield,
+    detect_format,
+    format_duration,
+    load_config,
+    log_error,
     safe_update_json,
     with_retry,
-    detect_format,
-    calculate_yield,
-    format_duration,
-    log_error
 )
 
 # Setup logging
@@ -108,6 +116,30 @@ def load_file_metadata(json_path: Path, file_id: str, file_override: Optional[Pa
     }
 
 
+def _merge_structure_nodes(text: str, node_groups: List[List[StructureNode]]) -> List[StructureNode]:
+    """
+    Combine structure detections and align missing offsets.
+    """
+    merged: Dict[Tuple[str, int], StructureNode] = {}
+    lower_text = text.lower()
+
+    for node in chain.from_iterable(node_groups):
+        candidate = node.copy()
+        if candidate.char_offset == 0 and candidate.title:
+            idx = lower_text.find(candidate.title.lower())
+            if idx != -1:
+                candidate.char_offset = idx
+                candidate.char_end = idx + len(candidate.title)
+
+        key = (candidate.title.lower(), candidate.char_offset)
+        if key not in merged:
+            merged[key] = candidate
+
+    merged_nodes = list(merged.values())
+    merged_nodes.sort(key=lambda n: n.char_offset)
+    return merged_nodes
+
+
 def extract_text(
     file_path: Path,
     detected_format: str,
@@ -143,45 +175,39 @@ def extract_text(
     logger.info("=" * 60)
     
     # PDF handling with OCR decision
-    if detected_format == 'pdf':
-        # Force OCR if requested
-        if force_ocr:
-            logger.info("OCR forced by --force-ocr flag")
+    if detected_format == "pdf":
+        if force_ocr or classification == "scanned":
+            logger.info("Using OCR path for PDF (forced or classified as scanned)")
             return with_retry(lambda: ocr.extract(file_path))
-        
-        # Use OCR for scanned PDFs
-        if classification == 'scanned':
-            logger.info("Using OCR for scanned PDF (based on Phase 1 classification)")
+
+        text, method_used, quality_score = extract_text_multipass(file_path)
+
+        if classification == "mixed" and quality_score < 0.6:
+            logger.warning("Low quality from text extraction on mixed PDF - trying OCR fallback...")
             return with_retry(lambda: ocr.extract(file_path))
-        
-        # For mixed PDFs, try text extraction first, OCR if quality is low
-        if classification == 'mixed':
-            logger.info("Mixed PDF detected - trying text extraction first")
-            text, metadata = with_retry(lambda: pdf.extract(file_path))
-            
-            quality = metadata.get('quality_score', 0.0)
-            if quality < 0.6:
-                logger.warning(
-                    f"Low quality ({quality:.2f}) from text extraction, "
-                    f"trying OCR instead..."
-                )
-                return with_retry(lambda: ocr.extract(file_path))
-            
-            return text, metadata
-        
-        # Default: text-based PDF extraction
-        return with_retry(lambda: pdf.extract(file_path))
+
+        if not text.strip():
+            logger.warning("Text extraction returned empty result - trying OCR fallback...")
+            return with_retry(lambda: ocr.extract(file_path))
+
+        metadata = {
+            "title": file_path.stem,
+            "tool_used": method_used,
+            "quality_score": quality_score,
+            "char_count": len(text),
+        }
+        return text, metadata
     
     # DOCX
-    elif detected_format == 'docx':
+    elif detected_format == "docx":
         return with_retry(lambda: docx.extract(file_path))
     
     # EPUB
-    elif detected_format == 'epub':
+    elif detected_format == "epub":
         return with_retry(lambda: epub.extract(file_path))
     
     # HTML
-    elif detected_format == 'html':
+    elif detected_format == "html":
         return with_retry(lambda: html.extract(file_path))
     
     # TXT (default)
@@ -194,28 +220,24 @@ def main(
     json_path: Path = Path("pipeline.json"),
     extracted_dir: Path = Path("extracted_text"),
     file_override: Optional[Path] = None,
-    force_ocr: bool = False
+    force_ocr: bool = False,
+    config_path: Optional[Path] = None,
 ) -> None:
     """
     Main Phase 2 extraction pipeline.
-    
+
     Stages:
     1. Load file metadata from pipeline.json
     2. Detect file format
     3. Extract text using appropriate method
-    4. Normalize text for TTS
-    5. Save artifacts
-    6. Update pipeline.json with metrics
-    
-    Args:
-        file_id: Unique file identifier
-        json_path: Path to pipeline.json
-        extracted_dir: Directory for output artifacts
-        file_override: Optional file path override
-        force_ocr: Force OCR extraction
+    4. Detect structure (PDF only) before normalization
+    5. Normalize text for TTS
+    6. Save artifacts and update pipeline.json with metrics
     """
     start_time = perf_counter()
-    
+    wall_start = datetime.utcnow().timestamp()
+    settings = load_config(config_path)
+
     logger.info("=" * 60)
     logger.info("PHASE 2: TEXT EXTRACTION & NORMALIZATION")
     logger.info("=" * 60)
@@ -223,97 +245,102 @@ def main(
     logger.info(f"Pipeline: {json_path}")
     logger.info(f"Output: {extracted_dir}")
     logger.info("=" * 60)
-    
-    # Initialize Phase 2 entry in pipeline.json
+
     try:
-        safe_update_json(json_path, 'phase2', {
-            'status': 'in_progress',
-            'timestamps': {
-                'start': datetime.utcnow().isoformat() + 'Z'
-            }
-        })
-    except Exception as e:
-        logger.error(f"Failed to initialize Phase 2 in pipeline.json: {e}")
+        safe_update_json(
+            json_path,
+            "phase2",
+            {"status": "in_progress", "timestamps": {"start": wall_start}},
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error(f"Failed to initialize Phase 2 in pipeline.json: {exc}")
         return
-    
+
     try:
         # Stage 1: Load File Metadata
         logger.info("\nStage 1: Loading file metadata...")
         file_metadata = load_file_metadata(json_path, file_id, file_override)
-        file_path = file_metadata['file_path']
-        classification = file_metadata['classification']
-        file_size = file_metadata['file_size']
-        
+        file_path = file_metadata["file_path"]
+        classification = file_metadata["classification"]
+        file_size = file_metadata["file_size"]
+
         logger.info(f"  File: {file_path}")
         logger.info(f"  Size: {file_size:,} bytes ({file_size / 1024 / 1024:.1f} MB)")
         logger.info(f"  Classification: {classification}")
-        
+
         # Stage 2: Detect Format
         logger.info("\nStage 2: Detecting file format...")
         detected_format = detect_format(file_path)
         logger.info(f"  Detected format: {detected_format}")
-        
+
         # Stage 3: Extract Text
         logger.info("\nStage 3: Extracting text...")
         text, extraction_metadata = extract_text(
-            file_path,
-            detected_format,
-            force_ocr,
-            classification
+            file_path, detected_format, force_ocr, classification
         )
-        
+        quality_score = extraction_metadata.get("quality_score", 0.0)
+
         if not text or len(text) < 50:
             error_msg = (
                 f"Extraction failed or produced minimal text ({len(text)} chars). "
                 f"If this is a scanned PDF, try --force-ocr"
             )
             logger.error(error_msg)
-            log_error(
+            log_error(json_path, "phase2", file_id, error_msg)
+
+            safe_update_json(
                 json_path,
-                'phase2',
-                'extraction_failed',
-                error_msg,
-                'blocking'
-            )
-            
-            safe_update_json(json_path, 'phase2', {
-                'status': 'failed',
-                'files': {
-                    file_id: {
-                        'error': error_msg,
-                        'extraction_metadata': extraction_metadata
-                    }
+                "phase2",
+                {
+                    "status": "failed",
+                    "files": {file_id: {"error": error_msg, "extraction_metadata": extraction_metadata}},
+                    "timestamps": {"end": datetime.utcnow().timestamp(), "duration": perf_counter() - start_time},
                 },
-                'timestamps': {
-                    'end': datetime.utcnow().isoformat() + 'Z',
-                    'duration': perf_counter() - start_time
-                }
-            })
+            )
             return
-        
+
         logger.info(f"  ✓ Extracted {len(text):,} characters")
         logger.info(f"  Tool used: {extraction_metadata.get('tool_used', 'unknown')}")
-        logger.info(f"  Quality score: {extraction_metadata.get('quality_score', 0.0):.2f}")
-        
-        # Stage 4: Normalize Text
-        logger.info("\nStage 4: Normalizing text for TTS...")
-        normalized_text, norm_metrics = normalize_text(text, file_id, extracted_dir)
-        
+        logger.info(f"  Quality score: {quality_score:.2f}")
+
+        # Stage 4: Structure detection for PDFs (pre-normalization)
+        structure_payload: List[Dict[str, Any]] = []
+        structure_path: Optional[Path] = None
+        if detected_format == "pdf":
+            logger.info("\nStage 4: Detecting document structure...")
+            toc_nodes = extract_pdf_toc(str(file_path))
+            font_nodes = extract_pdf_structure_by_fonts(str(file_path), text)
+            heuristic_nodes = detect_structure_heuristic(text)
+            merged_nodes = _merge_structure_nodes(text, [toc_nodes, font_nodes, heuristic_nodes])
+            bounded_nodes = calculate_section_boundaries(merged_nodes, len(text)) if merged_nodes else []
+            if bounded_nodes:
+                structure_payload = [node.model_dump() for node in bounded_nodes]
+                structure_path = extracted_dir / f"{file_id}_structure.json"
+                extracted_dir.mkdir(parents=True, exist_ok=True)
+                structure_path.write_text(
+                    json.dumps(structure_payload, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+                logger.info(f"  ✓ Saved structure to {structure_path}")
+            else:
+                logger.info("  No structure detected.")
+
+        # Stage 5: Normalize Text
+        logger.info("\nStage 5: Normalizing text for TTS...")
+        normalized_text, norm_metrics = normalize_text(text, file_id, extracted_dir, settings)
+
         logger.info(f"  ✓ Normalized to {len(normalized_text):,} characters")
         logger.info(f"  Text yield: {norm_metrics.get('text_yield', 0.0):.2%}")
         logger.info(f"  Changes applied: {len(norm_metrics.get('changes', []))}")
-        
-        # Stage 5: Save Artifacts
-        logger.info("\nStage 5: Saving artifacts...")
+
+        # Stage 6: Save Artifacts
+        logger.info("\nStage 6: Saving artifacts...")
         extracted_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Save cleaned text
+
         output_path = extracted_dir / f"{file_id}.txt"
-        with output_path.open('w', encoding='utf-8') as f:
-            f.write(normalized_text)
+        output_path.write_text(normalized_text, encoding="utf-8")
         logger.info(f"  ✓ Saved: {output_path}")
-        
-        # Save metadata
+
         meta_path = extracted_dir / f"{file_id}_meta.json"
         combined_metadata = {
             **extraction_metadata,
@@ -321,70 +348,55 @@ def main(
             "file_id": file_id,
             "source_file": str(file_path),
             "detected_format": detected_format,
-            "classification": classification
+            "classification": classification,
         }
-        
-        import json as json_lib
-        with meta_path.open('w', encoding='utf-8') as f:
-            json_lib.dump(combined_metadata, f, indent=2, ensure_ascii=False)
+        meta_path.write_text(json.dumps(combined_metadata, indent=2, ensure_ascii=False), encoding="utf-8")
         logger.info(f"  ✓ Saved: {meta_path}")
-        
-        # Stage 6: Calculate Final Metrics
+
+        # Stage 7: Calculate Final Metrics
         end_time = perf_counter()
         duration = end_time - start_time
-        
+        wall_end = datetime.utcnow().timestamp()
+
         yield_pct = calculate_yield(file_size, len(normalized_text))
-        
-        # Determine overall status
-        quality_score = extraction_metadata.get('quality_score', 0.0)
+        status: str
         if quality_score >= 0.8 and yield_pct >= 0.85:
-            status = 'success'
+            status = "success"
         elif quality_score >= 0.6 or yield_pct >= 0.6:
-            status = 'partial_success'
+            status = "partial_success"
         else:
-            status = 'failed'
-        
-        # Stage 7: Update Pipeline.json
-        logger.info("\nStage 6: Updating pipeline.json...")
-        
-        phase2_data = {
-            'status': status,
-            'timestamps': {
-                'start': datetime.fromtimestamp(start_time).isoformat() + 'Z',
-                'end': datetime.utcnow().isoformat() + 'Z',
-                'duration': duration
-            },
-            'metrics': {
-                'text_yield': yield_pct,
-                'quality_score': quality_score,
-                'language': norm_metrics.get('language', 'unknown'),
-                'language_confidence': norm_metrics.get('language_confidence', 0.0),
-                'normalization_metrics': {
-                    'removed_junk_lines': norm_metrics.get('removed_junk_lines', 0),
-                    'converted_quotes': norm_metrics.get('converted_quotes', False),
-                    'preserved_headings': norm_metrics.get('preserved_headings', 0),
-                    'extracted_footnotes': norm_metrics.get('extracted_footnotes', 0),
-                    'tts_ready': norm_metrics.get('tts_ready', False)
-                }
-            },
-            'files': {
-                file_id: {
-                    'path': str(output_path),
-                    'metadata_path': str(meta_path),
-                    'detected_format': detected_format,
-                    'word_count': len(normalized_text.split()),
-                    'char_count': len(normalized_text),
-                    'metadata': {
-                        'title': extraction_metadata.get('title', file_path.stem),
-                        'author': extraction_metadata.get('author', 'Unknown'),
-                        'tool_used': extraction_metadata.get('tool_used', 'unknown')
-                    }
-                }
-            }
+            status = "failed"
+
+        file_timestamps = {"start": wall_start, "end": wall_end, "duration": duration}
+        file_entry: Dict[str, Any] = {
+            "extracted_text_path": str(output_path),
+            "tool_used": extraction_metadata.get("tool_used", "unknown"),
+            "score": quality_score,
+            "quality_score": quality_score,
+            "yield_pct": yield_pct,
+            "language": norm_metrics.get("language", "unknown"),
+            "lang_confidence": norm_metrics.get("language_confidence", 0.0),
+            "status": status,
+            "timestamps": file_timestamps,
+            "word_count": len(normalized_text.split()),
+            "char_count": len(normalized_text),
+            "metadata_path": str(meta_path),
+            "detected_format": detected_format,
         }
-        
-        safe_update_json(json_path, 'phase2', phase2_data)
-        
+        if structure_path:
+            file_entry["structure_path"] = str(structure_path)
+            if structure_payload:
+                file_entry["structure"] = structure_payload
+
+        phase2_data = {
+            "status": status,
+            "timestamps": file_timestamps,
+            "files": {file_id: file_entry},
+            "metrics": {"yield_pct": yield_pct, "quality_score": quality_score},
+        }
+
+        safe_update_json(json_path, "phase2", phase2_data)
+
         # Final Summary
         logger.info("=" * 60)
         logger.info("PHASE 2 COMPLETE")
@@ -395,35 +407,24 @@ def main(
         logger.info(f"Quality: {quality_score:.2f}")
         logger.info(f"Yield: {yield_pct:.2%}")
         logger.info("=" * 60)
-        
-        if status == 'failed':
+
+        if status == "failed":
             logger.warning("⚠️  Extraction completed but quality is low")
             logger.warning("  Consider:")
             logger.warning("    - Using --force-ocr for scanned PDFs")
             logger.warning("    - Checking source file quality")
             logger.warning("    - Reviewing extraction metadata")
-        
-    except Exception as e:
-        logger.error(f"Phase 2 failed: {type(e).__name__}: {e}", exc_info=True)
-        
-        # Log error to pipeline.json
-        log_error(
+
+    except Exception as exc:
+        logger.error(f"Phase 2 failed: {type(exc).__name__}: {exc}", exc_info=logger.isEnabledFor(logging.DEBUG))
+
+        log_error(json_path, "phase2", file_id, f"{type(exc).__name__}: {exc}")
+
+        safe_update_json(
             json_path,
-            'phase2',
-            type(e).__name__,
-            f"{type(e).__name__}: {str(e)}",
-            'blocking'
+            "phase2",
+            {"status": "failed", "timestamps": {"end": datetime.utcnow().timestamp(), "duration": perf_counter() - start_time}},
         )
-        
-        # Update status
-        safe_update_json(json_path, 'phase2', {
-            'status': 'failed',
-            'timestamps': {
-                'end': datetime.utcnow().isoformat() + 'Z',
-                'duration': perf_counter() - start_time
-            }
-        })
-        
         raise
 
 
@@ -474,6 +475,11 @@ Examples:
         action='store_true',
         help='Force OCR extraction for PDFs (useful for scanned documents)'
     )
+    parser.add_argument(
+        '--config',
+        type=Path,
+        help='Optional: Path to config.yaml (defaults to package config)'
+    )
     
     args = parser.parse_args()
     
@@ -483,5 +489,6 @@ Examples:
         json_path=args.json_path,
         extracted_dir=args.extracted_dir,
         file_override=args.file,
-        force_ocr=args.force_ocr
+        force_ocr=args.force_ocr,
+        config_path=args.config,
     )

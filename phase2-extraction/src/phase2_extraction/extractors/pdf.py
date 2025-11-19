@@ -11,9 +11,11 @@ Maintains the thoroughness of the original Phase 2 implementation:
 This is a modularized version that preserves all existing functionality.
 """
 
-from pathlib import Path
-from typing import Tuple, Dict, Optional
 import logging
+from pathlib import Path
+from typing import Dict, Optional, Tuple
+
+from ..extraction import validate_extraction_quality as base_validate_extraction_quality
 
 # Try optional extraction libraries
 try:
@@ -38,81 +40,8 @@ logger = logging.getLogger(__name__)
 
 
 def validate_extraction_quality(text: str, method_name: str) -> float:
-    """
-    Comprehensive extraction quality validation for TTS.
-    
-    Checks:
-    - Replacement characters (indicates encoding issues)
-    - Alphabetic ratio (distinguishes text from gibberish)
-    - Common English words (basic language validation)
-    - Text length (minimum viable content)
-    
-    Returns:
-        Quality score from 0.0 (unusable) to 1.0 (perfect)
-        
-    Reason: Multi-factor quality check catches various extraction failures
-    that could produce poor TTS output or waste processing time.
-    """
-    if not text or len(text) < 100:
-        logger.warning(f"{method_name}: Insufficient text extracted (< 100 chars)")
-        return 0.0
-    
-    score = 1.0
-    sample = text[:20000]  # Use first 20k chars for performance
-    
-    # Check 1: Replacement characters (�) indicate encoding problems
-    replacement_count = text.count('\ufffd')
-    if replacement_count > 0:
-        score -= 0.5
-        logger.warning(
-            f"{method_name}: Contains {replacement_count} replacement characters "
-            f"(encoding issues)"
-        )
-    
-    # Check 2: Alphabetic ratio - real text should be mostly letters
-    alpha_ratio = sum(1 for c in sample if c.isalpha()) / len(sample)
-    if alpha_ratio < 0.65:
-        score -= 0.3
-        logger.warning(
-            f"{method_name}: Low alphabetic ratio ({alpha_ratio:.1%}) - "
-            f"may be extraction artifacts or non-text content"
-        )
-    elif alpha_ratio < 0.75:
-        score -= 0.1
-        logger.info(f"{method_name}: Alphabetic ratio acceptable ({alpha_ratio:.1%})")
-    
-    # Check 3: Common English word presence (basic language check)
-    text_lower = sample.lower()
-    common_words = ['the', 'and', 'of', 'to', 'a', 'in', 'is', 'that', 'for', 'it']
-    found_common = sum(1 for word in common_words if f' {word} ' in text_lower)
-    if found_common < 8:
-        score -= 0.4
-        logger.warning(
-            f"{method_name}: Only {found_common}/10 common words found - "
-            f"may not be English text"
-        )
-    else:
-        logger.info(f"{method_name}: Found {found_common}/10 common words")
-    
-    # Check 4: Line break density (too many or too few can indicate problems)
-    line_count = sample.count('\n')
-    lines_per_1000 = (line_count / len(sample)) * 1000
-    if lines_per_1000 < 5:
-        logger.warning(
-            f"{method_name}: Very few line breaks ({lines_per_1000:.1f}/1000 chars) - "
-            f"may be formatting issues"
-        )
-        score -= 0.1
-    elif lines_per_1000 > 100:
-        logger.warning(
-            f"{method_name}: Excessive line breaks ({lines_per_1000:.1f}/1000 chars) - "
-            f"may be fragmented text"
-        )
-        score -= 0.1
-    
-    score = max(0.0, score)
-    logger.info(f"{method_name} quality score: {score:.2f}/1.0")
-    return score
+    """Delegate to shared Phase 2 quality validation."""
+    return base_validate_extraction_quality(text, method_name)
 
 
 def extract_text_pypdf(file_path: Path) -> str:

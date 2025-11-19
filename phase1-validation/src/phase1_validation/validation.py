@@ -1,10 +1,11 @@
 import argparse
-import hashlib
+import json
 import logging
 import os
-from time import perf_counter
+import shutil
 from pathlib import Path
-from typing import Optional, List, Dict
+from time import perf_counter
+from typing import Any, Dict, List, Optional, Tuple
 
 import chardet
 import ebooklib
@@ -14,163 +15,396 @@ import hachoir.parser
 import pikepdf
 import pymupdf as fitz  # PyMuPDF
 from docx import Document
-from pydantic import BaseModel, ValidationError, Field
-import json
-import shutil
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+from .utils import compute_sha256 as utils_compute_sha256
+from .utils import log_error, safe_update_json
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+PHASE_NAME = "phase1"
+SUPPORTED_EXTENSIONS = {".pdf", ".epub", ".docx", ".txt"}
+
+
+class PDFParsingError(Exception):
+    """Raised when a PDF cannot be parsed or re-opened after repair."""
+
+
+class EncodingIssue(Exception):
+    """Raised when we cannot decode text content after repair attempts."""
+
+
+class FileValidationError(Exception):
+    """Generic validation failure for unsupported formats."""
 
 
 class FileMetadata(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    file_path: str
+    file_type: str
+    classification: str
+    size_bytes: int
+    sha256: str
+    repair_attempted: bool
+    repair_success: bool
+    errors: List[str] = Field(default_factory=list)
+    timestamps: Dict[str, float]
+    page_count: Optional[int] = None
     title: Optional[str] = None
     author: Optional[str] = None
     creation_date: Optional[str] = None
-    file_path: str
-    file_size_bytes: int
-    page_count: Optional[int] = None
-    file_type: str
-    classification: str  # 'text', 'scanned', 'mixed'
-    hash: str
-    repair_status: str
-    duplicate: bool = False
-    errors: List[str] = Field(default_factory=list)
-    timestamps: Dict[str, float]
     artifacts_path: Optional[str] = None
+    duplicate: bool = False
+    metrics: Optional[Dict[str, float]] = None
+    hash: Optional[str] = None  # Backwards compatibility alias
+    file_size_bytes: Optional[int] = None  # Backwards compatibility alias
+
+    def as_payload(self) -> Dict[str, Any]:
+        payload = self.model_dump()
+        payload["hash"] = payload.get("hash") or self.sha256
+        payload["sha256"] = self.sha256
+        payload.setdefault("file_size_bytes", self.size_bytes)
+        if self.metrics is None and "duration" in self.timestamps:
+            payload["metrics"] = {"elapsed_time": self.timestamps["duration"]}
+        return payload
 
 
-def compute_sha256(file_path: str) -> str:
-    sha256 = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for block in iter(lambda: f.read(4096), b""):
-            sha256.update(block)
-    return sha256.hexdigest()
+def compute_sha256(file_path: str | Path) -> str:
+    """Re-exported for compatibility with existing callers/tests."""
+    return utils_compute_sha256(Path(file_path))
 
 
-def extract_metadata(file_path: str) -> dict:
-    file_ext = Path(file_path).suffix.lower()
-    metadata_dict = {"title": None, "author": None, "creation_date": None}
+def _alphabetic_ratio(text: str) -> float:
+    tokens = [token for token in text.split() if token]
+    if not tokens:
+        return 0.0
+    ratios = []
+    for token in tokens:
+        letters = sum(1 for ch in token if ch.isalpha())
+        ratios.append(letters / len(token))
+    return sum(ratios) / len(ratios)
+
+
+def classify_pdf(file_path: Path) -> str:
+    """
+    Classify a PDF using a deterministic heuristic:
+    - Extractable text length
+    - Pagewise density (chars per page area)
+    - Replacement character count
+    - Average token alphabetic ratio
+    """
+    doc = fitz.open(file_path)
+    total_pages = len(doc)
+    total_text_len = 0
+    total_replacements = 0
+    alpha_ratios: List[float] = []
+    text_like_pages = 0
+    dense_pages = 0
+
+    for page in doc:
+        text = page.get_text() or ""
+        cleaned = text.strip()
+        length = len(cleaned)
+        total_text_len += length
+        replacements = cleaned.count("\ufffd")
+        total_replacements += replacements
+
+        alpha_ratio = _alphabetic_ratio(cleaned)
+        if alpha_ratio:
+            alpha_ratios.append(alpha_ratio)
+
+        page_area = max(float(page.rect.width * page.rect.height), 1.0)
+        density = length / page_area
+        if length >= 150 or (length >= 60 and alpha_ratio >= 0.55):
+            text_like_pages += 1
+        if density > 0.001:
+            dense_pages += 1
+
+    doc.close()
+
+    text_ratio = text_like_pages / total_pages if total_pages else 0.0
+    density_ratio = dense_pages / total_pages if total_pages else 0.0
+    avg_alpha = sum(alpha_ratios) / len(alpha_ratios) if alpha_ratios else 0.0
+    replacement_ratio = total_replacements / total_text_len if total_text_len else 0.0
+
+    classification = "mixed"
+    if total_pages == 0:
+        classification = "unknown"
+    elif text_ratio > 0.8 and avg_alpha > 0.6 and replacement_ratio < 0.05:
+        classification = "text"
+    elif (text_ratio < 0.2 and total_text_len < 800 and density_ratio < 0.25) or (
+        replacement_ratio > 0.2 and text_ratio < 0.5
+    ):
+        classification = "scanned"
+
+    logger.info(
+        "PDF classification=%s text_ratio=%.2f density_ratio=%.2f avg_alpha=%.2f replacement_ratio=%.3f total_text=%s",
+        classification,
+        text_ratio,
+        density_ratio,
+        avg_alpha,
+        replacement_ratio,
+        total_text_len,
+    )
+    return classification
+
+
+def classify_file(file_path: Path) -> str:
+    ext = file_path.suffix.lower()
+    if ext == ".pdf":
+        return classify_pdf(file_path)
+    if ext in {".txt", ".epub", ".docx"}:
+        return "text"
+    return "unknown"
+
+
+def repair_pdf(file_path: Path, retries: int = 2) -> bool:
+    for attempt in range(1, retries + 1):
+        try:
+            with pikepdf.open(file_path, allow_overwriting_input=True) as pdf:
+                pdf.save(file_path)
+            logger.info("PDF repair attempt %s succeeded.", attempt)
+            return True
+        except Exception as exc:
+            logger.warning("PDF repair attempt %s failed: %s", attempt, exc)
+    return False
+
+
+def repair_epub(file_path: Path, retries: int = 2) -> bool:
+    for attempt in range(1, retries + 1):
+        try:
+            book = ebooklib.epub.read_epub(file_path)
+            ebooklib.epub.write_epub(file_path, book)
+            logger.info("EPUB repair attempt %s succeeded.", attempt)
+            return True
+        except Exception as exc:
+            logger.warning("EPUB repair attempt %s failed: %s", attempt, exc)
+    return False
+
+
+def repair_docx(file_path: Path, retries: int = 2) -> bool:
+    for attempt in range(1, retries + 1):
+        try:
+            doc = Document(file_path)
+            doc.save(file_path)
+            logger.info("DOCX repair attempt %s succeeded.", attempt)
+            return True
+        except Exception as exc:
+            logger.warning("DOCX repair attempt %s failed: %s", attempt, exc)
+    return False
+
+
+def repair_txt(file_path: Path, retries: int = 2) -> bool:
+    for attempt in range(1, retries + 1):
+        try:
+            with open(file_path, "rb") as handle:
+                raw = handle.read()
+            encoding = chardet.detect(raw)["encoding"] or "utf-8"
+            text = ftfy.fix_text(raw.decode(encoding, errors="replace"))
+            with open(file_path, "w", encoding="utf-8") as handle:
+                handle.write(text)
+            logger.info("TXT repair attempt %s succeeded with detected encoding %s.", attempt, encoding)
+            return True
+        except Exception as exc:
+            logger.warning("TXT repair attempt %s failed: %s", attempt, exc)
+    return False
+
+
+def validate_pdf(file_path: Path, retries: int, errors: List[str]) -> Tuple[Dict[str, Any], bool, bool]:
+    details: Dict[str, Any] = {}
+    repair_attempted = False
+    repair_success = False
+    doc = None
+    try:
+        doc = fitz.open(file_path)
+        details["page_count"] = len(doc)
+    except Exception as exc:
+        repair_attempted = True
+        errors.append(str(exc))
+        logger.info("PDF validation failed; attempting repair.")
+        repair_success = repair_pdf(file_path, retries)
+        if not repair_success:
+            raise PDFParsingError(str(exc))
+        try:
+            doc = fitz.open(file_path)
+            details["page_count"] = len(doc)
+        except Exception as reopened_exc:
+            errors.append(str(reopened_exc))
+            raise PDFParsingError(str(reopened_exc))
+    finally:
+        try:
+            doc.close()  # type: ignore[has-type]
+        except Exception:
+            pass
+    return details, repair_attempted, repair_success
+
+
+def validate_epub(file_path: Path, retries: int, errors: List[str]) -> Tuple[Dict[str, Any], bool, bool]:
+    repair_attempted = False
+    repair_success = False
+    try:
+        ebooklib.epub.read_epub(file_path)
+    except Exception as exc:
+        repair_attempted = True
+        errors.append(str(exc))
+        logger.info("EPUB validation failed; attempting repair.")
+        repair_success = repair_epub(file_path, retries)
+        if not repair_success:
+            raise FileValidationError(str(exc))
+    return {}, repair_attempted, repair_success
+
+
+def validate_docx(file_path: Path, retries: int, errors: List[str]) -> Tuple[Dict[str, Any], bool, bool]:
+    repair_attempted = False
+    repair_success = False
+    try:
+        Document(file_path)
+    except Exception as exc:
+        repair_attempted = True
+        errors.append(str(exc))
+        logger.info("DOCX validation failed; attempting repair.")
+        repair_success = repair_docx(file_path, retries)
+        if not repair_success:
+            raise FileValidationError(str(exc))
+    return {}, repair_attempted, repair_success
+
+
+def validate_txt(file_path: Path, retries: int, errors: List[str]) -> Tuple[Dict[str, Any], bool, bool]:
+    repair_attempted = False
+    repair_success = False
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="strict") as handle:
+            handle.read()
+    except UnicodeDecodeError as exc:
+        repair_attempted = True
+        errors.append(str(exc))
+        logger.info("TXT validation failed; attempting repair.")
+        repair_success = repair_txt(file_path, retries)
+        if not repair_success:
+            raise EncodingIssue(str(exc))
+    except Exception as exc:
+        errors.append(str(exc))
+        raise FileValidationError(str(exc))
+    return {}, repair_attempted, repair_success
+
+
+def extract_metadata(file_path: Path) -> Dict[str, Optional[str]]:
+    file_ext = file_path.suffix.lower()
+    metadata_dict: Dict[str, Optional[str]] = {"title": None, "author": None, "creation_date": None}
 
     if file_ext == ".pdf":
         try:
             doc = fitz.open(file_path)
-            pdf_meta = doc.metadata
+            pdf_meta = doc.metadata or {}
             metadata_dict["title"] = pdf_meta.get("title")
             metadata_dict["author"] = pdf_meta.get("author")
             metadata_dict["creation_date"] = pdf_meta.get("creationDate")
             doc.close()
-        except Exception as e:
-            logger.warning(f"PyMuPDF metadata extraction failed: {e}")
+        except Exception as exc:
+            logger.warning("PyMuPDF metadata extraction failed: %s", exc)
 
-    # Fallback or supplement with hachoir for all formats
     try:
-        parser = hachoir.parser.createParser(file_path)
+        parser = hachoir.parser.createParser(str(file_path))
         if parser:
-            h_meta = hachoir.metadata.extractMetadata(parser)
-            if h_meta:
-                if not metadata_dict["title"]:
-                    metadata_dict["title"] = h_meta.get("title")
-                if not metadata_dict["author"]:
-                    metadata_dict["author"] = h_meta.get("author")
-                if not metadata_dict["creation_date"]:
-                    metadata_dict["creation_date"] = h_meta.get("creation_date")
-    except Exception as e:
-        logger.warning(f"Hachoir metadata extraction failed: {e}")
+            extracted = hachoir.metadata.extractMetadata(parser)
+            if extracted:
+                metadata_dict["title"] = metadata_dict["title"] or extracted.get("title")
+                metadata_dict["author"] = metadata_dict["author"] or extracted.get("author")
+                metadata_dict["creation_date"] = metadata_dict["creation_date"] or extracted.get("creation_date")
+    except Exception as exc:
+        logger.warning("Hachoir metadata extraction failed: %s", exc)
 
-    # Normalize strings with ftfy if present
-    for key in metadata_dict:
-        if metadata_dict[key]:
-            metadata_dict[key] = ftfy.fix_text(metadata_dict[key])
+    for key, value in list(metadata_dict.items()):
+        if value:
+            metadata_dict[key] = ftfy.fix_text(value)
 
+    logger.info("Extracted metadata: %s", metadata_dict)
     return metadata_dict
 
 
-def classify_pdf(file_path: str, threshold: float = 0.02) -> str:
-    """Classify PDF as text, scanned, or mixed based on extractable text.
-    
-    Uses a more robust heuristic:
-    - Checks if pages have extractable text (not just density)
-    - Lower threshold (2%) to catch PDFs with heavy formatting
-    - Considers a page "text" if it has ANY meaningful text (>100 chars)
-    """
-    doc = fitz.open(file_path)
-    text_pages = 0
-    total_pages = len(doc)
-    
-    for page in doc:
-        text = page.get_text().strip()
-        
-        # Quick check: if page has > 100 characters of text, it's extractable
-        if len(text) > 100:
-            text_pages += 1
-            continue
-        
-        # Fallback: check density for edge cases
-        page_bytes = len(page.read_contents() or b"")
-        if page_bytes > 0:
-            density = len(text) / page_bytes
-            if density > threshold:
-                text_pages += 1
-    
-    doc.close()
-    
-    # Classification logic
-    text_ratio = text_pages / total_pages if total_pages > 0 else 0
-    
-    if text_ratio > 0.9:  # 90%+ pages have text
-        return "text"
-    elif text_ratio < 0.1:  # <10% pages have text
-        return "scanned"
-    else:
-        return "mixed"
-
-
-def repair_pdf(file_path: str, retries: int = 2) -> bool:
-    for attempt in range(retries):
-        try:
-            with pikepdf.open(file_path, allow_overwriting_input=True) as pdf:
-                pdf.save(file_path)
-            return True
-        except Exception as e:
-            logger.warning(f"Repair attempt {attempt+1} failed: {e}")
-    return False
-
-
-def repair_epub(file_path: str, retries: int = 2) -> bool:
+def write_artifacts(file_path: Path, artifacts_dir: Path) -> Optional[str]:
     try:
-        book = ebooklib.epub.read_epub(file_path)
-        ebooklib.epub.write_epub(file_path, book)
-        return True
-    except Exception as e:
-        logger.error(f"EPUB repair failed: {e}")
-        return False
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        destination = artifacts_dir / file_path.name
+        shutil.copy(file_path, destination)
+        logger.info("Wrote repaired artifact to %s", destination)
+        return str(destination)
+    except Exception as exc:
+        logger.warning("Failed to write artifact copy: %s", exc)
+        return None
 
 
-def repair_docx(file_path: str, retries: int = 2) -> bool:
+def _categorize_error(exc: Exception, file_ext: str) -> str:
+    if isinstance(exc, PDFParsingError):
+        return "PDF parsing"
+    if isinstance(exc, EncodingIssue):
+        return "Encoding"
+    if isinstance(exc, (OSError, IOError, FileNotFoundError)):
+        return "IO"
+    if file_ext == ".pdf":
+        return "PDF parsing"
+    return "general"
+
+
+def _load_existing_metadata(pipeline_json: Path, file_id: str, sha256_hash: str, size_bytes: int) -> Optional[FileMetadata]:
     try:
-        doc = Document(file_path)
-        doc.save(file_path)
-        return True
-    except Exception as e:
-        logger.error(f"DOCX repair failed: {e}")
-        return False
+        data = json.loads(pipeline_json.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("Phase 1 reuse check failed; unable to read pipeline.json: %s", exc)
+        return None
 
+    record = data.get(PHASE_NAME, {}).get("files", {}).get(file_id)
+    if not record:
+        return None
 
-def repair_txt(file_path: str, retries: int = 2) -> bool:
+    recorded_hash = record.get("sha256") or record.get("hash")
+    if recorded_hash != sha256_hash:
+        return None
+
+    record["sha256"] = recorded_hash
+    record["hash"] = recorded_hash
+    record["size_bytes"] = record.get("size_bytes") or record.get("file_size_bytes") or size_bytes
+    record["file_size_bytes"] = record.get("file_size_bytes") or record["size_bytes"]
+    record["repair_attempted"] = record.get("repair_attempted", record.get("repair_status") is not None)
+    record["repair_success"] = record.get("repair_success", record.get("repair_status") != "skipped")
+    record.setdefault("errors", [])
+    record.setdefault("timestamps", {})
+
     try:
-        with open(file_path, "rb") as f:
-            raw = f.read()
-        encoding = chardet.detect(raw)["encoding"] or "utf-8"
-        text = ftfy.fix_text(raw.decode(encoding, errors="replace"))
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(text)
-        return True
-    except Exception as e:
-        logger.error(f"TXT repair failed: {e}")
-        return False
+        return FileMetadata(**record)
+    except ValidationError as exc:
+        logger.warning("Phase 1 reuse record invalid; will recompute: %s", exc)
+        return None
+
+
+def _flag_duplicate_hash(json_path: Optional[Path], file_id: str, metadata: FileMetadata) -> None:
+    if not json_path:
+        return
+    try:
+        existing = json.loads(json_path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    hashes = existing.get(PHASE_NAME, {}).get("hashes", [])
+    if metadata.sha256 in hashes:
+        metadata.duplicate = True
+        message = f"Duplicate hash {metadata.sha256} for {file_id}"
+        metadata.errors.append(message)
+        log_error(json_path, PHASE_NAME, file_id, message, "Integrity")
+
+
+def persist_metadata(metadata: FileMetadata, json_path: Path, file_id: str) -> Dict[str, Any]:
+    payload = metadata.as_payload()
+    update: Dict[str, Any] = {
+        PHASE_NAME: {
+            "files": {file_id: payload},
+            "hashes": [] if metadata.duplicate else [metadata.sha256],
+        }
+    }
+    merged = safe_update_json(json_path, update)
+    logger.info("Persisted metadata for %s into %s", file_id, json_path)
+    return merged
 
 
 def validate_and_repair(
@@ -185,7 +419,9 @@ def validate_and_repair(
 ) -> Optional[FileMetadata]:
     start_time = perf_counter()
     path = Path(file_path)
-    if not path.exists() or not os.access(file_path, os.R_OK):
+    errors: List[str] = []
+
+    if not path.exists() or not os.access(path, os.R_OK):
         logger.error("File not accessible.")
         return None
     if path.stat().st_size == 0:
@@ -195,178 +431,131 @@ def validate_and_repair(
         logger.error("File exceeds size limit.")
         return None
 
-    # Early hash + reuse check
-    file_hash = compute_sha256(file_path)
-    if pipeline_json and file_id:
-        try:
-            data = json.load(open(pipeline_json, "r", encoding="utf-8"))
-            prev = data.get("phase1", {}).get("files", {}).get(file_id)
-            if prev and prev.get("hash") == file_hash and not force:
-                logger.info("Phase 1: hash match found and force=False; skipping revalidation.")
-                return FileMetadata(**prev)
-        except Exception as exc:
-            logger.warning(f"Phase 1: reuse check failed (will revalidate): {exc}")
-
     file_ext = path.suffix.lower()
-    file_size_bytes = path.stat().st_size
-    page_count = None
-    repaired = False
-    repair_status = "validated"  # Default if no repair needed
+    if file_ext not in SUPPORTED_EXTENSIONS:
+        logger.error("Unsupported file type: %s", file_ext)
+        return None
 
-    # Fast mode: minimal validation
+    size_bytes = path.stat().st_size
+    sha256_hash = compute_sha256(path)
+
+    if pipeline_json and file_id and not force:
+        reused = _load_existing_metadata(pipeline_json, file_id, sha256_hash, size_bytes)
+        if reused:
+            logger.info("Phase 1: hash match found and force=False; skipping revalidation.")
+            return reused
+
     if mode == "fast":
-        metadata = extract_metadata(file_path)
+        meta = extract_metadata(path)
         end_time = perf_counter()
         duration = end_time - start_time
         try:
-            return FileMetadata(
-                title=metadata.get("title"),
-                author=metadata.get("author"),
-                creation_date=metadata.get("creation_date"),
+            metadata = FileMetadata(
                 file_path=str(path.resolve()),
-                file_size_bytes=file_size_bytes,
-                page_count=page_count,
-                file_type=file_ext[1:],
+                file_type=file_ext.lstrip("."),
                 classification="unknown",
-                hash=file_hash,
-                repair_status="validated_fast",
+                size_bytes=size_bytes,
+                sha256=sha256_hash,
+                hash=sha256_hash,
+                repair_attempted=False,
+                repair_success=False,
+                errors=[],
                 timestamps={"start": start_time, "end": end_time, "duration": duration},
-                artifacts_path=None,
+                page_count=None,
+                title=meta.get("title"),
+                author=meta.get("author"),
+                creation_date=meta.get("creation_date"),
+                metrics={"elapsed_time": duration},
+                file_size_bytes=size_bytes,
             )
-        except ValidationError as e:
-            logger.error(f"Metadata validation error (fast): {e}")
+            _flag_duplicate_hash(pipeline_json, file_id or "", metadata)
+            return metadata
+        except ValidationError as exc:
+            logger.error("Metadata validation error (fast): %s", exc)
             return None
 
-    try:
-        if file_ext == ".pdf":
-            doc = fitz.open(file_path)
-            page_count = len(doc)
-            doc.close()
-        elif file_ext == ".epub":
-            ebooklib.epub.read_epub(file_path)
-        elif file_ext == ".docx":
-            Document(file_path)
-        elif file_ext == ".txt":
-            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-                f.read()
-    except Exception:
-        logger.info("File corrupted; attempting repair.")
-        repair_func = {
-            ".pdf": repair_pdf,
-            ".epub": repair_epub,
-            ".docx": repair_docx,
-            ".txt": repair_txt,
-        }.get(file_ext)
-        if repair_func:
-            repaired = repair_func(file_path, retries)
-        if not repaired:
-            logger.error("Repair failed after retries.")
-            repair_status = "skipped"
-            return None
-        else:
-            repair_status = "repaired"
-
-    # If repaired, save artifact
-    artifacts_path = None
-    if repaired:
-        artifacts_dir_path = Path(artifacts_dir)
-        artifacts_dir_path.mkdir(parents=True, exist_ok=True)
-        artifacts_path = str(artifacts_dir_path / path.name)
-        shutil.copy(file_path, artifacts_path)
-
-    classification = "text"  # Default; override for PDF
-    if file_ext == ".pdf":
-        classification = classify_pdf(file_path)
-
-    metadata = extract_metadata(file_path)
-    end_time = perf_counter()
-    duration = end_time - start_time
-    logger.info(f"Validation complete in {duration:.2f}s. Repaired: {repaired}")
+    validators = {
+        ".pdf": validate_pdf,
+        ".epub": validate_epub,
+        ".docx": validate_docx,
+        ".txt": validate_txt,
+    }
+    validate_func = validators.get(file_ext)
+    repair_attempted = False
+    repair_success = False
+    page_count = None
 
     try:
-        return FileMetadata(
-            title=metadata.get("title"),
-            author=metadata.get("author"),
-            creation_date=metadata.get("creation_date"),
-            file_path=str(path.resolve()),
-            file_size_bytes=file_size_bytes,
-            page_count=page_count,
-            file_type=file_ext[1:],
-            classification=classification,
-            hash=file_hash,
-            repair_status=repair_status,
-            timestamps={"start": start_time, "end": end_time, "duration": duration},
-            artifacts_path=artifacts_path,
-        )
-    except ValidationError as e:
-        logger.error(f"Metadata validation error: {e}")
+        details, repair_attempted, repair_success = validate_func(path, retries, errors)  # type: ignore[arg-type]
+        page_count = details.get("page_count")
+    except Exception as exc:
+        category = _categorize_error(exc, file_ext)
+        errors.append(str(exc))
+        if pipeline_json and file_id:
+            log_error(pipeline_json, PHASE_NAME, file_id, str(exc), category)
+        logger.error("Validation failed: %s", exc)
         return None
 
-
-def merge_to_json(
-    metadata: FileMetadata, json_path: str = "pipeline.json", file_id: str = ""
-):
+    artifacts_path = write_artifacts(path, Path(artifacts_dir)) if repair_success else None
     try:
-        with open(json_path, "r") as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = {}
+        classification = classify_file(path)
+    except Exception as exc:
+        classification = "unknown"
+        errors.append(str(exc))
+        if pipeline_json and file_id:
+            log_error(pipeline_json, PHASE_NAME, file_id, str(exc), _categorize_error(exc, file_ext))
+        logger.error("Classification failed: %s", exc)
+    meta = extract_metadata(path)
+    end_time = perf_counter()
+    duration = end_time - start_time
+    logger.info("Validation complete in %.2fs. Repair attempted=%s success=%s classification=%s", duration, repair_attempted, repair_success, classification)
 
-    if "phase1" not in data:
-        data["phase1"] = {"files": {}, "hashes": [], "errors": [], "metrics": {}}
-    else:
-        # Deduplicate hashes to avoid unbounded growth on repeated writes
-        existing_hashes = data.get("phase1", {}).get("hashes", [])
-        data["phase1"]["hashes"] = list(dict.fromkeys(existing_hashes))
-
-    if metadata.hash in data["phase1"]["hashes"]:
-        data["phase1"]["errors"].append(
-            {
-                "type": "IntegrityWarning",
-                "message": f"Duplicate hash {metadata.hash} for {file_id}",
-            }
+    try:
+        metadata = FileMetadata(
+            file_path=str(path.resolve()),
+            file_type=file_ext.lstrip("."),
+            classification=classification,
+            size_bytes=size_bytes,
+            sha256=sha256_hash,
+            hash=sha256_hash,
+            repair_attempted=repair_attempted,
+            repair_success=repair_success,
+            errors=errors,
+            timestamps={"start": start_time, "end": end_time, "duration": duration},
+            page_count=page_count,
+            title=meta.get("title"),
+            author=meta.get("author"),
+            creation_date=meta.get("creation_date"),
+            artifacts_path=artifacts_path,
+            metrics={"elapsed_time": duration},
+            file_size_bytes=size_bytes,
         )
-        metadata.duplicate = True
-    else:
-        data["phase1"]["hashes"].append(metadata.hash)
+    except ValidationError as exc:
+        logger.error("Metadata validation error: %s", exc)
+        if pipeline_json and file_id:
+            log_error(pipeline_json, PHASE_NAME, file_id or "", str(exc), "Validation")
+        return None
 
-    if file_id not in data["phase1"]["files"]:
-        data["phase1"]["files"][file_id] = {}
+    _flag_duplicate_hash(pipeline_json, file_id or "", metadata)
+    return metadata
 
+
+def persist_and_log(metadata: FileMetadata, json_path: str, file_id: str) -> None:
+    persisted = persist_metadata(metadata, Path(json_path), file_id)
     try:
-        payload = metadata.model_dump()
-    except AttributeError:
-        payload = metadata.dict()
-
-    data["phase1"]["files"][file_id].update(payload)
-
-    # Add per-file metric (for aggregate later)
-    data["phase1"]["files"][file_id]["metrics"] = {
-        "elapsed_time": metadata.timestamps["duration"]
-    }
-
-    with open(json_path, "w") as f:
-        json.dump(data, f, indent=2)
+        logger.info("Extracted metadata persisted: %s", json.dumps(persisted[PHASE_NAME]["files"][file_id], indent=2))
+    except Exception:
+        logger.info("Persisted metadata for %s", file_id)
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Phase 1: Validate and repair audiobook files."
-    )
+    parser = argparse.ArgumentParser(description="Phase 1: Validate and repair audiobook files.")
     parser.add_argument("--file", required=True, help="Path to input file.")
-    parser.add_argument(
-        "--max_size_mb", type=int, default=500, help="Max file size in MB."
-    )
+    parser.add_argument("--max_size_mb", type=int, default=500, help="Max file size in MB.")
     parser.add_argument("--retries", type=int, default=2, help="Repair retries.")
-    parser.add_argument(
-        "--json_path", default="pipeline.json", help="Pipeline JSON path."
-    )
-    parser.add_argument(
-        "--artifacts_dir", default="artifacts/phase1", help="Artifacts directory."
-    )
-    parser.add_argument(
-        "--force", action="store_true", help="Force revalidation even if hash matches prior run."
-    )
+    parser.add_argument("--json_path", default="pipeline.json", help="Pipeline JSON path.")
+    parser.add_argument("--artifacts_dir", default="artifacts/phase1", help="Artifacts directory.")
+    parser.add_argument("--force", action="store_true", help="Force revalidation even if hash matches prior run.")
     parser.add_argument(
         "--mode",
         choices=["thorough", "fast"],
@@ -387,13 +576,9 @@ def main():
     )
     if metadata:
         file_id = Path(args.file).stem
-        merge_to_json(metadata, args.json_path, file_id)
-        try:
-            serialized = metadata.model_dump_json(indent=2)
-        except AttributeError:
-            import json as _json
-            serialized = _json.dumps(metadata.dict(), indent=2)
-        logger.info(f"Success: {serialized}")
+        persist_and_log(metadata, args.json_path, file_id)
+        serialized = metadata.model_dump_json(indent=2)
+        logger.info("Success: %s", serialized)
     else:
         logger.error("Validation failed.")
 
