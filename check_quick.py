@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 
-pipeline_path = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\pipeline.json")
+PROJECT_ROOT = Path(__file__).resolve().parent
+pipeline_path = PROJECT_ROOT / "pipeline.json"
 with open(pipeline_path) as f:
     data = json.load(f)
 

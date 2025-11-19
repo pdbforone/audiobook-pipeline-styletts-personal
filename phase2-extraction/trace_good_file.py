@@ -8,7 +8,8 @@ from pathlib import Path
 import os
 import time
 
-files_dir = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+files_dir = PROJECT_ROOT / "phase2-extraction" / "extracted_text"
 
 print("🔍 File History Investigation")
 print("="*60)

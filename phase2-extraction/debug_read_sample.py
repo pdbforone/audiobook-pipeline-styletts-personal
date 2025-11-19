@@ -1,7 +1,9 @@
 import sys
+from pathlib import Path
 
 # Read first 1000 characters of the extracted file
-file_path = r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\Systematic Theology.txt"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+file_path = PROJECT_ROOT / "phase2-extraction" / "extracted_text" / "Systematic Theology.txt"
 
 try:
     with open(file_path, 'r', encoding='utf-8') as f:

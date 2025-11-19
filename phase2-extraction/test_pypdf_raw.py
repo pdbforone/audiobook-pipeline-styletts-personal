@@ -6,6 +6,8 @@ Test pypdf extraction directly to see what it produces.
 from pathlib import Path
 import re
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 try:
     from pypdf import PdfReader
     PYPDF_AVAILABLE = True
@@ -13,7 +15,7 @@ except ImportError:
     print("❌ pypdf not available")
     exit(1)
 
-pdf_path = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\input\Systematic Theology.pdf")
+pdf_path = PROJECT_ROOT / "input" / "Systematic Theology.pdf"
 
 print("🔍 Testing pypdf Raw Output")
 print("="*60)
@@ -46,7 +48,7 @@ print(f"   Total tabs: {full_text.count(chr(9))}")
 print(f"   Total spaces: {full_text.count(' ')}")
 
 # Compare to File 2 (the good one)
-file2 = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\Systematic Theology_TTS_READY.txt")
+file2 = PROJECT_ROOT / "phase2-extraction" / "extracted_text" / "Systematic Theology_TTS_READY.txt"
 with open(file2, 'r', encoding='utf-8') as f:
     good_text = f.read()
 
@@ -69,3 +71,4 @@ if "OVER 250,000" in good_first_500 and "OVER 250,000" not in pypdf_first_500:
 elif "About Systematic Theology" in pypdf_first_500:
     print(f"\n✅ pypdf output matches File 1")
     print(f"   The 'good' file must have been extracted differently")
+

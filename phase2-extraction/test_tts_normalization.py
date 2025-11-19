@@ -7,9 +7,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 def test_extraction_with_normalization():
     """Test that extraction.py properly normalizes text."""
-    phase2_dir = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction")
+    phase2_dir = PROJECT_ROOT / "phase2-extraction"
     
     print("🧪 Testing Phase 2 Extraction with TTS Normalization")
     print("="*60)

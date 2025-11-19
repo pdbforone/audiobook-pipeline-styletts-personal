@@ -1,5 +1,5 @@
-pipeline_json: C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\pipeline.json
-input_dir: C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase4_tts\audio_chunks
+pipeline_json: ../pipeline.json
+input_dir: ../phase4_tts/audio_chunks
 output_dir: processed
 sample_rate: 24000
 lufs_target: -18.0

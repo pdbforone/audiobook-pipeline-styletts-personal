@@ -10,9 +10,8 @@ collection safe.
 from pathlib import Path
 import sys
 
-DEFAULT_PDF_PATH = Path(
-    r"C:\\Users\\myson\\Pipeline\\audiobook-pipeline-chatterbox\\input\\Systematic Theology.pdf"
-)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_PDF_PATH = PROJECT_ROOT / "input" / "Systematic Theology.pdf"
 
 
 def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:

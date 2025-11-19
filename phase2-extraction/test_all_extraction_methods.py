@@ -11,9 +11,8 @@ from pathlib import Path
 import sys
 
 
-DEFAULT_PDF_PATH = Path(
-    r"C:\\Users\\myson\\Pipeline\\audiobook-pipeline-chatterbox\\input\\Systematic Theology.pdf"
-)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_PDF_PATH = PROJECT_ROOT / "input" / "Systematic Theology.pdf"
 
 
 def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
@@ -90,9 +89,7 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
     print("TEST 3: COMPARE WITH EXISTING EXTRACTION")
     print("=" * 80)
 
-    existing_file = Path(
-        r"C:\\Users\\myson\\Pipeline\\audiobook-pipeline-chatterbox\\phase2-extraction\\extracted_text\\Systematic Theology.txt"
-    )
+    existing_file = PROJECT_ROOT / "phase2-extraction" / "extracted_text" / "Systematic Theology.txt"
     if existing_file.exists():
         with open(existing_file, 'r', encoding='utf-8') as f:
             text_existing = f.read()

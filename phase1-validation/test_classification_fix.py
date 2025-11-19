@@ -7,10 +7,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 def test_phase1_classification():
     """Test Phase 1 with improved classification."""
-    phase1_dir = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase1-validation")
-    pdf_path = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\input\Systematic Theology.pdf")
+    phase1_dir = PROJECT_ROOT / "phase1-validation"
+    pdf_path = PROJECT_ROOT / "input" / "Systematic Theology.pdf"
     
     print("🧪 Testing Improved Phase 1 Classification")
     print("="*60)
@@ -52,7 +54,7 @@ def test_phase1_classification():
         
         # Check the result
         import json
-        test_json = Path("../pipeline_test.json")
+        test_json = PROJECT_ROOT / "pipeline_test.json"
         if test_json.exists():
             with open(test_json, 'r') as f:
                 data = json.load(f)

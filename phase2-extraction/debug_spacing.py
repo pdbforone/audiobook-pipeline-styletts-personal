@@ -6,7 +6,8 @@ Debug why File 1 has weird spacing despite normalization.
 from pathlib import Path
 import re
 
-file1 = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\Systematic Theology.txt")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+file1 = PROJECT_ROOT / "phase2-extraction" / "extracted_text" / "Systematic Theology.txt"
 
 print("🔍 Debugging Spacing Issues in File 1")
 print("="*60)

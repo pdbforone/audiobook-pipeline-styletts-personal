@@ -6,6 +6,8 @@ Tests that changes maintain phase isolation and backward compatibility.
 import json
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parent
+
 def test_phase5_output_structure():
     """Verify Phase 5 writes output_file to pipeline.json"""
     print("✓ Phase 5 Enhancement")
@@ -49,7 +51,7 @@ def test_phase_isolation():
     
     print("\n✓ Phase Isolation Maintained")
     for phase_name, (phase_dir, env_type) in phases.items():
-        phase_path = Path(f"/home/user/audiobook-pipeline-chatterbox/{phase_dir}")
+        phase_path = PROJECT_ROOT / phase_dir
         if phase_path.exists():
             print(f"  - {phase_name}: {env_type} environment ✓")
         else:

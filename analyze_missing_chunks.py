@@ -2,8 +2,10 @@ import sys
 from pathlib import Path
 import re
 
-original = Path("C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/phase4_tts/audio_chunks")
-cleaned = Path("C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/phase4_tts/meditations_cleaned")
+PROJECT_ROOT = Path(__file__).resolve().parent
+phase4_dir = PROJECT_ROOT / "phase4_tts"
+original = phase4_dir / "audio_chunks"
+cleaned = phase4_dir / "meditations_cleaned"
 
 print("=" * 80)
 print("Analyzing Missing Meditations Chunks")

@@ -14,7 +14,7 @@ memory_limit_mb: 1024
 mp3_bitrate: 192k
 noise_reduction_factor: 0.02
 output_dir: processed
-pipeline_json: C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\pipeline_magi.json
+pipeline_json: ../../pipeline_magi.json
 processing_timeout: 60
 quality_validation_enabled: false
 resume_on_failure: false

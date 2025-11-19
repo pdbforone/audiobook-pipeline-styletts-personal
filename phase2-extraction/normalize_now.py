@@ -4,8 +4,9 @@ import sys
 from pathlib import Path
 
 # Paths
-existing = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\Systematic Theology.txt")
-multipass = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\Systematic_Theology_multipass.txt")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+existing = PROJECT_ROOT / "phase2-extraction" / "extracted_text" / "Systematic Theology.txt"
+multipass = PROJECT_ROOT / "phase2-extraction" / "Systematic_Theology_multipass.txt"
 
 print("Normalizing files for TTS...")
 

@@ -2,8 +2,9 @@ import sys
 from pathlib import Path
 import json
 
-# Find the actual results from the batch run
-phase_audio_cleanup = Path("C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/phase_audio_cleanup")
+PROJECT_ROOT = Path(__file__).resolve().parent
+phase_audio_cleanup = PROJECT_ROOT / "phase_audio_cleanup"
+phase4_dir = PROJECT_ROOT / "phase4_tts"
 
 print("=" * 80)
 print("Searching for Audio Cleanup Logs and Results")
@@ -28,7 +29,7 @@ for log_path in log_locations:
 print()
 
 # Check for .srt files that might have error info
-meditations_cleaned = Path("C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/phase4_tts/meditations_cleaned")
+meditations_cleaned = phase4_dir / "meditations_cleaned"
 if meditations_cleaned.exists():
     cleaned_files = list(meditations_cleaned.glob("*.wav"))
     srt_files = list(meditations_cleaned.glob("*.srt"))
@@ -38,7 +39,7 @@ if meditations_cleaned.exists():
     print()
 
 # Check original directory to compare
-original = Path("C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/phase4_tts/audio_chunks")
+original = phase4_dir / "audio_chunks"
 if original.exists():
     meditations_pattern = "*meditations*.wav"
     all_meditations = list(original.glob(meditations_pattern))
@@ -63,7 +64,7 @@ if original.exists():
                 print(f"  ... and {len(missing) - 20} more")
             
             # Save full list
-            missing_file = Path("C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/missing_meditations_chunks.txt")
+            missing_file = PROJECT_ROOT / "missing_meditations_chunks.txt"
             with open(missing_file, 'w') as f:
                 for filename in sorted(missing):
                     f.write(f"{filename}\n")

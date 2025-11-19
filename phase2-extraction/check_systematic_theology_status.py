@@ -5,7 +5,8 @@ Check Phase 1 classification for Systematic Theology
 import json
 from pathlib import Path
 
-pipeline_path = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\pipeline.json")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+pipeline_path = PROJECT_ROOT / "pipeline.json"
 
 try:
     with open(pipeline_path, 'r') as f:

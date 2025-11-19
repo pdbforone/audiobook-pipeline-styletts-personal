@@ -108,6 +108,8 @@ class PipelineAPI:
 
                 for phase_num, phase_key in PHASE_ORDER:
                     status = self._phase_status(data, file_id, phase_key)
+                    if phase_key == "phase5_5" and status == "missing":
+                        continue
                     if status == "success":
                         phases_complete.append(phase_num)
                     else:
@@ -125,17 +127,31 @@ class PipelineAPI:
         return None
 
     def _phase_status(self, data: Dict[str, Any], file_id: str, phase: Any) -> str:
-        if isinstance(phase, str) and phase.startswith("phase"):
-            phase_key = phase
-        else:
-            phase_key = f"phase{phase}"
+        phase_key = phase if isinstance(phase, str) and phase.startswith("phase") else f"phase{phase}"
         try:
-            phase = data.get(phase_key, {}) or {}
-            files = phase.get("files", {}) or {}
+            phase_block = data.get(phase_key, {}) or {}
+            files = phase_block.get("files", {}) or {}
             entry = files.get(file_id, {}) if isinstance(files, dict) else {}
-            return entry.get("status") or phase.get("status") or "missing"
+            return entry.get("status") or phase_block.get("status") or "missing"
         except Exception:
             return "unknown"
+
+    def _phase_errors(self, data: Dict[str, Any], file_id: str, phase: Any) -> List[str]:
+        phase_key = phase if isinstance(phase, str) and phase.startswith("phase") else f"phase{phase}"
+        try:
+            phase_block = data.get(phase_key, {}) or {}
+            files = phase_block.get("files", {}) or {}
+            entry = files.get(file_id, {}) if isinstance(files, dict) else {}
+            errors = entry.get("errors") or phase_block.get("errors")
+            if isinstance(errors, list):
+                return [str(err) for err in errors if err]
+            if isinstance(errors, dict):
+                return [f"{key}: {value}" for key, value in errors.items() if value]
+            if isinstance(errors, str):
+                return [errors]
+        except Exception:
+            logger.debug("Failed to parse errors for %s/%s", phase_key, file_id, exc_info=True)
+        return []
 
     def _process_snapshot(self) -> List[str]:
         lines: List[str] = []
@@ -164,10 +180,17 @@ class PipelineAPI:
             return None
 
         data = self._read_state()
-        phases = [
-            PhaseStatusSummary(phase=label, status=self._phase_status(data, file_id, phase_key))
-            for phase_key, label in PHASE_LABELS
-        ]
+        phases = []
+        for phase_key, label in PHASE_LABELS:
+            phase_label = f"Phase {label}" if label else phase_key
+            phases.append(
+                PhaseStatusSummary(
+                    key=phase_key,
+                    label=phase_label,
+                    status=self._phase_status(data, file_id, phase_key),
+                    errors=self._phase_errors(data, file_id, phase_key),
+                )
+            )
 
         fs_progress = FileSystemProgress(
             chunk_txt=self._count_files(f"phase3-chunking/chunks/{file_id}_chunk_*.txt"),

@@ -1,396 +1,231 @@
-import pytest
-import tempfile
-import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-import time
 
-from phase6_batch.mainbu import (
-    load_config, 
-    setup_logging, 
-    find_phase_directory,
-    find_phase_main,
-    load_existing_metadata,
-    update_pipeline_json
+import pytest
+
+from phase7_batch.main import (
+    discover_input_files,
+    latest_batch_records,
+    load_config,
+    metadata_from_existing,
 )
-from src.phase6_batch.models import BatchConfig, BatchMetadata, BatchSummary
+from phase7_batch.models import BatchConfig, BatchMetadata, BatchSummary, Phase6Result
 
 
 class TestBatchConfig:
-    def test_default_config(self):
-        """Test default configuration creation"""
-        config = BatchConfig()
-        assert config.max_workers == 4
-        assert config.cpu_threshold == 80
-        assert config.phases_to_run == [1, 2, 3, 4, 5]
-        assert config.log_level == "INFO"
+    def test_default_config_uses_cpu_minus_one(self, monkeypatch):
+        monkeypatch.setattr("phase7_batch.models.os.cpu_count", lambda: 5)
 
-    def test_config_validation(self):
-        """Test configuration validation"""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config = BatchConfig(
-                input_dir=f"{temp_dir}/test_input",
-                pipeline_json=f"{temp_dir}/test_pipeline.json"
-            )
-            
-            # Should create directories
-            assert Path(config.input_dir).exists()
-            assert Path(config.pipeline_json).exists()
+        config = BatchConfig()
+
+        assert config.max_workers == 4
+        assert config.cpu_threshold == 85.0
+        assert config.phases == []
+        assert config.log_level == "INFO"
+        assert config.resume is True
+
+    def test_path_normalization_and_phase_parsing(self, tmp_path):
+        config = BatchConfig(
+            input_dir=tmp_path / "inputs",
+            pipeline_json=tmp_path / "pipeline.json",
+            log_file=tmp_path / "batch.log",
+            log_level="debug",
+            phases=["1", 3, "5"],
+            batch_size=2,
+        )
+
+        assert config.input_dir.endswith("inputs")
+        assert config.pipeline_json.endswith("pipeline.json")
+        assert config.log_file.endswith("batch.log")
+        assert config.log_level == "DEBUG"
+        assert config.phases == [1, 3, 5]
+        assert config.batch_size == 2
 
 
 class TestBatchMetadata:
-    def test_metadata_lifecycle(self):
-        """Test metadata state transitions"""
-        metadata = BatchMetadata(file_id="test.pdf")
-        
-        # Initial state
-        assert metadata.status == "pending"
-        assert metadata.phases_completed == []
-        
-        # Mark as started
-        metadata.mark_started()
-        assert metadata.status == "running"
-        assert metadata.start_time is not None
-        
-        # Add phase completion
-        metadata.phases_completed.append(1)
-        metadata.add_phase_metric(1, 10.5)
-        assert len(metadata.phase_metrics) == 1
-        assert metadata.phase_metrics[0].phase == 1
-        
-        # Mark as completed
-        metadata.mark_completed()
-        assert metadata.status == "success"
-        assert metadata.duration is not None
+    def test_defaults_and_phase6_container(self):
+        metadata = BatchMetadata(file_id="chapter1")
 
-    def test_metadata_with_error(self):
-        """Test metadata with error conditions"""
-        metadata = BatchMetadata(file_id="test.pdf")
-        metadata.mark_started()
-        metadata.error_message = "Test error"
-        metadata.mark_completed()
-        
-        # Should be failed since no phases completed
-        assert metadata.status == "failed"
-        
-        # With some phases completed, should be partial
-        metadata.phases_completed.append(1)
-        metadata.mark_completed()
-        assert metadata.status == "partial"
+        assert metadata.status == "pending"
+        assert metadata.phase6 == Phase6Result()
+        assert metadata.was_skipped is False
+        assert metadata.to_pipeline_dict()["status"] == "pending"
+
+    def test_to_pipeline_dict_excludes_file_id(self):
+        metadata = BatchMetadata(
+            file_id="chapter2",
+            status="failed",
+            duration_sec=12.5,
+            error_message="boom",
+            errors=["trace"],
+            cpu_avg=50.0,
+        )
+
+        payload = metadata.to_pipeline_dict()
+        assert "file_id" not in payload
+        assert payload["status"] == "failed"
+        assert payload["duration_sec"] == 12.5
+        assert payload["errors"][0] == "trace"
 
 
 class TestBatchSummary:
-    def test_summary_creation(self):
-        """Test batch summary creation from metadata"""
+    def test_summary_status_and_duration(self):
+        start = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        end = start + timedelta(seconds=90)
         metadata_list = [
-            BatchMetadata(file_id="file1.pdf", status="success"),
-            BatchMetadata(file_id="file2.pdf", status="partial", error_message="Phase 3 failed"),
-            BatchMetadata(file_id="file3.pdf", status="failed", error_message="Phase 1 failed")
+            BatchMetadata(file_id="good", status="success"),
+            BatchMetadata(file_id="bad", status="failed", error_message="boom"),
+            BatchMetadata(file_id="skip", status="skipped"),
         ]
-        
-        summary = BatchSummary.from_metadata_list(metadata_list, 120.5, 65.0)
-        
+
+        summary = BatchSummary.from_metadata_list(metadata_list, start, end, avg_cpu=70.0)
+
         assert summary.total_files == 3
-        assert summary.successful_files == 1
-        assert summary.partial_files == 1
-        assert summary.failed_files == 1
-        assert summary.status == "partial"  # Mixed results
-        assert summary.total_duration == 120.5
-        assert len(summary.errors) == 2
+        assert summary.status == "partial"
+        assert summary.duration_sec == pytest.approx(90.0)
+        assert "boom" in summary.errors
+        assert summary.avg_cpu_usage == 70.0
+
+    def test_summary_with_status_override(self):
+        start = datetime.now(timezone.utc)
+        end = start + timedelta(seconds=5)
+        metadata_list = [BatchMetadata(file_id="only", status="skipped")]
+
+        summary = BatchSummary.from_metadata_list(
+            metadata_list, start, end, status_override="dry_run"
+        )
+
+        assert summary.status == "dry_run"
+        assert summary.failed_files == 0
+        assert summary.skipped_files == 1
 
 
 class TestConfigLoading:
-    def test_load_valid_config(self):
-        """Test loading valid YAML config"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-            f.write("""
-max_workers: 8
-cpu_threshold: 90
-phases_to_run: [1, 2, 3]
-log_level: DEBUG
-            """)
-            f.flush()
-            
-            config = load_config(f.name)
-            assert config.max_workers == 8
-            assert config.cpu_threshold == 90
-            assert config.phases_to_run == [1, 2, 3]
-            assert config.log_level == "DEBUG"
+    def test_load_valid_config(self, tmp_path):
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "\n".join(
+                [
+                    "log_level: warning",
+                    "max_workers: 3",
+                    "phases: [1, 4]",
+                    "batch_size: 1",
+                ]
+            )
+        )
 
-    def test_load_missing_config(self):
-        """Test loading missing config file"""
-        config = load_config("nonexistent.yaml")
-        # Should return default config
+        config = load_config(str(config_file))
+
+        assert config.log_level == "WARNING"
+        assert config.max_workers == 3
+        assert config.phases == [1, 4]
+        assert config.batch_size == 1
+
+    def test_load_missing_config_returns_defaults(self):
+        config = load_config("does-not-exist.yaml")
+
         assert isinstance(config, BatchConfig)
-        assert config.max_workers == 4  # Default value
+        assert config.phases == [1, 2, 3, 4, 5]
+        assert config.log_level == "INFO"
 
-    def test_load_invalid_config(self):
-        """Test loading invalid YAML"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-            f.write("invalid: yaml: content: [")
-            f.flush()
-            
-            config = load_config(f.name)
-            # Should return default config on parse error
-            assert isinstance(config, BatchConfig)
+    def test_load_invalid_yaml_falls_back(self, tmp_path):
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("log_level: [not: valid")
 
+        config = load_config(str(config_file))
 
-class TestDirectoryResolution:
-    @patch('pathlib.Path.glob')
-    def test_find_phase_directory_not_found(self, mock_glob):
-        """Test phase directory not found"""
-        mock_glob.return_value = []
-        
-        result = find_phase_directory(99)
-        assert result is None
-
-    @patch('pathlib.Path.exists')
-    @patch('pathlib.Path.glob')
-    def test_find_phase_main(self, mock_glob, mock_exists):
-        """Test finding main.py in phase directory"""
-        mock_phase_dir = Mock()
-        mock_src_dir = Mock()
-        mock_main_path = Mock()
-        
-        mock_glob.return_value = [mock_src_dir]
-        mock_src_dir.__truediv__.return_value = mock_main_path
-        mock_exists.return_value = True
-        
-        result = find_phase_main(mock_phase_dir, 1)
-        assert result == mock_main_path
+        assert isinstance(config, BatchConfig)
+        assert config.phases == [1, 2, 3, 4, 5]
 
 
-class TestPipelineJsonHandling:
-    def test_update_pipeline_json(self):
-        """Test updating pipeline.json file"""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            pipeline_path = Path(temp_dir) / "pipeline.json"
-            
-            config = BatchConfig(pipeline_json=str(pipeline_path))
-            
-            metadata_list = [
-                BatchMetadata(file_id="test1.pdf", status="success"),
-                BatchMetadata(file_id="test2.pdf", status="failed", error_message="Test error")
+class TestFilesystemHelpers:
+    def test_discover_input_files_sorted_and_limited(self, tmp_path):
+        input_dir = tmp_path / "inputs"
+        input_dir.mkdir()
+        files = []
+        for name in ["b.txt", "a.txt", "c.txt"]:
+            path = input_dir / name
+            path.write_text("data")
+            files.append(path)
+
+        config = BatchConfig(
+            input_dir=str(input_dir),
+            pipeline_json=str(tmp_path / "pipeline.json"),
+            batch_size=2,
+        )
+
+        discovered = discover_input_files(config)
+
+        assert [p.name for p in discovered] == ["a.txt", "b.txt"]
+
+    def test_discover_input_files_missing_directory(self, tmp_path, caplog):
+        caplog.set_level("ERROR")
+        config = BatchConfig(
+            input_dir=str(tmp_path / "missing"),
+            pipeline_json=str(tmp_path / "pipeline.json"),
+        )
+
+        files = discover_input_files(config)
+
+        assert files == []
+        assert "Input directory not found" in caplog.text
+
+
+class TestPipelineHelpers:
+    def test_metadata_from_existing_merges_fields(self):
+        file_path = Path("/tmp/book.pdf")
+        record = {
+            "status": "success",
+            "timestamps": {"start": "2024-01-01T00:00:00Z", "end": "2024-01-01T00:01:00Z"},
+            "metrics": {"duration": 60.0, "cpu_avg": 40.0},
+            "artifacts": {"source_path": "/tmp/book.pdf"},
+            "errors": ["minor"],
+            "phase6": {"exit_code": 0},
+        }
+
+        metadata = metadata_from_existing(file_path, record)
+
+        assert metadata.file_id == "book"
+        assert metadata.was_skipped is True
+        assert metadata.phase6.exit_code == 0
+        assert metadata.cpu_avg == 40.0
+        assert metadata.errors[0] == "minor"
+
+    def test_latest_batch_records_returns_latest(self):
+        pipeline = {
+            "batch_runs": [
+                {"files": {"a": {"status": "success"}}},
+                {"files": {"b": {"status": "failed"}}},
             ]
-            
-            summary = BatchSummary.from_metadata_list(metadata_list, 60.0)
-            
-            update_pipeline_json(config, summary, metadata_list)
-            
-            # Verify file was created and contains correct data
-            assert pipeline_path.exists()
-            with open(pipeline_path) as f:
-                data = json.load(f)
-            
-            assert "batch" in data
-            assert data["batch"]["status"] == summary.status
-            assert data["batch"]["metrics"]["total_files"] == 2
-            assert len(data["batch"]["files"]) == 2
+        }
 
-    def test_load_existing_metadata(self):
-        """Test loading existing metadata for resume"""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            pipeline_path = Path(temp_dir) / "pipeline.json"
-            
-            # Create existing pipeline data
-            existing_data = {
-                "batch": {
-                    "files": {
-                        "test.pdf": {
-                            "file_id": "test.pdf",
-                            "status": "partial",
-                            "phases_completed": [1, 2],
-                            "error_message": None,
-                            "duration": 45.5,
-                            "phase_metrics": [],
-                            "start_time": None,
-                            "end_time": None
-                        }
-                    }
-                }
-            }
-            
-            with open(pipeline_path, 'w') as f:
-                json.dump(existing_data, f)
-            
-            config = BatchConfig(pipeline_json=str(pipeline_path), resume_enabled=True)
-            
-            metadata = load_existing_metadata(config, "test.pdf")
-            
-            assert metadata.file_id == "test.pdf"
-            assert metadata.status == "partial"
-            assert metadata.phases_completed == [1, 2]
-            assert metadata.duration == 45.5
+        latest = latest_batch_records(pipeline)
+
+        assert "b" in latest
+        assert latest["b"]["status"] == "failed"
+
+    def test_latest_batch_records_handles_missing(self):
+        assert latest_batch_records({}) == {}
+        assert latest_batch_records({"batch_runs": []}) == {}
 
 
-class TestIntegration:
-    @patch('subprocess.run')
-    @patch('src.phase6_batch.main.find_phase_directory')
-    @patch('src.phase6_batch.main.find_phase_main')
-    def test_successful_phase_execution(self, mock_find_main, mock_find_dir, mock_subprocess):
-        """Test successful phase execution"""
-        from phase6_batch.mainbu import run_phase_for_file
-        
-        # Setup mocks
-        mock_phase_dir = Path("/fake/phase1_validation")
-        mock_main_path = Path("/fake/phase1_validation/src/phase1_validation/main.py")
-        
-        mock_find_dir.return_value = mock_phase_dir
-        mock_find_main.return_value = mock_main_path
-        
-        mock_result = Mock()
-        mock_result.stdout = "Phase completed successfully"
-        mock_result.stderr = ""
-        mock_subprocess.return_value = mock_result
-        
-        config = BatchConfig(phases_to_run=[1], phase_timeout=60)
-        metadata = BatchMetadata(file_id="test.pdf")
-        
-        result = run_phase_for_file("test.pdf", [1], config, metadata)
-        
-        assert result.status == "success"
-        assert 1 in result.phases_completed
-        assert len(result.phase_metrics) == 1
-        assert result.error_message is None
+class TestRealWorldSummaries:
+    def test_large_batch_summary_counts(self):
+        now = datetime.now(timezone.utc)
+        metadata_list = []
+        for i in range(10):
+            status = "success" if i < 6 else "failed" if i < 8 else "skipped"
+            metadata_list.append(BatchMetadata(file_id=f"doc{i}", status=status))
 
-    @patch('subprocess.run')
-    @patch('src.phase6_batch.main.find_phase_directory')
-    @patch('src.phase6_batch.main.find_phase_main')
-    def test_failed_phase_execution(self, mock_find_main, mock_find_dir, mock_subprocess):
-        """Test failed phase execution"""
-        from phase6_batch.mainbu import run_phase_for_file
-        from subprocess import CalledProcessError
-        
-        # Setup mocks
-        mock_phase_dir = Path("/fake/phase1_validation")
-        mock_main_path = Path("/fake/phase1_validation/src/phase1_validation/main.py")
-        
-        mock_find_dir.return_value = mock_phase_dir
-        mock_find_main.return_value = mock_main_path
-        
-        # Mock subprocess failure
-        mock_subprocess.side_effect = CalledProcessError(
-            1, ["poetry", "run", "python"], stderr="Phase failed"
-        )
-        
-        config = BatchConfig(phases_to_run=[1], phase_timeout=60)
-        metadata = BatchMetadata(file_id="test.pdf")
-        
-        result = run_phase_for_file("test.pdf", [1], config, metadata)
-        
-        assert result.status == "failed"
-        assert len(result.phases_completed) == 0
-        assert result.error_message is not None
-        assert "Phase 1 failed" in result.error_message
-
-
-class TestCLIIntegration:
-    @patch('src.phase6_batch.main.ThreadPoolExecutor')
-    @patch('src.phase6_batch.main.Path.glob')
-    @patch('sys.argv', ['main.py', '--dry-run'])
-    def test_dry_run_mode(self, mock_glob, mock_executor):
-        """Test dry-run mode"""
-        # Mock file discovery
-        mock_file = Mock()
-        mock_file.name = "test.pdf"
-        mock_glob.return_value = [mock_file]
-        
-        # This would normally be tested with a full CLI test framework
-        # For now, just verify the key components work
-        config = BatchConfig(input_dir="test_inputs")
-        assert config.input_dir == "test_inputs"
-
-
-# Fixtures for testing
-@pytest.fixture
-def sample_config():
-    """Sample configuration for testing"""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        yield BatchConfig(
-            input_dir=f"{temp_dir}/inputs",
-            pipeline_json=f"{temp_dir}/pipeline.json",
-            log_file=f"{temp_dir}/batch.log",
-            max_workers=2,
-            phases_to_run=[1, 2]
+        summary = BatchSummary.from_metadata_list(
+            metadata_list, now, now + timedelta(seconds=10)
         )
 
-
-@pytest.fixture
-def sample_metadata_list():
-    """Sample metadata list for testing"""
-    return [
-        BatchMetadata(
-            file_id="doc1.pdf",
-            status="success",
-            phases_completed=[1, 2, 3],
-            duration=45.2
-        ),
-        BatchMetadata(
-            file_id="doc2.pdf", 
-            status="partial",
-            phases_completed=[1, 2],
-            error_message="Phase 3 timeout",
-            duration=78.1
-        ),
-        BatchMetadata(
-            file_id="doc3.pdf",
-            status="failed",
-            error_message="Invalid PDF format",
-            duration=5.3
-        )
-    ]
-
-
-class TestRealWorldScenarios:
-    def test_mixed_results_summary(self, sample_metadata_list):
-        """Test summary with mixed success/failure results"""
-        summary = BatchSummary.from_metadata_list(sample_metadata_list, 150.0, 72.5)
-        
-        assert summary.total_files == 3
-        assert summary.successful_files == 1
-        assert summary.partial_files == 1
-        assert summary.failed_files == 1
+        assert summary.successful_files == 6
+        assert summary.failed_files == 2
+        assert summary.skipped_files == 2
         assert summary.status == "partial"
-        assert len(summary.errors) == 2
-        
-    def test_all_successful_summary(self):
-        """Test summary with all successful results"""
-        metadata_list = [
-            BatchMetadata(file_id=f"doc{i}.pdf", status="success", phases_completed=[1, 2, 3])
-            for i in range(5)
-        ]
-        
-        summary = BatchSummary.from_metadata_list(metadata_list, 200.0)
-        
-        assert summary.status == "success"
-        assert summary.successful_files == 5
-        assert summary.failed_files == 0
-        assert len(summary.errors) == 0
-
-    def test_all_failed_summary(self):
-        """Test summary with all failed results"""
-        metadata_list = [
-            BatchMetadata(file_id=f"doc{i}.pdf", status="failed", error_message="Test error")
-            for i in range(3)
-        ]
-        
-        summary = BatchSummary.from_metadata_list(metadata_list, 60.0)
-        
-        assert summary.status == "failed"
-        assert summary.successful_files == 0
-        assert summary.failed_files == 3
-        assert len(summary.errors) == 3
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])Path.glob')
-    def test_find_phase_directory(self, mock_glob):
-        """Test phase directory finding logic"""
-        mock_path = Mock()
-        mock_path.name = "phase1_validation"
-        mock_glob.return_value = [mock_path]
-        
-        result = find_phase_directory(1)
-        assert result == mock_path
-
-    @patch('pathlib.
+    pytest.main([__file__, "-v"])

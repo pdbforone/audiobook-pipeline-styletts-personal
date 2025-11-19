@@ -5,7 +5,8 @@ Diagnose extraction issues with Systematic Theology.txt
 import sys
 from pathlib import Path
 
-extracted_file = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\Systematic Theology.txt")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+extracted_file = PROJECT_ROOT / "phase2-extraction" / "extracted_text" / "Systematic Theology.txt"
 
 print("=" * 80)
 print("SYSTEMATIC THEOLOGY EXTRACTION DIAGNOSTIC")

@@ -7,14 +7,16 @@ import sys
 from pathlib import Path
 import json
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 print("=" * 80)
 print("SYSTEMATIC THEOLOGY - PROPER PIPELINE PROCESSING (FIXED)")
 print("=" * 80)
 
 # Paths
-pdf_path = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\input\Systematic Theology.pdf")
-phase1_dir = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase1-validation")
-phase2_dir = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction")
+pdf_path = PROJECT_ROOT / "input" / "Systematic Theology.pdf"
+phase1_dir = PROJECT_ROOT / "phase1-validation"
+phase2_dir = PROJECT_ROOT / "phase2-extraction"
 pipeline_json_phase1 = phase1_dir / "pipeline.json"
 pipeline_json_phase2 = phase2_dir / "pipeline.json"
 

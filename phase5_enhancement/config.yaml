@@ -1,5 +1,5 @@
-pipeline_json: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\pipeline.json
-input_dir: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\audio_chunks
+pipeline_json: ../pipeline.json
+input_dir: ../phase4_tts/audio_chunks
 # Enhanced WAVs go here per title; final MP3 will be placed in output_dir/mp3
 output_dir: processed/{file_id}
 profile: auto

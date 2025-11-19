@@ -5,7 +5,7 @@ Usage:
     python validate_chunks.py [chunks_directory]
 
 Example:
-    python validate_chunks.py "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-chatterbox\\phase3-chunking\\chunks"
+    python validate_chunks.py "path\\to\\repo\\phase3-chunking\\chunks"
 """
 
 import os
@@ -199,7 +199,7 @@ def main():
         if not chunks_dir.exists():
             print("Usage: python validate_chunks.py [chunks_directory]")
             print("\nExample:")
-            print('  python validate_chunks.py "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-chatterbox\\phase3-chunking\\chunks"')
+            print('  python validate_chunks.py "path\\to\\repo\\phase3-chunking\\chunks"')
             sys.exit(1)
     else:
         chunks_dir = sys.argv[1]

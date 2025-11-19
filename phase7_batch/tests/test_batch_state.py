@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 
 from pipeline_common import PipelineState
-from phase7_batch.src.phase7_batch.main import persist_batch_state
-from phase7_batch.src.phase7_batch.models import BatchMetadata, BatchSummary, Phase6Result
+from phase7_batch.main import persist_batch_state
+from phase7_batch.models import BatchMetadata, BatchSummary, Phase6Result
 
 
 def _build_summary(

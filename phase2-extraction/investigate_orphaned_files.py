@@ -5,8 +5,9 @@ Investigate the orphaned Systematic Theology extraction
 from pathlib import Path
 import os
 
-extracted_dir = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text")
-input_dir = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\input")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+extracted_dir = PROJECT_ROOT / "phase2-extraction" / "extracted_text"
+input_dir = PROJECT_ROOT / "input"
 
 print("=" * 80)
 print("EXTRACTED TEXT FILES (not tracked in pipeline.json)")
@@ -57,12 +58,12 @@ print("""
 To properly process Systematic Theology through the pipeline:
 
 1. Run Phase 1 first (validation & classification):
-   cd C:\\Users\\myson\\Pipeline\\audiobook-pipeline-chatterbox\\phase1-validation
-   poetry run python -m phase1_validation.cli --file "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-chatterbox\\input\\Systematic Theology.pdf"
+   cd path\\to\\repo\\phase1-validation
+   poetry run python -m phase1_validation.cli --file "path\\to\\repo\\input\\Systematic Theology.pdf"
 
 2. Then run Phase 2 (extraction):
-   cd C:\\Users\\myson\\Pipeline\\audiobook-pipeline-chatterbox\\phase2-extraction
-   poetry run python -m phase2_extraction.extraction --file_id "Systematic_Theology" --file "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-chatterbox\\input\\Systematic Theology.pdf"
+   cd path\\to\\repo\\phase2-extraction
+   poetry run python -m phase2_extraction.extraction --file_id "Systematic_Theology" --file "path\\to\\repo\\input\\Systematic Theology.pdf"
 
 3. Or use Phase 6 orchestrator (when implemented) to run all phases
 

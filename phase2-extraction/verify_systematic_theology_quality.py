@@ -6,7 +6,8 @@ Check if it's actually gibberish or readable
 from pathlib import Path
 import re
 
-extracted_file = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\Systematic Theology.txt")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+extracted_file = PROJECT_ROOT / "phase2-extraction" / "extracted_text" / "Systematic Theology.txt"
 
 print("=" * 80)
 print("SYSTEMATIC THEOLOGY - QUALITY CHECK")

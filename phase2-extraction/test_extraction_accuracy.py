@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 import re
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 try:
     from pypdf import PdfReader
     PYPDF = True
@@ -228,7 +230,7 @@ def test_full_document(pdf_path):
 
 
 if __name__ == "__main__":
-    pdf_path = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\input\Systematic Theology.pdf")
+    pdf_path = PROJECT_ROOT / "input" / "Systematic Theology.pdf"
     
     if not pdf_path.exists():
         print(f"❌ PDF not found: {pdf_path}")

@@ -45,16 +45,41 @@ ENGINE_MAP = {
     "Kokoro (CPU-Friendly)": "kokoro",
 }
 
-PHASE_TITLE_MAP = {
-    1: "Validation",
-    2: "Extraction",
-    3: "Chunking",
-    4: "Text-to-Speech",
-    5: "Enhancement",
+PHASE_DEFINITIONS: List[tuple[str, float, str]] = [
+    ("phase1", 1, "Phase 1 – Validation"),
+    ("phase2", 2, "Phase 2 – Extraction"),
+    ("phase3", 3, "Phase 3 – Chunking"),
+    ("phase4", 4, "Phase 4 – Text-to-Speech"),
+    ("phase5", 5, "Phase 5 – Enhancement"),
+    ("phase5_5", 5.5, "Phase 5.5 – Subtitles"),
+]
+PHASE_TITLE_MAP = {key: label for key, _, label in PHASE_DEFINITIONS}
+PHASE_ORDER_MAP = {key: order for key, order, _ in PHASE_DEFINITIONS}
+AVAILABLE_PHASE_KEYS = [key for key, _, _ in PHASE_DEFINITIONS if key in PHASE_KEYS]
+PHASE_CHOICE_LOOKUP = {key: f"{key}: {PHASE_TITLE_MAP[key]}" for key in AVAILABLE_PHASE_KEYS}
+PHASE_CHOICE_VALUES = [PHASE_CHOICE_LOOKUP[key] for key in AVAILABLE_PHASE_KEYS]
+DEFAULT_PHASE_SELECTION = [PHASE_CHOICE_LOOKUP[key] for key in AVAILABLE_PHASE_KEYS if key != "phase5_5"]
+RUNNABLE_PHASES = []
+for phase_key in AVAILABLE_PHASE_KEYS:
+    if phase_key == "phase5_5":
+        continue
+    order_value = PHASE_ORDER_MAP.get(phase_key)
+    if isinstance(order_value, (int, float)):
+        RUNNABLE_PHASES.append(int(order_value))
+PHASE_CHOICE_TO_KEY = {value: key for key, value in PHASE_CHOICE_LOOKUP.items()}
+STATUS_BADGES = {
+    "success": "**success**",
+    "failed": "**failed**",
+    "error": "**error**",
+    "running": "**running**",
+    "pending": "**pending**",
+    "partial": "**partial**",
+    "partial_success": "**partial success**",
+    "skipped": "**skipped**",
+    "missing": "**N/A**",
+    "unknown": "**unknown**",
 }
-RUNNABLE_PHASES = [phase for phase in sorted(PHASE_TITLE_MAP) if f"phase{phase}" in PHASE_KEYS]
-PHASE_CHOICE_VALUES = [f"{phase}: {PHASE_TITLE_MAP[phase]}" for phase in RUNNABLE_PHASES]
-DEFAULT_PHASE_SELECTION = list(PHASE_CHOICE_VALUES)
+SUBTITLE_PHASE_KEY = "phase5_5"
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -254,27 +279,99 @@ class StudioUI:
 
     @staticmethod
     def _phase_choice_list() -> List[str]:
-        return list(DEFAULT_PHASE_SELECTION) if PHASE_CHOICE_VALUES else []
+        return list(PHASE_CHOICE_VALUES)
 
     @staticmethod
-    def _parse_phase_choices(choices: Optional[List[str]]) -> List[int]:
-        if not choices:
-            return []
+    def _default_phase_choices() -> List[str]:
+        return list(DEFAULT_PHASE_SELECTION)
+
+    @staticmethod
+    @staticmethod
+    def _choice_to_phase_key(choice: Optional[str]) -> Optional[str]:
+        text = (choice or "").strip()
+        if not text:
+            return None
+        direct = PHASE_CHOICE_TO_KEY.get(text)
+        if direct:
+            return direct
+        prefix = text.split(":", 1)[0].strip().lower()
+        if not prefix:
+            return None
+        normalized = prefix.replace(" ", "").replace(".", "_")
+        if normalized in PHASE_TITLE_MAP:
+            return normalized
+        if normalized.startswith("phase"):
+            candidate = normalized
+        else:
+            candidate = f"phase{normalized}"
+        if candidate in PHASE_TITLE_MAP:
+            return candidate
+        return None
+
+    def _parse_phase_choices(self, choices: Optional[List[str]]) -> Tuple[List[int], bool]:
         parsed: List[int] = []
+        subtitles_selected = False
+        if not choices:
+            return parsed, subtitles_selected
         for choice in choices:
-            try:
-                phase_number = int(choice.split(":", 1)[0].strip())
-            except ValueError:
+            phase_key = self._choice_to_phase_key(choice)
+            if not phase_key:
                 continue
-            if phase_number in RUNNABLE_PHASES:
+            if phase_key == SUBTITLE_PHASE_KEY:
+                subtitles_selected = True
+                continue
+            order_value = PHASE_ORDER_MAP.get(phase_key)
+            if not isinstance(order_value, (int, float)):
+                continue
+            phase_number = int(order_value)
+            if phase_number not in RUNNABLE_PHASES:
+                continue
+            if phase_number not in parsed:
                 parsed.append(phase_number)
-        return parsed
+        return parsed, subtitles_selected
 
     @staticmethod
-    def _format_phase_selection(phases: List[int]) -> str:
+    def _phase_key_from_number(value: Any) -> str:
+        if isinstance(value, float):
+            if value.is_integer():
+                suffix = str(int(value))
+            else:
+                suffix = str(value).replace(".", "_")
+        elif isinstance(value, int):
+            suffix = str(value)
+        else:
+            suffix = str(value)
+        return f"phase{suffix}"
+
+    @staticmethod
+    def _phase_label_from_key(phase_key: str, fallback: Optional[str] = None) -> str:
+        if phase_key in PHASE_TITLE_MAP:
+            return PHASE_TITLE_MAP[phase_key]
+        if fallback:
+            return fallback
+        if phase_key.startswith("phase"):
+            return f"Phase {phase_key.replace('phase', '').replace('_', '.')}"
+        return phase_key
+
+    def _format_phase_selection(self, phases: List[int], include_subtitles: bool = False) -> str:
+        labels = []
+        for phase in phases:
+            phase_key = self._phase_key_from_number(phase)
+            labels.append(self._phase_label_from_key(phase_key, f"Phase {phase}"))
+        if include_subtitles and SUBTITLE_PHASE_KEY in PHASE_TITLE_MAP:
+            labels.append(PHASE_TITLE_MAP[SUBTITLE_PHASE_KEY])
+        if not labels:
+            return "none"
+        return ", ".join(labels)
+
+    @classmethod
+    def _format_phase_numbers(cls, phases: List[float]) -> str:
         if not phases:
             return "none"
-        labels = [PHASE_TITLE_MAP.get(phase, f"Phase {phase}") for phase in phases]
+        labels = []
+        for phase in phases:
+            phase_key = cls._phase_key_from_number(phase)
+            labels.append(PHASE_TITLE_MAP.get(phase_key, f"Phase {phase}"))
         return ", ".join(labels)
 
     def _load_presets(self) -> List[str]:
@@ -293,7 +390,7 @@ class StudioUI:
         if not status:
             return "Select a file to view pipeline status."
 
-        phase_lines = [f"- Phase {p.phase}: **{p.status}**" for p in status.phases]
+        phase_lines = [self._format_phase_status_line(summary) for summary in status.phases]
         fs: FileSystemProgress = status.fs_progress
         process_view = "\n".join(status.processes) if status.processes else "- No active pipeline processes detected"
 
@@ -312,6 +409,37 @@ class StudioUI:
 **Active Processes**
 {process_view}
 """
+
+    def _format_phase_status_line(self, summary: PhaseStatusSummary) -> str:
+        label = self._phase_label_from_key(summary.key, summary.label)
+        status_value = (summary.status or "unknown").lower()
+        status_display = STATUS_BADGES.get(status_value, f"**{summary.status or 'unknown'}**")
+        detail = ""
+        if summary.key == SUBTITLE_PHASE_KEY:
+            detail = self._subtitle_status_detail(status_value, summary.errors)
+        elif status_value == "missing":
+            detail = " – Not available"
+        elif summary.errors and status_value in {"failed", "error", "partial", "partial_success"}:
+            detail = f" – {summary.errors[0]}"
+        return f"- {label}: {status_display}{detail}"
+
+    @staticmethod
+    def _subtitle_status_detail(status_value: str, errors: List[str]) -> str:
+        if status_value == "success":
+            return " – Subtitles done"
+        if status_value in {"failed", "error"} or errors:
+            message = errors[0] if errors else ""
+            suffix = f": {message}" if message else ""
+            return f" – Subtitles issue{suffix}"
+        if status_value == "running":
+            return " – Subtitles in progress"
+        if status_value == "pending":
+            return " – Subtitles queued"
+        if status_value in {"partial", "partial_success"}:
+            return " – Subtitles partially complete"
+        if status_value == "missing":
+            return " – Subtitles not requested"
+        return ""
 
     def _format_phase4_summary(self, summary: Optional[Phase4Summary]) -> str:
         if not summary:
@@ -341,8 +469,8 @@ class StudioUI:
         if not incomplete:
             return False, ""
 
-        complete = ", ".join(map(str, incomplete.phases_complete))
-        pending = ", ".join(map(str, incomplete.phases_incomplete))
+        complete = self._format_phase_numbers(incomplete.phases_complete)
+        pending = self._format_phase_numbers(incomplete.phases_incomplete)
         message = f"""
 ## 🔄 Incomplete Generation Found
 
@@ -396,7 +524,7 @@ You can:
         if not voice_meta:
             return None, "❌ Please select a voice.", ui_state
 
-        phases = self._parse_phase_choices(phase_choices)
+        phases, subtitles_selected = self._parse_phase_choices(phase_choices)
         if not phases:
             return None, "❌ Please select at least one phase to run.", ui_state
 
@@ -404,6 +532,7 @@ You can:
         file_path = Path(book_file)
         retries = int(max_retries)
         no_resume = not bool(enable_resume)
+        subtitles_requested = bool(generate_subtitles) or subtitles_selected
 
         async def runner(cancel_event, update_progress):
             def progress_hook(value: float, desc: Optional[str] = None):
@@ -417,7 +546,7 @@ You can:
                 tts_engine=engine,
                 mastering_preset=mastering_preset,
                 phases=phases,
-                enable_subtitles=bool(generate_subtitles),
+                enable_subtitles=subtitles_requested,
                 max_retries=retries,
                 no_resume=no_resume,
                 concat_only=bool(concat_only),
@@ -452,10 +581,10 @@ You can:
             options_list.append("Fresh run (no resume)")
         if retries != 2:
             options_list.append(f"Max retries: {retries}")
-        if generate_subtitles:
+        if subtitles_requested:
             options_list.append("Subtitles generated")
-        if phases != RUNNABLE_PHASES:
-            options_list.append(f"Phases: {self._format_phase_selection(phases)}")
+        if phases != RUNNABLE_PHASES or subtitles_requested:
+            options_list.append(f"Phases: {self._format_phase_selection(phases, include_subtitles=subtitles_requested)}")
         if concat_only:
             options_list.append("Concat only (reuse enhanced WAVs when present)")
 
@@ -496,13 +625,14 @@ You can:
         if not voice_meta:
             return "❌ Please select a voice.", ui_state
 
-        phases = self._parse_phase_choices(phase_choices)
+        phases, subtitles_selected = self._parse_phase_choices(phase_choices)
         if not phases:
             return "❌ Please select at least one phase to run.", ui_state
 
         engine = ENGINE_MAP.get(engine_selection, "xtts")
         retries = int(max_retries)
         no_resume = not bool(enable_resume)
+        subtitles_requested = bool(generate_subtitles) or subtitles_selected
 
         async def runner(cancel_event, update_progress):
             results = []
@@ -529,7 +659,7 @@ You can:
                     tts_engine=engine,
                     mastering_preset=mastering_preset,
                     phases=phases,
-                    enable_subtitles=bool(generate_subtitles),
+                    enable_subtitles=subtitles_requested,
                     max_retries=retries,
                     no_resume=no_resume,
                     concat_only=False,
@@ -727,6 +857,10 @@ You can:
             # STATUS TAB
             with gr.Tab("📊 Status"):
                 gr.Markdown("## Live Pipeline Status")
+                gr.Markdown(
+                    "_Phase 5.5 corresponds to subtitle generation progress (SRT/VTT outputs)._",
+                    elem_classes=["text-sm"],
+                )
                 with gr.Row():
                     status_file_dropdown = gr.Dropdown(
                         choices=file_ids,
@@ -868,10 +1002,15 @@ You can:
                             )
 
                             gr.Markdown("**Phases to Run:**")
+                            phase_choices_list = self._phase_choice_list() or ["phase1: Phase 1 – Validation"]
+                            phase_default_values = self._default_phase_choices() or phase_choices_list[:1]
                             phase_selector = gr.CheckboxGroup(
                                 label="Select pipeline phases",
-                                choices=self._phase_choice_list() or ["1: Validation"],
-                                value=self._phase_choice_list() or ["1: Validation"],
+                                choices=phase_choices_list,
+                                value=phase_default_values,
+                            )
+                            gr.Markdown(
+                                "_Phase 5.5 – Subtitles toggles subtitle generation (SRT/VTT outputs)._", elem_classes=["text-sm"]
                             )
 
                         with gr.Row():
@@ -967,10 +1106,16 @@ You can:
                             )
 
                             gr.Markdown("**Phases to Run:**")
+                            batch_phase_choices = self._phase_choice_list() or ["phase1: Phase 1 – Validation"]
+                            batch_phase_defaults = self._default_phase_choices() or batch_phase_choices[:1]
                             batch_phase_selector = gr.CheckboxGroup(
                                 label="Select pipeline phases",
-                                choices=self._phase_choice_list() or ["1: Validation"],
-                                value=self._phase_choice_list() or ["1: Validation"],
+                                choices=batch_phase_choices,
+                                value=batch_phase_defaults,
+                            )
+                            gr.Markdown(
+                                "_Selecting Phase 5.5 will automatically request subtitle generation._",
+                                elem_classes=["text-sm"],
                             )
 
                     with gr.Column():

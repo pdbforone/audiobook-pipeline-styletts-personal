@@ -65,8 +65,10 @@ class VoiceMetadata:
 
 @dataclass
 class PhaseStatusSummary:
-    phase: str
+    key: str
+    label: str
     status: str
+    errors: List[str] = field(default_factory=list)
 
 
 @dataclass

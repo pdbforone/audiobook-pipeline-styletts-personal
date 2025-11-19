@@ -2,8 +2,8 @@ import json
 import sys
 from pathlib import Path
 
-# Read the last run results from audio cleanup
-log_file = Path("C:/Users/myson/Pipeline/audiobook-pipeline-chatterbox/phase_audio_cleanup/audio_cleanup.log")
+PROJECT_ROOT = Path(__file__).resolve().parent
+log_file = PROJECT_ROOT / "phase_audio_cleanup" / "audio_cleanup.log"
 
 if not log_file.exists():
     print("Log file not found. The tool may not have created detailed logs.")

@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from difflib import SequenceMatcher
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 def read_sample(file_path, start=0, length=5000):
     """Read a sample from file."""
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -98,8 +100,8 @@ def find_differences(content1, content2, name1, name2):
             print(f"\n✅ Files are identical!")
 
 def main():
-    test_file = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\Systematic Theology_TTS_READY.txt")
-    orch_file = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\Systematic Theology.txt")
+    test_file = PROJECT_ROOT / "phase2-extraction" / "extracted_text" / "Systematic Theology_TTS_READY.txt"
+    orch_file = PROJECT_ROOT / "phase2-extraction" / "extracted_text" / "Systematic Theology.txt"
     
     if not test_file.exists():
         print(f"❌ Test file not found: {test_file}")

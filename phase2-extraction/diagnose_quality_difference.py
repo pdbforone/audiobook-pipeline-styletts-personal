@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from collections import Counter
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 def analyze_text_quality(file_path, label):
     """Analyze text quality metrics."""
     print(f"\n{'='*60}")
@@ -116,8 +118,8 @@ def compare_sample_pages(file1, file2):
                 break
 
 def main():
-    test_file = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\Systematic Theology_TTS_READY.txt")
-    orch_file = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\Systematic Theology.txt")
+    test_file = PROJECT_ROOT / "phase2-extraction" / "extracted_text" / "Systematic Theology_TTS_READY.txt"
+    orch_file = PROJECT_ROOT / "phase2-extraction" / "extracted_text" / "Systematic Theology.txt"
     
     if not test_file.exists():
         print(f"❌ Test file not found: {test_file}")

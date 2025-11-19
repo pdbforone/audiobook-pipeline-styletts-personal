@@ -14,11 +14,13 @@ import sys
 from pathlib import Path
 import shutil
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 print("=" * 80)
 print("SYSTEMATIC THEOLOGY - COMPLETE FIX")
 print("=" * 80)
 
-phase2_dir = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction")
+phase2_dir = PROJECT_ROOT / "phase2-extraction"
 extraction_file = phase2_dir / "src" / "phase2_extraction" / "extraction.py"
 patched_file = phase2_dir / "extraction_PATCHED.py"
 

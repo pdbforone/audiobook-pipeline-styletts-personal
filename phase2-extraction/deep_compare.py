@@ -9,6 +9,8 @@ import re
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 def analyze_file(file_path: Path) -> Dict:
     """Comprehensive analysis of a text file."""
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -261,8 +263,8 @@ def compare_files(file1: Path, file2: Path):
     print(f"\n{'='*80}")
 
 if __name__ == "__main__":
-    file1 = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\Systematic Theology.txt")
-    file2 = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\Systematic Theology_TTS_READY.txt")
+    file1 = PROJECT_ROOT / "phase2-extraction" / "extracted_text" / "Systematic Theology.txt"
+    file2 = PROJECT_ROOT / "phase2-extraction" / "extracted_text" / "Systematic Theology_TTS_READY.txt"
     
     if not file1.exists():
         print(f"❌ File 1 not found: {file1}")

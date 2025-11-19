@@ -13,6 +13,8 @@ Critical for TTS: We need to ensure we're extracting exactly what's in the PDF.
 import sys
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 try:
     from pypdf import PdfReader
     PYPDF_AVAILABLE = True
@@ -312,7 +314,7 @@ def interactive_comparison(pdf_path, txt_path):
 
 
 if __name__ == "__main__":
-    pdf_path = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\input\Systematic Theology.pdf")
+    pdf_path = PROJECT_ROOT / "input" / "Systematic Theology.pdf"
     
     # Ask which extracted file to compare
     print("Which extracted file to compare?")
@@ -323,9 +325,9 @@ if __name__ == "__main__":
     choice = input("\nSelect (1-3): ").strip()
     
     if choice == '1':
-        txt_path = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\Systematic Theology.txt")
+        txt_path = PROJECT_ROOT / "phase2-extraction" / "extracted_text" / "Systematic Theology.txt"
     elif choice == '2':
-        txt_path = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\Systematic_Theology_multipass.txt")
+        txt_path = PROJECT_ROOT / "phase2-extraction" / "Systematic_Theology_multipass.txt"
     elif choice == '3':
         txt_path = Path(input("Enter path to extracted text file: ").strip())
     else:

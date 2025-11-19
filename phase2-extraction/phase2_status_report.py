@@ -6,12 +6,15 @@ Shows what's been done and what needs to happen next
 from pathlib import Path
 import json
 
+PHASE2_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = PHASE2_DIR.parent
+
 print("=" * 80)
 print("PHASE 2 EXTRACTION - STATUS REPORT")
 print("=" * 80)
 
 # Check pipeline.json
-pipeline_file = Path("pipeline.json")
+pipeline_file = PROJECT_ROOT / "pipeline.json"
 if pipeline_file.exists():
     with open(pipeline_file, 'r') as f:
         pipeline = json.load(f)
@@ -42,18 +45,17 @@ print("🧪 TEST EXTRACTIONS (Not in Pipeline)")
 print("=" * 80)
 
 test_files = [
-    "Systematic_Theology_multipass.txt",
-    "Systematic_Theology_multipass_TTS_READY.txt", 
-    "Systematic_Theology_consensus.txt",
+    PHASE2_DIR / "Systematic_Theology_multipass.txt",
+    PHASE2_DIR / "Systematic_Theology_multipass_TTS_READY.txt",
+    PHASE2_DIR / "Systematic_Theology_consensus.txt",
 ]
 
 found_tests = []
-for filename in test_files:
-    filepath = Path(filename)
+for filepath in test_files:
     if filepath.exists():
         size_mb = filepath.stat().st_size / 1024 / 1024
-        found_tests.append(filename)
-        print(f"\n✓ {filename}")
+        found_tests.append(filepath.name)
+        print(f"\n✓ {filepath.name}")
         print(f"  Size: {size_mb:.2f} MB")
 
 if not found_tests:
@@ -64,7 +66,7 @@ print(f"\n{'=' * 80}")
 print("📁 EXTRACTED TEXT FOLDER")
 print("=" * 80)
 
-extracted_dir = Path("extracted_text")
+extracted_dir = PHASE2_DIR / "extracted_text"
 if extracted_dir.exists():
     extracted_files = list(extracted_dir.glob("*.txt"))
     print(f"\nFound {len(extracted_files)} extracted files:")
@@ -79,7 +81,7 @@ print(f"\n{'=' * 80}")
 print("📖 SYSTEMATIC THEOLOGY STATUS")
 print("=" * 80)
 
-sys_theo_pdf = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\input\Systematic Theology.pdf")
+sys_theo_pdf = PROJECT_ROOT / "input" / "Systematic Theology.pdf"
 if sys_theo_pdf.exists():
     print(f"\n✓ PDF found: {sys_theo_pdf.name}")
     print(f"  Size: {sys_theo_pdf.stat().st_size / 1024 / 1024:.1f} MB")

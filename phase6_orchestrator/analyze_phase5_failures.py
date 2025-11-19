@@ -6,8 +6,9 @@ import json
 from pathlib import Path
 from collections import Counter
 
-pipeline_json = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\pipeline.json")
-phase5_log = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase5_enhancement\audio_enhancement.log")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+pipeline_json = PROJECT_ROOT / "pipeline.json"
+phase5_log = PROJECT_ROOT / "phase5_enhancement" / "audio_enhancement.log"
 
 print("=" * 70)
 print("PHASE 5 FAILURE ANALYSIS")

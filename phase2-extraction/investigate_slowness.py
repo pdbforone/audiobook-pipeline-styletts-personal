@@ -6,7 +6,8 @@ Investigate why Phase 2 took 158 minutes.
 import json
 from pathlib import Path
 
-pipeline_json = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\pipeline.json")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+pipeline_json = PROJECT_ROOT / "pipeline.json"
 
 print("🔍 Investigating Phase 2 Performance")
 print("="*60)

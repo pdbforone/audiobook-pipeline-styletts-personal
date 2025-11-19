@@ -4,7 +4,8 @@
 from pathlib import Path
 import re
 
-file_path = Path(r"C:\Users\myson\Pipeline\audiobook-pipeline-chatterbox\phase2-extraction\extracted_text\Systematic Theology.txt")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+file_path = PROJECT_ROOT / "phase2-extraction" / "extracted_text" / "Systematic Theology.txt"
 
 print("🔍 Checking Phase 2 Output Quality")
 print("="*60)
