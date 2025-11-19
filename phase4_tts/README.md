@@ -23,6 +23,8 @@ Multi-engine TTS with CPU guardrails, auto-engine selection, latency fallback, a
 python src/main_multi_engine.py --file_id MyBook --json_path ../pipeline.json --workers 3
 python src/main_multi_engine.py --file_id MyBook --json_path ../pipeline.json --cpu_safe --auto_engine
 python src/main_multi_engine.py --file_id MyBook --json_path ../pipeline.json --resume --disable_fallback
+# Prefer Kokoro for throughput
+python src/main_multi_engine.py --file_id MyBook --json_path ../pipeline.json --prefer_kokoro
 ```
 
 ## Voice assets

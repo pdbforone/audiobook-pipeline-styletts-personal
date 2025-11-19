@@ -653,6 +653,11 @@ def main() -> int:
         choices=["xtts", "kokoro"],
         help="Preferred engine. Fallback order is managed automatically.",
     )
+    parser.add_argument(
+        "--prefer_kokoro",
+        action="store_true",
+        help="Shortcut to default to Kokoro for throughput (overrides --engine if it is xtts).",
+    )
     parser.add_argument("--json_path", required=True, help="Path to pipeline.json")
     parser.add_argument("--config", default="config.yaml", help="Phase4 config file")
     parser.add_argument("--voice", help="Voice ID override (keys from configs/voice_references.json)")
@@ -761,6 +766,9 @@ def main() -> int:
         return 1
 
     engine_requested = args.engine
+    if args.prefer_kokoro and engine_requested == "xtts":
+        engine_requested = "kokoro"
+        logger.info("Prefer Kokoro flag set: overriding requested engine to kokoro for throughput.")
     engine_selected = engine_requested
     auto_engine_enabled = args.auto_engine or cpu_safe
     est_audio_seconds = estimate_audio_seconds(

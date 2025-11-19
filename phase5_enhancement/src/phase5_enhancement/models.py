@@ -35,7 +35,7 @@ class EnhancementConfig(BaseModel):
         description="Noise reduction strength for noisereduce",
     )
     enable_rnnoise: bool = Field(
-        default=False,
+        default=True,
         description="Use RNNoise (CPU) for speech-preserving denoise before normalization",
     )
     rnnoise_frame_seconds: float = Field(
@@ -72,6 +72,23 @@ class EnhancementConfig(BaseModel):
         ge=0.0,
         le=1.0,
         description="Headroom for volume normalization (prevents clipping)",
+    )
+    enable_compression: bool = Field(
+        default=True,
+        description="Apply gentle broadband compression and limiter after denoise, before LUFS normalize",
+    )
+    compressor_threshold_db: float = Field(
+        default=-24.0,
+        description="Compressor threshold (dBFS)",
+    )
+    compressor_ratio: float = Field(
+        default=4.0,
+        ge=1.0,
+        description="Compressor ratio (e.g., 4:1)",
+    )
+    limiter_ceiling_db: float = Field(
+        default=-1.0,
+        description="Limiter ceiling to catch peaks before export",
     )
 
     # Output Parameters

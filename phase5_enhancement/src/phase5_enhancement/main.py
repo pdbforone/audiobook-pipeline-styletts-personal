@@ -17,6 +17,7 @@ import soundfile as sf
 import noisereduce as nr
 import pyloudnorm as pln
 from pydub import AudioSegment
+from pydub.effects import compress_dynamic_range
 from mutagen.mp3 import MP3
 from mutagen.id3 import TIT2, TPE1
 from pydantic import ValidationError
@@ -259,6 +260,41 @@ def apply_rnnoise(audio: np.ndarray, sr: int, frame_seconds: float = 0.02) -> np
         denoised = librosa.resample(denoised, orig_sr=target_sr, target_sr=sr)
 
     return denoised.astype(np.float32)
+
+
+def apply_compression_and_limit(
+    audio: np.ndarray,
+    sr: int,
+    threshold_db: float,
+    ratio: float,
+    ceiling_db: float,
+) -> np.ndarray:
+    """
+    Apply gentle broadband compression then limiter using pydub.
+    Keeps processing CPU-only and light for the 5500U.
+    """
+    audio_int16 = np.clip(audio * 32767.0, -32768, 32767).astype(np.int16)
+    seg = AudioSegment(
+        audio_int16.tobytes(),
+        frame_rate=sr,
+        sample_width=2,
+        channels=1,
+    )
+
+    seg = compress_dynamic_range(
+        seg,
+        threshold=threshold_db,
+        ratio=ratio,
+        attack=5.0,
+        release=50.0,
+    )
+
+    current_peak_db = seg.max_dBFS
+    if current_peak_db > ceiling_db:
+        seg = seg.apply_gain(ceiling_db - current_peak_db)
+
+    samples = np.array(seg.get_array_of_samples()).astype(np.float32) / 32767.0
+    return samples
 
 
 _silero_vad_model = None
@@ -579,6 +615,19 @@ def enhance_chunk(
                 else:
                     enhanced = reduce_noise(audio, sr, config.noise_reduction_factor)
                 logger.debug(f"Applied noisereduce to chunk {metadata.chunk_id}")
+
+            # Optional broadband compression + limiter
+            if config.enable_compression:
+                try:
+                    enhanced = apply_compression_and_limit(
+                        enhanced,
+                        sr,
+                        config.compressor_threshold_db,
+                        config.compressor_ratio,
+                        config.limiter_ceiling_db,
+                    )
+                except Exception as exc:
+                    logger.warning(f"Compression/limiter failed: {exc}")
 
             # Normalization
             enhanced, lufs_post = normalize_lufs(enhanced, sr, config.lufs_target)

@@ -16,7 +16,7 @@ max_workers: 2
 memory_limit_mb: 1024
 mp3_bitrate: 192k
 noise_reduction_factor: 0.1
-enable_rnnoise: false
+enable_rnnoise: true
 rnnoise_frame_seconds: 0.02
 enable_silero_vad: true
 silero_vad_threshold: 0.6
@@ -32,6 +32,10 @@ sample_rate: 24000
 snr_threshold: 10.0
 temp_dir: temp
 volume_norm_headroom: 0.3
+enable_compression: true
+compressor_threshold_db: -24.0
+compressor_ratio: 4.0
+limiter_ceiling_db: -1.0
 enable_phrase_cleanup: false
 cleanup_target_phrases:
 - You need to add some text for me to talk

@@ -78,7 +78,11 @@ def chunk_by_structure(
     text: str,
     structure: List[dict],
     config: ValidationConfig,
-    max_chunk_words: int = 70,  # Tuned for 12–18s CPU chunks (~50–70 words)
+    max_chunk_words: int = 70,  # Tuned for ~12–18s CPU chunks
+    target_sec: float = 15.0,
+    soft_merge_sec: float = 8.0,
+    words_per_minute: float = 150.0,
+    use_embeddings: bool = False,
 ) -> Tuple[List[str], List[float], List]:
     """
     Create chunks based on document structure (chapters/sections).
@@ -114,12 +118,18 @@ def chunk_by_structure(
     logger.info(f"Creating chunks from {len(filtered_structure)} structure nodes")
     logger.info(f"Max words per chunk: {max_chunk_words}")
     
-    # Load embedding model for coherence calculation
-    try:
-        model = SentenceTransformer("all-MiniLM-L6-v2")
-    except Exception as e:
-        logger.warning(f"Could not load embedding model: {e}")
-        model = None
+    def estimate_duration(text_value: str) -> float:
+        words = len(text_value.split())
+        return (words / words_per_minute) * 60.0
+
+    # Load embedding model for coherence calculation (optional)
+    model = None
+    if use_embeddings:
+        try:
+            model = SentenceTransformer("all-MiniLM-L6-v2")
+        except Exception as e:
+            logger.warning(f"Could not load embedding model: {e}")
+            model = None
     
     for i, node in enumerate(filtered_structure):
         # Extract section text
@@ -137,7 +147,7 @@ def chunk_by_structure(
         
         logger.info(f"Processing: {title} (Level {level}, {word_count} words)")
         
-        if word_count <= max_chunk_words:
+        if word_count <= max_chunk_words and estimate_duration(section_text) <= target_sec * 1.3:
             # Section is small enough - use as-is
             chunks.append(section_text)
             
@@ -192,6 +202,27 @@ def chunk_by_structure(
                 logger.info(f"    → Sub-chunk {sub_chunk_count}: {len(current_chunk.split())} words")
             
             logger.info(f"  → Split into {sub_chunk_count} chunks")
+
+    # Softening: merge very short chunks to reduce seams
+    softened_chunks = []
+    softened_coherence = []
+    i = 0
+    while i < len(chunks):
+        current = chunks[i]
+        current_dur = estimate_duration(current)
+        if i + 1 < len(chunks) and current_dur < soft_merge_sec:
+            merged_text = current + " " + chunks[i + 1]
+            merged_dur = current_dur + estimate_duration(chunks[i + 1])
+            softened_chunks.append(merged_text.strip())
+            softened_coherence.append(0.85)
+            i += 2
+        else:
+            softened_chunks.append(current)
+            softened_coherence.append(coherence_scores[i] if i < len(coherence_scores) else 0.85)
+            i += 1
+
+    chunks = softened_chunks
+    coherence_scores = softened_coherence
     
     # Generate embeddings
     embeddings = []
