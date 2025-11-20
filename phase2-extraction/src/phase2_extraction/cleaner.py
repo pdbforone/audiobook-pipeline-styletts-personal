@@ -157,7 +157,9 @@ class TTSTextCleaner:
         text = re.sub(r" +", " ", text)
         text = re.sub(r"\n\n+", "\n\n", text)
         text = re.sub(r"([.!?])([A-Z])", r"\1 \2", text)
-        text = re.sub(r"\b[a-zA-Z]\b(?:\s+\b[a-zA-Z]\b){2,}", lambda m: m.group(0).replace(" ", ""), text)
+        # Fix spaced characters (e.g., "T h e G i f t" → "The Gift")
+        # Matches 2+ single letters separated by spaces (PDF header/title artifact)
+        text = re.sub(r"\b[a-zA-Z]\b(?:\s+\b[a-zA-Z]\b)+", lambda m: m.group(0).replace(" ", ""), text)
         return text
 
     def clean_text_file(self, input_path: Path, output_path: Path) -> Dict[str, float]:
