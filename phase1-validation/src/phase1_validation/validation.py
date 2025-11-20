@@ -102,7 +102,11 @@ class FileMetadata(BaseModel):
     file_size_bytes: Optional[int] = None  # Backwards compatibility alias
 
     def as_payload(self) -> Dict[str, Any]:
-        payload = self.model_dump()
+        if hasattr(self, "model_dump"):
+            payload = self.model_dump()
+        else:
+            # Pydantic v1 fallback (used in some legacy Poetry envs)
+            payload = self.dict()
         payload["hash"] = payload.get("hash") or self.sha256
         payload["sha256"] = self.sha256
         payload.setdefault("file_size_bytes", self.size_bytes)
@@ -697,7 +701,10 @@ def main():
     if metadata:
         file_id = Path(args.file).stem
         persist_and_log(metadata, args.json_path, file_id)
-        serialized = metadata.model_dump_json(indent=2)
+        if hasattr(metadata, "model_dump_json"):
+            serialized = metadata.model_dump_json(indent=2)
+        else:
+            serialized = json.dumps(metadata.dict(), indent=2)
         logger.info("Success: %s", serialized)
     else:
         logger.error("Validation failed.")

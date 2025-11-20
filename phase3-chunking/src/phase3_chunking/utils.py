@@ -1036,7 +1036,8 @@ def form_semantic_chunks(
     elapsed = time.perf_counter() - start
     logger.info(f"Chunking time: {elapsed:.4f}s")
 
-    return valid_chunks, coherence, embeddings.tolist() if embeddings else []
+    embeddings_list = embeddings.tolist() if embeddings is not None else []
+    return valid_chunks, coherence, embeddings_list
 
 
 def assess_readability(chunks: List[str]) -> List[float]:

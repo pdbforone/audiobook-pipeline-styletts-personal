@@ -62,6 +62,7 @@ RUN_SUMMARY: Dict[str, Any] = {
     "backup_subtitles_used": False,
     "budget_exceeded": False,
 }
+POLICY_RUNTIME_DIR = Path(".pipeline") / "policy_runtime"
 
 
 def _policy_call(
@@ -141,6 +142,53 @@ def _build_policy_context(
     return context
 
 
+def _prepare_phase3_config_override(
+    phase_dir: Path,
+    chunk_override: Dict[str, Any],
+    run_id: str,
+) -> Optional[Path]:
+    """Create a temporary config.yaml with adjusted chunk sizes."""
+    base_config = phase_dir / "config.yaml"
+    if not base_config.exists():
+        logger.warning("Phase 3 override skipped: config.yaml not found in %s", phase_dir)
+        return None
+    delta = chunk_override.get("delta_percent")
+    try:
+        delta_value = float(delta)
+    except (TypeError, ValueError):
+        logger.warning("Phase 3 override skipped: invalid delta %s", delta)
+        return None
+    delta_value = max(-20.0, min(20.0, delta_value))
+    if delta_value == 0:
+        return None
+    factor = 1.0 + (delta_value / 100.0)
+    try:
+        with base_config.open("r", encoding="utf-8") as handle:
+            config = yaml.safe_load(handle) or {}
+    except Exception as exc:
+        logger.warning("Phase 3 override skipped: cannot read config (%s)", exc)
+        return None
+    changed = False
+    for key in ("chunk_min_words", "chunk_max_words", "chunk_min_chars", "chunk_max_chars"):
+        value = config.get(key)
+        if isinstance(value, (int, float)):
+            new_value = max(1, int(round(value * factor)))
+            config[key] = new_value
+            changed = True
+    if not changed:
+        return None
+    POLICY_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    override_path = POLICY_RUNTIME_DIR / f"phase3_config_{run_id}.yaml"
+    try:
+        with override_path.open("w", encoding="utf-8") as handle:
+            yaml.safe_dump(config, handle, sort_keys=False)
+    except Exception as exc:
+        logger.warning("Phase 3 override skipped: cannot write override config (%s)", exc)
+        return None
+    logger.info("Phase 3 chunk size override applied (%+.1f%% -> %s)", delta_value, override_path)
+    return override_path
+
+
 def _pop_phase_duration(timer_map: Dict[str, float], phase_key: str) -> Optional[float]:
     started = timer_map.pop(phase_key, None)
     if started is None:
@@ -157,8 +205,55 @@ def _log_policy_advice(
     if not policy_engine:
         return
     advice = policy_engine.advise(context)
-    if advice:
-        logger.info("Policy advice for %s (%s): %s", file_id, phase_label, advice)
+    if not advice:
+        return
+
+    suggestions = advice.get("suggestions") or []
+    if suggestions:
+        for entry in suggestions:
+            suggestion_type = entry.get("type")
+            payload = entry.get("payload")
+            confidence = entry.get("confidence")
+            logger.info(
+                "Policy %s suggestion for %s (%s) [confidence=%.2f]: %s",
+                suggestion_type,
+                file_id,
+                phase_label,
+                float(confidence) if isinstance(confidence, (int, float)) else 0.0,
+                payload,
+            )
+    legacy = {
+        key: value
+        for key, value in advice.items()
+        if key not in {"suggestions", "telemetry"}
+    }
+    if legacy:
+        logger.info("Policy recommendations for %s (%s): %s", file_id, phase_label, legacy)
+
+    telemetry = advice.get("telemetry") or {}
+    if telemetry:
+        rtf_stats = telemetry.get("rtf_stats") or {}
+        fallback = telemetry.get("engine_fallback_rates") or {}
+        hallu = telemetry.get("hallucination_stats") or {}
+        summary_parts = []
+        recent_rt = rtf_stats.get("recent_avg")
+        if isinstance(recent_rt, (int, float)):
+            summary_parts.append(f"RT avg {recent_rt:.2f}x")
+        recent_fb = (fallback.get("overall") or {}).get("recent_rate")
+        if isinstance(recent_fb, (int, float)):
+            summary_parts.append(f"fallback {recent_fb*100:.1f}%")
+        recent_hallu = hallu.get("recent_total")
+        if isinstance(recent_hallu, int) and recent_hallu:
+            summary_parts.append(f"{recent_hallu} hallucination alerts")
+        if summary_parts:
+            logger.info(
+                "Policy telemetry for %s (%s): %s",
+                file_id,
+                phase_label,
+                ", ".join(summary_parts),
+            )
+        else:
+            logger.debug("Policy telemetry for %s (%s): %s", file_id, phase_label, telemetry)
 
 
 class SubtitleConfig(BaseModel):
@@ -830,7 +925,7 @@ def should_reuse_phase4(
         return False
 
     audio_paths = entry.get("chunk_audio_paths") or []
-    total_chunks = entry.get("total_chunks") or len(audio_paths)
+    total_chunks = entry.get("total_chunks") or entry.get("metrics", {}).get("total_chunks") or len(audio_paths)
     if total_chunks and len(audio_paths) < total_chunks:
         logger.info("Phase 4 reuse rejected: missing chunks (%d/%d).", len(audio_paths), total_chunks)
         return False
@@ -912,6 +1007,7 @@ def run_phase_with_retry(
     pipeline_mode: str = "commercial",
     tts_engine: Optional[str] = None,
     policy_engine: Optional[PolicyEngine] = None,
+    runtime_overrides: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """
     Run a phase with retry logic.
@@ -959,6 +1055,7 @@ def run_phase_with_retry(
             pipeline_mode,
             tts_engine,
             state=state,
+            runtime_overrides=runtime_overrides,
             policy_engine=policy_engine,
         )
         
@@ -979,6 +1076,7 @@ def run_phase(
     tts_engine: Optional[str] = None,
     *,
     state: PipelineState,
+    runtime_overrides: Optional[Dict[str, Any]] = None,
     policy_engine: Optional[PolicyEngine] = None,
 ) -> bool:
     """
@@ -1000,6 +1098,8 @@ def run_phase(
     # Determine engine early (needed for Phase 3 routing)
     engine = tts_engine if tts_engine else (config.tts_engines.primary or get_tts_engine())
 
+    phase_overrides = (runtime_overrides or {}).get(f"phase{phase_num}", {})
+
     # Special handling for Phase 3 (route to Phase 3b for XTTS)
     if phase_num == 3:
         variant = "xtts" if engine == "xtts" else None
@@ -1008,7 +1108,16 @@ def run_phase(
             return False
 
         logger.info(f"Phase 3: Using chunking variant for {engine}: {phase_dir}")
-        return run_phase_standard(phase_num, phase_dir, file_path, file_id, pipeline_json, state)
+        return run_phase_standard(
+            phase_num,
+            phase_dir,
+            file_path,
+            file_id,
+            pipeline_json,
+            state,
+            phase_overrides=phase_overrides,
+            policy_engine=policy_engine,
+        )
 
     # Standard phase directory lookup
     phase_dir = find_phase_dir(phase_num)
@@ -1054,7 +1163,16 @@ def run_phase(
         RUN_SUMMARY["chunk_integrity_passed"] = True
 
     # Standard phases (1, 2, 5) use Poetry
-    return run_phase_standard(phase_num, phase_dir, file_path, file_id, pipeline_json, state)
+    return run_phase_standard(
+        phase_num,
+        phase_dir,
+        file_path,
+        file_id,
+        pipeline_json,
+        state,
+        phase_overrides=phase_overrides,
+        policy_engine=policy_engine,
+    )
 
 
 def run_phase_standard(
@@ -1064,6 +1182,8 @@ def run_phase_standard(
     file_id: str,
     pipeline_json: Path,
     state: PipelineState,
+    phase_overrides: Optional[Dict[str, Any]] = None,
+    policy_engine: Optional[PolicyEngine] = None,
 ) -> bool:
     """Run a standard phase using Poetry."""
 
@@ -1073,6 +1193,12 @@ def run_phase_standard(
     # Fast-path reuse for Phase 3: if chunks already exist with matching text hash, skip.
     if phase_num == 3 and should_skip_phase3(file_id, state):
         return True
+
+    custom_phase3_config: Optional[Path] = None
+    if phase_num == 3 and phase_overrides:
+        chunk_override = phase_overrides.get("chunk_size")
+        if chunk_override and policy_engine:
+            custom_phase3_config = _prepare_phase3_config_override(phase_dir, chunk_override, policy_engine.run_id)
 
     # Special-case Phase 3b (xtts chunking): standalone script, no Poetry env
     if phase_dir.name == "phase3b-xtts-chunking":
@@ -1179,29 +1305,38 @@ def run_phase_standard(
         cmd = [sys.executable, str(main_script)]
     else:
         # Standard phases use Poetry
-        module_names = {
+        module_dirs = {
             1: "phase1_validation",
             2: "phase2_extraction",
             3: "phase3_chunking"
         }
 
-        module_name = module_names.get(phase_num)
+        module_dir = module_dirs.get(phase_num)
 
         script_names = {
             1: "validation.py",
-            2: "extraction.py",
+            2: "ingest.py",
             3: "main.py"
         }
         script_name = script_names.get(phase_num, "main.py")
-        main_script = phase_dir / "src" / module_name / script_name
+        main_script = phase_dir / "src" / module_dir / script_name
 
         if not main_script.exists():
             logger.error(f"Script not found: {main_script}")
             return False
 
         # Use relative path from phase directory (critical for Poetry venv resolution)
-        script_relative = main_script.relative_to(phase_dir)
-        cmd = ["poetry", "run", "python", str(script_relative)]
+        entry_points = {
+            1: "phase1_validation.validation",
+            2: "phase2_extraction.ingest",
+            3: "phase3_chunking.main",
+        }
+        module_entry = entry_points.get(phase_num)
+        if module_entry:
+            cmd = ["poetry", "run", "python", "-m", module_entry]
+        else:
+            script_relative = main_script.relative_to(phase_dir)
+            cmd = ["poetry", "run", "python", str(script_relative)]
     
     # Add phase-specific arguments
     if phase_num == 1:
@@ -1209,8 +1344,8 @@ def run_phase_standard(
     elif phase_num == 2:
         cmd.extend([f"--file={file_path}", f"--file_id={file_id}", f"--json_path={pipeline_json}"])
     elif phase_num == 3:
-        # Phase 3 needs config for coherence threshold
-        cmd.extend([f"--file_id={file_id}", f"--json_path={pipeline_json}", "--config=config.yaml"])
+        config_path = custom_phase3_config or (phase_dir / "config.yaml")
+        cmd.extend([f"--file_id={file_id}", f"--json_path={pipeline_json}", f"--config={config_path}"])
     
     logger.info(f"Command: {' '.join(cmd)}")
     
@@ -1218,6 +1353,15 @@ def run_phase_standard(
     start_time = time.perf_counter()
     try:
         env = get_clean_env_for_poetry()
+        phase_src = phase_dir / "src"
+        py_paths = []
+        if phase_src.exists():
+            py_paths.append(str(phase_src))
+        py_paths.append(str(PROJECT_ROOT))
+        existing_py_path = env.get("PYTHONPATH")
+        if existing_py_path:
+            py_paths.append(existing_py_path)
+        env["PYTHONPATH"] = os.pathsep.join(py_paths)
         result = subprocess.run(
             cmd,
             cwd=str(phase_dir),
@@ -1312,9 +1456,20 @@ def run_phase4_multi_engine(
 
     def run_cmd(cmd: List[str]) -> subprocess.CompletedProcess:
         start_time = time.perf_counter()
+        env = os.environ.copy()
+        phase_src = phase_dir / "src"
+        py_paths = []
+        if phase_src.exists():
+            py_paths.append(str(phase_src))
+        py_paths.append(str(PROJECT_ROOT))
+        existing_py = env.get("PYTHONPATH")
+        if existing_py:
+            py_paths.append(existing_py)
+        env["PYTHONPATH"] = os.pathsep.join(py_paths)
         result = subprocess.run(
             cmd,
             cwd=str(phase_dir),
+            env=env,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -1467,27 +1622,31 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
         logger.warning(f"Could not configure Poetry (non-fatal): {e}")
     
     # Step 2: Ensure dependencies are installed (idempotent - fast if already installed)
-    logger.info(f"Verifying Phase 5 dependencies...")
-    try:
-        result = subprocess.run(
-            ["poetry", "install", "--no-root"],
-            cwd=str(phase_dir),
-            env=get_clean_env_for_poetry(),  # Use clean environment for Poetry
-            capture_output=True,
-            text=True,
-            timeout=300
-        )
-        if result.returncode != 0:
-            logger.error(f"Poetry install failed (exit {result.returncode})")
-            if result.stdout:
-                logger.error(f"STDOUT: {result.stdout}")
-            if result.stderr:
-                logger.error(f"STDERR: {result.stderr}")
+    venv_dir = phase_dir / ".venv"
+    if venv_dir.exists():
+        logger.info("Phase 5 venv detected; skipping Poetry dependency install.")
+    else:
+        logger.info("Verifying Phase 5 dependencies...")
+        try:
+            result = subprocess.run(
+                ["poetry", "install", "--no-root"],
+                cwd=str(phase_dir),
+                env=get_clean_env_for_poetry(),  # Use clean environment for Poetry
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            if result.returncode != 0:
+                logger.error(f"Poetry install failed (exit {result.returncode})")
+                if result.stdout:
+                    logger.error(f"STDOUT: {result.stdout}")
+                if result.stderr:
+                    logger.error(f"STDERR: {result.stderr}")
+                return False
+            logger.info("Dependencies verified/installed successfully")
+        except Exception as e:
+            logger.error(f"Poetry install error: {e}")
             return False
-        logger.info("Dependencies verified/installed successfully")
-    except Exception as e:
-        logger.error(f"Poetry install error: {e}")
-        return False
     
     config_path = phase_dir / "src" / "phase5_enhancement" / "config.yaml"
     
@@ -1582,9 +1741,10 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
         src_path = phase_dir / "src"
         if src_path.exists():
             existing_py_path = env.get("PYTHONPATH", "")
-            env["PYTHONPATH"] = (
-                f"{src_path}{os.pathsep}{existing_py_path}" if existing_py_path else str(src_path)
-            )
+            py_paths = [str(src_path), str(PROJECT_ROOT)]
+            if existing_py_path:
+                py_paths.append(existing_py_path)
+            env["PYTHONPATH"] = os.pathsep.join(py_paths)
             logger.info(f"Phase 5 PYTHONPATH override: {env['PYTHONPATH']}")
 
         result = subprocess.run(
@@ -2068,15 +2228,37 @@ def run_pipeline(
         pipeline_json = Path(pipeline_json).resolve()
 
     orchestrator_config = get_orchestrator_config()
-    if phases is None:
-        phases = orchestrator_config.phases_to_run
-
     if policy_engine is None:
         policy_config = orchestrator_config.policy_engine or {}
         policy_engine = PolicyEngine(
             logging_enabled=bool(policy_config.get("logging", False)),
             learning_mode=str(policy_config.get("learning_mode", "observe")),
         )
+
+    if policy_engine:
+        policy_engine.start_new_run()
+        runtime_overrides = policy_engine.prepare_run_overrides(file_id=file_id)
+    else:
+        runtime_overrides = {}
+    phase4_overrides = runtime_overrides.get("phase4") or {}
+    phase_retry_overrides = runtime_overrides.get("retry_policy") or {}
+    engine_override = phase4_overrides.get("engine")
+    if engine_override:
+        preferred_engine = engine_override.get("preferred")
+        if preferred_engine:
+            if preferred_engine != tts_engine:
+                logger.info("Policy override: forcing Phase 4 engine -> %s", preferred_engine)
+            tts_engine = preferred_engine
+    voice_override = phase4_overrides.get("voice")
+    if voice_override:
+        new_voice = voice_override.get("voice_id")
+        if new_voice:
+            if new_voice != voice_id:
+                logger.info("Policy override: forcing voice -> %s", new_voice)
+            voice_id = new_voice
+
+    if phases is None:
+        phases = orchestrator_config.phases_to_run
     pipeline_mode = orchestrator_config.pipeline_mode.lower()
 
     RUN_SUMMARY.update(
@@ -2141,17 +2323,27 @@ def run_pipeline(
         )
         _policy_call(policy_engine, "record_phase_start", start_ctx)
 
+        phase_retry_config = phase_retry_overrides.get(phase_label, {})
+        retry_budget = phase_retry_config.get("suggested_retries", max_retries)
+        try:
+            retry_budget = int(retry_budget)
+        except (TypeError, ValueError):
+            retry_budget = max_retries
+        if retry_budget != max_retries:
+            logger.info("Policy override: %s retry budget -> %s", phase_label, retry_budget)
+
         success = run_phase_with_retry(
             phase_num,
             file_path,
             file_id,
             pipeline_json,
             state=state,
-            max_retries=max_retries,
+            max_retries=retry_budget,
             voice_id=voice_id,
             pipeline_mode=pipeline_mode,
             tts_engine=tts_engine,
             policy_engine=policy_engine,
+            runtime_overrides=runtime_overrides,
         )
 
         if not success:
@@ -2169,6 +2361,11 @@ def run_pipeline(
             )
             _policy_call(policy_engine, "record_failure", failure_ctx)
             _log_policy_advice(policy_engine, failure_ctx, phase_label, file_id)
+            if policy_engine:
+                policy_engine.complete_run(
+                    success=False,
+                    metadata={"file_id": file_id, "failed_phase": phase_label},
+                )
             return {
                 "success": False,
                 "error": f"Pipeline failed at Phase {phase_num}",
@@ -2511,6 +2708,11 @@ Pipeline Mode: {pipeline_mode}
             "bold yellow",
         )
         summarize_results(pipeline_json)
+        if policy_engine:
+            policy_engine.complete_run(
+                success=False,
+                metadata={"file_id": file_id, "reason": "budget_exceeded"},
+            )
         return 1
 
     auto_subtitles = getattr(orchestrator_config, "auto_subtitles", False)
@@ -2608,6 +2810,9 @@ Next Steps:
     
     # Show results table
     summarize_results(pipeline_json)
+    
+    if policy_engine:
+        policy_engine.complete_run(success=True, metadata={"file_id": file_id, "phases": completed_phases})
     
     return 0
 

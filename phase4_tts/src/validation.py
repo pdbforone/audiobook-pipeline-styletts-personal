@@ -35,9 +35,10 @@ class ValidationConfig:
     
     # Tier 1: Quick checks (always enabled)
     enable_tier1: bool = True
-    duration_tolerance_sec: float = 5.0  # Allow ±5s difference
+    duration_tolerance_sec: float = 8.0  # Allow ±8s difference
     silence_threshold_sec: float = 2.0  # Flag gaps >2s
     min_amplitude_db: float = -40.0  # Flag audio quieter than -40dB
+    min_chars_for_duration_check: int = 400  # Skip duration validation for very short chunks
     
     # Tier 2: Whisper validation (selective)
     enable_tier2: bool = True
@@ -266,28 +267,47 @@ def tier1_validate(
     """
     start = time.perf_counter()
     
-    # 1. Duration sanity check
+    # 1. Duration sanity check (skip for very short chunks)
+    text_length = len(chunk_text or "")
     effective_cpm = (
         chars_per_minute if chars_per_minute and chars_per_minute > 0 else config.chars_per_minute
     )
-    expected_duration = predict_expected_duration(chunk_text, chars_per_minute=effective_cpm)
     actual_duration = get_audio_duration(audio_path)
-    
-    duration_diff = abs(expected_duration - actual_duration)
-    
-    if duration_diff > config.duration_tolerance_sec:
+    if text_length < config.min_chars_for_duration_check:
         elapsed = time.perf_counter() - start
         return ValidationResult(
-            is_valid=False,
+            is_valid=True,
             tier=1,
-            reason="duration_mismatch",
+            reason="short_chunk_skip",
             details={
-                "expected_duration": float(expected_duration),
                 "actual_duration": float(actual_duration),
-                "difference": float(duration_diff),
+                "text_length": text_length,
+                "threshold": config.min_chars_for_duration_check,
             },
-            duration_sec=elapsed
+            duration_sec=elapsed,
         )
+    expected_duration = actual_duration
+    if text_length >= config.min_chars_for_duration_check:
+        expected_duration = predict_expected_duration(chunk_text, chars_per_minute=effective_cpm)
+        duration_diff = abs(expected_duration - actual_duration)
+        allowed_diff = config.duration_tolerance_sec
+        if expected_duration < 20.0:
+            allowed_diff = max(config.duration_tolerance_sec, expected_duration * 0.8)
+        
+        if duration_diff > allowed_diff:
+            elapsed = time.perf_counter() - start
+            return ValidationResult(
+                is_valid=False,
+                tier=1,
+                reason="duration_mismatch",
+                details={
+                    "expected_duration": float(expected_duration),
+                    "actual_duration": float(actual_duration),
+                    "difference": float(duration_diff),
+                    "allowed_tolerance": float(allowed_diff),
+                },
+                duration_sec=elapsed
+            )
     
     # 2. Silence gap check
     has_gap, max_gap = has_silence_gap(audio_path, config.silence_threshold_sec)

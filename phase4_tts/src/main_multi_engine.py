@@ -107,6 +107,7 @@ except ImportError:  # Fallback for CLI execution (`python src/main_multi_engine
         ValidationConfig,
         tier1_validate,
         tier2_validate,
+        predict_expected_duration,
         should_run_tier2_validation,
     )
 

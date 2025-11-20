@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
@@ -12,9 +13,13 @@ except Exception:  # pragma: no cover - optional dependency
     psutil = None  # type: ignore
 
 from policy_engine.advisor import PolicyAdvisor
+from policy_engine.policy_engine import TuningOverridesStore
 
 if TYPE_CHECKING:  # pragma: no cover - imported only for type checking
     from pipeline_common.state_manager import PipelineState
+
+
+POLICY_ENGINE_VERSION = "3.0"
 
 
 class PolicyEngine:
@@ -26,6 +31,7 @@ class PolicyEngine:
         logging_enabled: bool = True,
         learning_mode: str = "observe",
         advisor: Optional[PolicyAdvisor] = None,
+        run_id: Optional[str] = None,
     ) -> None:
         self.logging_enabled = logging_enabled
         self.learning_mode = learning_mode
@@ -34,10 +40,25 @@ class PolicyEngine:
         self._current_day: Optional[str] = None
         self._handle: Optional[Any] = None
         self._advisor = advisor or PolicyAdvisor(log_root=self._log_root)
+        self._override_store = TuningOverridesStore()
+        self._active_overrides: Dict[str, Any] = {}
+        self._run_id = run_id or self._generate_run_id()
+        self._sequence = 0
 
     # ------------------------------------------------------------------ #
     # Public hooks
     # ------------------------------------------------------------------ #
+    @property
+    def run_id(self) -> str:
+        return self._run_id
+
+    def start_new_run(self, run_id: Optional[str] = None) -> None:
+        """Reset the per-run identifiers so downstream logs can separate executions."""
+        with self._lock:
+            self._run_id = run_id or self._generate_run_id()
+            self._sequence = 0
+            self._active_overrides = {}
+
     def record_phase_start(self, ctx: Dict[str, Any]) -> None:
         payload = dict(ctx)
         payload.setdefault("status", "starting")
@@ -69,6 +90,38 @@ class PolicyEngine:
         except Exception:  # pragma: no cover - defensive
             return {}
 
+    def prepare_run_overrides(self, *, file_id: Optional[str] = None) -> Dict[str, Any]:
+        """Load tuning overrides and cache the active set for this run."""
+        stats = self._advisor.snapshot()
+        self._active_overrides = self._override_store.build_run_overrides(stats)
+        if file_id:
+            self._active_overrides.setdefault("metadata", {})["file_id"] = file_id
+        return self._active_overrides
+
+    def get_active_overrides(self) -> Dict[str, Any]:
+        return self._active_overrides or {}
+
+    def complete_run(self, *, success: bool, metadata: Optional[Dict[str, Any]] = None) -> None:
+        stats = self._advisor.snapshot()
+        self._override_store.apply_self_driving(stats)
+        self._override_store.record_run_outcome(
+            run_id=self._run_id,
+            success=success,
+            overrides=self.get_active_overrides(),
+            metadata=metadata,
+        )
+        self._override_store.save_if_dirty()
+
+    def close(self) -> None:
+        with self._lock:
+            if self._handle:
+                try:
+                    self._handle.close()
+                except Exception:  # pragma: no cover - defensive
+                    pass
+                finally:
+                    self._handle = None
+
     # ------------------------------------------------------------------ #
     # Internal helpers
     # ------------------------------------------------------------------ #
@@ -79,6 +132,9 @@ class PolicyEngine:
         enriched = dict(payload)
         enriched.setdefault("timestamp", datetime.utcnow().isoformat(timespec="milliseconds") + "Z")
         enriched.setdefault("learning_mode", self.learning_mode)
+        enriched.setdefault("policy_version", POLICY_ENGINE_VERSION)
+        enriched.setdefault("run_id", self._run_id)
+        enriched.setdefault("sequence", self._next_sequence())
         stats = self._system_stats()
         enriched.setdefault("system_load", stats["system_load"])
         enriched.setdefault("cpu_percent", stats["cpu_percent"])
@@ -151,3 +207,18 @@ class PolicyEngine:
             return str(value)
         except Exception:
             return "unserializable"
+
+    @staticmethod
+    def _generate_run_id() -> str:
+        timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        return f"run-{timestamp}-{uuid.uuid4().hex[:8]}"
+
+    def _next_sequence(self) -> int:
+        self._sequence += 1
+        return self._sequence
+
+    def __del__(self) -> None:  # pragma: no cover - defensive
+        try:
+            self.close()
+        except Exception:
+            pass

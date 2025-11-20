@@ -1,0 +1,39 @@
+--- before
++++ after
+@@ -1,5 +1,36 @@
+ {
+   "chunk_size": {},
+   "engine_prefs": {},
++  "history": [],
++  "overrides": {
++    "phase3": {
++      "chunk_size": {
++        "delta_percent": -0.27,
++        "mode": "reduce_chunk_size",
++        "reason": "Self-driving adaptive tuning",
++        "source": "self_driving",
++        "updated_at": "2025-11-19T23:57:12Z"
++      }
++    }
++  },
++  "runtime_state": {
++    "last_run": {
++      "metadata": {
++        "file_id": "book_simple",
++        "phases": [
++          1,
++          2,
++          3,
++          4
++        ]
++      },
++      "overrides": {},
++      "run_id": "run-20251119-235603-e7ab7503",
++      "success": true,
++      "timestamp": "2025-11-19T23:57:12Z"
++    },
++    "voice_success_streak": 1
++  },
++  "version": 1,
+   "voice_stability": {}
+ }

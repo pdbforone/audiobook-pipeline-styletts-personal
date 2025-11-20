@@ -334,7 +334,7 @@ def main(
             bounded_nodes = calculate_section_boundaries(merged_nodes, len(text)) if merged_nodes else []
             if bounded_nodes:
                 structure_payload = [node.model_dump() for node in bounded_nodes]
-                structure_path = extracted_dir / f"{file_id}_structure.json"
+                structure_path = (extracted_dir / f"{file_id}_structure.json").resolve()
                 extracted_dir.mkdir(parents=True, exist_ok=True)
                 structure_path.write_text(
                     json.dumps(structure_payload, indent=2, ensure_ascii=False),
@@ -356,11 +356,11 @@ def main(
         logger.info("\nStage 6: Saving artifacts...")
         extracted_dir.mkdir(parents=True, exist_ok=True)
 
-        output_path = extracted_dir / f"{file_id}.txt"
+        output_path = (extracted_dir / f"{file_id}.txt").resolve()
         output_path.write_text(normalized_text, encoding="utf-8")
         logger.info(f"  ✓ Saved: {output_path}")
 
-        meta_path = extracted_dir / f"{file_id}_meta.json"
+        meta_path = (extracted_dir / f"{file_id}_meta.json").resolve()
         combined_metadata = {
             **extraction_metadata,
             **norm_metrics,

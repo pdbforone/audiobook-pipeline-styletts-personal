@@ -882,8 +882,15 @@ def extract_chunk_number_from_filename(filepath: str) -> int:
     return 0
 
 
+def _normalize_file_key(value: str | None) -> str | None:
+    if not value:
+        return None
+    return "".join(ch for ch in value.lower() if ch.isalnum())
+
+
 def get_audio_chunks_from_json(config: EnhancementConfig) -> list[AudioMetadata]:
     target_file = os.environ.get("PHASE5_FILE_ID") or config.audiobook_title
+    target_key = _normalize_file_key(target_file)
     chunks = []
     try:
         logger.info(f"Loading pipeline.json from: {config.pipeline_json}")
@@ -894,9 +901,10 @@ def get_audio_chunks_from_json(config: EnhancementConfig) -> list[AudioMetadata]
         logger.info(f"Phase 4 files in JSON: {list(phase4_files.keys())}")
         
         for file_id, data in phase4_files.items():
-            if target_file and file_id != target_file:
+            file_key = _normalize_file_key(file_id)
+            if target_key and file_key != target_key:
                 continue
-            chunk_audio_paths = data.get("chunk_audio_paths", [])
+            chunk_audio_paths = data.get("chunk_audio_paths") or data.get("artifacts", {}).get("chunk_audio_paths", [])
             
             logger.info(f"File ID '{file_id}': {len(chunk_audio_paths)} audio paths")
             

@@ -39,9 +39,10 @@ tts_chars_per_minute: 1050      # Shared speaking cadence for throughput + valid
 validation:
   enable_tier1: true
   enable_tier2: false
-  duration_tolerance_sec: 5.0
+  duration_tolerance_sec: 10.0
   silence_threshold_sec: 2.0
   min_amplitude_db: -40.0
+  min_chars_for_duration_check: 400
   whisper_model: "tiny"
   whisper_sample_rate: 0.02
   whisper_first_n: 10

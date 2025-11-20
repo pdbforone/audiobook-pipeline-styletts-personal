@@ -1,0 +1,39 @@
+--- before
++++ after
+@@ -5,18 +5,18 @@
+   "overrides": {
+     "phase3": {
+       "chunk_size": {
+-        "delta_percent": -0.51,
++        "delta_percent": -0.72,
+         "mode": "reduce_chunk_size",
+         "reason": "Self-driving adaptive tuning",
+         "source": "self_driving",
+-        "updated_at": "2025-11-19T23:58:44Z"
++        "updated_at": "2025-11-19T23:59:34Z"
+       }
+     }
+   },
+   "runtime_state": {
+     "last_run": {
+       "metadata": {
+-        "file_id": "book_medium",
++        "file_id": "book_complex",
+         "phases": [
+           1,
+           2,
+@@ -25,11 +25,11 @@
+         ]
+       },
+       "overrides": {},
+-      "run_id": "run-20251119-235713-bac0b007",
++      "run_id": "run-20251119-235846-ba5e2cca",
+       "success": true,
+-      "timestamp": "2025-11-19T23:58:44Z"
++      "timestamp": "2025-11-19T23:59:34Z"
+     },
+-    "voice_success_streak": 2
++    "voice_success_streak": 3
+   },
+   "version": 1,
+   "voice_stability": {}

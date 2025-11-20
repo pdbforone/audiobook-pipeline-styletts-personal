@@ -1,0 +1,3 @@
+In a world where computational acoustics intersect with story structure, adaptive TTS orchestration modulates timbre, cadence, and semantics while respecting latency budgets.
+
+Advisor heuristics should detect this analytical tone and keep overrides steady while we probe the self-tuning controller.
