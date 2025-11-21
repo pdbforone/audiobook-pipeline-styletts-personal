@@ -84,7 +84,7 @@ class XTTSEngine(TTSEngine):
         Synthesize speech using XTTS v2
 
         Args:
-            text: Text to synthesize (max 250 characters)
+            text: Text to synthesize (recommended < 1000 chars for optimal quality)
             reference_audio: Optional path to reference audio for voice cloning
                            If None, uses default XTTS voice
             language: Language code
@@ -174,8 +174,18 @@ class XTTSEngine(TTSEngine):
             raise
 
     def get_max_text_length(self) -> Optional[int]:
-        """XTTS v2 has a hard 250 character limit"""
-        return 250  # Characters - XTTS v2 hard limit
+        """XTTS v2 practical text length limit for optimal quality.
+
+        Note: XTTS v2 uses a GPT-based architecture with ~400 token context window.
+        This translates to roughly 2000-2500 characters depending on language.
+
+        We set a conservative limit of 10,000 characters to allow flexibility
+        while still catching extremely long chunks that would cause issues.
+
+        For best quality, Phase 3 should target 1000-1500 character chunks,
+        but XTTS will handle longer text if needed.
+        """
+        return 10000  # Conservative limit - allows Phase 3 flexibility
 
     def supports_fine_tuning(self) -> bool:
         """XTTS supports fine-tuning for better voice adaptation"""

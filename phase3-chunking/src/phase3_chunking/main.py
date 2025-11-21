@@ -249,7 +249,21 @@ def persist_phase3_result(
     with state.transaction(
         operation="phase3_commit", seed_data=pipeline_data if pipeline_data else None
     ) as txn:
-        entry_payload = record.model_dump()
+        # Safe model serialization to handle Pydantic v1/v2 differences or unexpected errors.
+        try:
+            entry_payload = record.model_dump()
+        except Exception:
+            try:
+                entry_payload = record.dict() if hasattr(record, "dict") else {}
+            except Exception:
+                # Best-effort minimal payload so we still write a pipeline entry.
+                entry_payload = {
+                    "text_path": getattr(record, "text_path", None),
+                    "chunk_paths": list(getattr(record, "chunk_paths", []) or []),
+                    "status": getattr(record, "status", "failed"),
+                    "timestamps": getattr(record, "timestamps", {}),
+                    "errors": list(getattr(record, "errors", []) or []),
+                }
         chunk_metrics = dict(record.chunk_metrics or {})
         avg_coherence = (
             sum(record.coherence_scores) / len(record.coherence_scores)
@@ -295,7 +309,7 @@ def persist_phase3_result(
                 "chunk_metadata": record.chunk_metadata or [],
             }
         )
-        txn.update_phase(
+        envelope = txn.update_phase(
             file_id,
             "phase3",
             record.status or "pending",
@@ -306,6 +320,17 @@ def persist_phase3_result(
             chunks=record.chunk_metadata or [],
             extra_fields=extra_fields,
         )
+
+        # Ensure the phase3.files mapping contains an entry for this file_id even
+        # if serialization partially failed earlier. This avoids missing pipeline
+        # entries that cause downstream phases to abort.
+        phase_block = ensure_phase_block(txn.data, "phase3")
+        phase_block.setdefault("files", {})
+        try:
+            phase_block["files"][file_id] = envelope
+        except Exception:
+            # As a last resort, write the safe entry_payload we constructed above.
+            phase_block["files"][file_id] = dict(entry_payload or {})
 
         phase_block = ensure_phase_block(txn.data, "phase3")
         if fallback_used:

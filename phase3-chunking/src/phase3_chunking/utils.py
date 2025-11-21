@@ -25,11 +25,12 @@ _nlp_cache: Dict[str, Any] = {}
 _model = None
 _model_name: Optional[str] = None
 
-# ✅ FLEXIBLE LIMITS: Three-tier structure tuned for 12–18s CPU chunks
-SOFT_LIMIT_CHARS = 780   # Preferred chunk size (~17s on Ryzen 5 CPU XTTS cadence)
-HARD_LIMIT_CHARS = 950   # Allow modest extension (~21s) to complete sentences
-EMERGENCY_LIMIT_CHARS = 1250  # Absolute max (~28s) to avoid corrupting arguments
-MIN_CHUNK_CHARS = 420    # Minimum viable chunk size (~9s) to keep pacing natural
+# ✅ PHASE-3 SHORT CHUNKS: enforce short, sentence-aligned chunks for XTTS
+# Target short chunks to avoid XTTS failures on philosophical PDFs
+SOFT_LIMIT_CHARS = 250   # Preferred maximum characters per chunk
+HARD_LIMIT_CHARS = 300   # Allow tiny extension to complete sentence
+EMERGENCY_LIMIT_CHARS = 400  # Absolute max to avoid runaway chunks
+MIN_CHUNK_CHARS = 50     # Minimal sensible chunk; under this we may merge
 
 # Duration prediction constants (calibrated for XTTS/Kokoro CPU delivery)
 # Assumes ~2700 chars/min (~45 chars/sec) and ~210 words/min on this hardware.
@@ -130,13 +131,70 @@ def clean_text(text: str) -> str:
         return ""
 
     text = ftfy.fix_text(text)
+    # Normalize common unicode punctuation and ligatures to ASCII-friendly forms
+    # Map curly quotes, dashes, ellipses, common ligatures
+    replacements = {
+        '\u2018': "'",  # left single quote
+        '\u2019': "'",  # right single quote
+        '\u201c': '"',  # left double quote
+        '\u201d': '"',  # right double quote
+        '\u2013': '-',  # en dash
+        '\u2014': '-',  # em dash
+        '\u2026': '...',  # ellipsis
+        '\ufb01': 'fi',  # ﬁ
+        '\ufb02': 'fl',  # ﬂ
+        '\u2032': "'",
+        '\u2033': '"',
+        '\u00b7': '.',
+        '\u2010': '-',
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+
+    # Remove most non-printable control characters and normalize whitespace
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]', '', text)
 
+    # Strip any remaining non-ASCII punctuation while preserving letters where possible.
+    # We keep ASCII range and remove other punctuation-like symbols.
+    def _strip_nonascii_punct(s: str) -> str:
+        out_chars = []
+        import unicodedata
+        for ch in s:
+            # Keep ASCII characters as-is
+            if ord(ch) < 128:
+                out_chars.append(ch)
+                continue
+            cat = unicodedata.category(ch)
+            # If it's a letter or number, try to decompose accents; else drop
+            if cat.startswith('L') or cat.startswith('N'):
+                decomposed = unicodedata.normalize('NFKD', ch)
+                encoded = decomposed.encode('ascii', 'ignore').decode('ascii')
+                if encoded:
+                    out_chars.append(encoded)
+                else:
+                    # As a fallback, keep the original if no ascii equivalent
+                    out_chars.append(ch)
+            else:
+                # Drop punctuation/symbols outside ASCII
+                continue
+        return ''.join(out_chars)
+
+    text = _strip_nonascii_punct(text)
+
     elapsed = time.perf_counter() - start
     logger.info(f"Cleaning time: {elapsed:.4f}s")
     return text.strip()
+
+
+def split_sentences_strict(text: str, model_preference: str = 'lg') -> List[str]:
+    """Return sentence list using existing sentence detector, guaranteed to split at sentence boundaries."""
+    sentences = detect_sentences(text, model_preference=model_preference)
+    # As a fallback, break on punctuation groups
+    if not sentences:
+        sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+    return sentences
 
 
 def detect_sentences(
@@ -976,6 +1034,57 @@ def form_semantic_chunks(
         emergency_limit_chars=emergency_limit,
     )
 
+    # FINAL CLEANUP: ensure each chunk is cleaned and strictly <= SOFT_LIMIT_CHARS
+    def enforce_strict_max_chars(chunks_in: List[str], max_chars: int) -> List[str]:
+        out: List[str] = []
+        for ch in chunks_in:
+            ch = clean_text(ch)
+            if len(ch) <= max_chars:
+                out.append(ch)
+                continue
+
+            # Split at sentence boundaries first
+            sents = split_sentences_strict(ch)
+            current: List[str] = []
+            curr_len = 0
+            for s in sents:
+                s = s.strip()
+                if not s:
+                    continue
+                if len(s) > max_chars:
+                    # Sentence itself is too long; fall back to word-split
+                    words = s.split()
+                    buf = []
+                    blen = 0
+                    for w in words:
+                        if blen + len(w) + (1 if buf else 0) > max_chars:
+                            if buf:
+                                out.append(' '.join(buf).strip())
+                            buf = [w]
+                            blen = len(w)
+                        else:
+                            buf.append(w)
+                            blen += len(w) + (1 if buf else 0)
+                    if buf:
+                        out.append(' '.join(buf).strip())
+                    continue
+
+                if curr_len + len(s) + (1 if current else 0) <= max_chars:
+                    current.append(s)
+                    curr_len = len(' '.join(current))
+                else:
+                    if current:
+                        out.append(' '.join(current).strip())
+                    current = [s]
+                    curr_len = len(s)
+
+            if current:
+                out.append(' '.join(current).strip())
+
+        return [o for o in out if o]
+
+    valid_chunks = enforce_strict_max_chars(valid_chunks, SOFT_LIMIT_CHARS)
+
     # Calculate metrics
     char_lengths = [len(c) for c in valid_chunks]
     durations = [predict_duration(c) for c in valid_chunks]
@@ -1075,10 +1184,23 @@ def save_chunks(text_path: str, chunks: List[str], output_dir: str) -> List[str]
     chunk_paths = []
 
     for i, chunk in enumerate(chunks):
-        chunk_path_abs = output_dir_abs / f"{base_name}_chunk_{i+1:03d}.txt"
+        # Support preserving original chunk ids: if chunk is (id, text)
+        orig_id = None
+        chunk_text = chunk
+        if isinstance(chunk, (list, tuple)) and len(chunk) == 2:
+            orig_id, chunk_text = chunk
+
+        if orig_id:
+            # sanitize orig_id to safe filename
+            safe_id = re.sub(r"[^A-Za-z0-9._-]", "_", str(orig_id))
+            filename = f"{base_name}_chunk_{safe_id}.txt"
+        else:
+            filename = f"{base_name}_chunk_{i+1:03d}.txt"
+
+        chunk_path_abs = output_dir_abs / filename
         try:
             with open(chunk_path_abs, "w", encoding="utf-8") as f:
-                f.write(chunk)
+                f.write(chunk_text)
             chunk_paths.append(str(chunk_path_abs))
             logger.debug(f"Saved chunk {i+1} to: {chunk_path_abs}")
         except Exception as e:

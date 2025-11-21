@@ -142,6 +142,16 @@ def _merge_structure_nodes(text: str, node_groups: List[List[StructureNode]]) ->
     return merged_nodes
 
 
+def _safe_model_dump(node):
+    """Compatibility wrapper for Pydantic v1/v2."""
+    if hasattr(node, "model_dump"):  # Pydantic v2
+        return node.model_dump()
+    elif hasattr(node, "dict"):  # Pydantic v1
+        return node.dict()
+    else:
+        raise TypeError(f"Cannot serialize StructureNode: {type(node)}")
+
+
 def extract_text(
     file_path: Path,
     detected_format: str,
@@ -333,7 +343,7 @@ def main(
             merged_nodes = _merge_structure_nodes(text, [toc_nodes, font_nodes, heuristic_nodes])
             bounded_nodes = calculate_section_boundaries(merged_nodes, len(text)) if merged_nodes else []
             if bounded_nodes:
-                structure_payload = [node.model_dump() for node in bounded_nodes]
+                structure_payload = [_safe_model_dump(node) for node in bounded_nodes]
                 structure_path = (extracted_dir / f"{file_id}_structure.json").resolve()
                 extracted_dir.mkdir(parents=True, exist_ok=True)
                 structure_path.write_text(

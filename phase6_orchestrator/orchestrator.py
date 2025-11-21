@@ -1440,16 +1440,41 @@ def run_phase4_multi_engine(
         return cmd
 
     def collect_failed_chunks() -> List[str]:
+        """Check Phase 4 completion by examining chunk_audio_paths, not individual chunk keys.
+
+        Phase 4 writes a file-level entry with chunk_audio_paths[] containing successful outputs.
+        It does NOT write individual chunk_0001, chunk_0002 keys to pipeline.json.
+
+        Returns:
+            List of chunk IDs that failed (empty if all succeeded or if phase4 entry is missing)
+        """
         try:
             state = PipelineState(pipeline_json, validate_on_read=False)
             data = state.read()
             _, entry = _find_phase_file_entry(data, "phase4", file_id)
             if not entry:
                 return []
-            return [
-                key for key, value in entry.items()
-                if isinstance(value, dict) and value.get("status") == "failed"
-            ]
+
+            # Check the actual contract: chunk_audio_paths should contain all successful chunks
+            chunk_audio_paths = entry.get("chunk_audio_paths") or []
+            expected_chunks = entry.get("chunks_processed", 0) or entry.get("metrics", {}).get("chunks_total", 0)
+
+            # If we have chunk_audio_paths, verify they all exist
+            if chunk_audio_paths:
+                missing = []
+                for path in chunk_audio_paths:
+                    if not Path(path).exists():
+                        # Extract chunk ID from path (e.g., chunk_0001.wav -> chunk_0001)
+                        chunk_id = Path(path).stem
+                        missing.append(chunk_id)
+                return missing
+
+            # If chunk_audio_paths is empty but chunks were processed, all failed
+            if expected_chunks > 0:
+                # Generate chunk IDs for failed chunks
+                return [f"chunk_{i:04d}" for i in range(1, expected_chunks + 1)]
+
+            return []
         except Exception as exc:
             logger.warning("Unable to inspect pipeline.json for failed chunks: %s", exc)
             return []
@@ -1468,7 +1493,7 @@ def run_phase4_multi_engine(
         env["PYTHONPATH"] = os.pathsep.join(py_paths)
         result = subprocess.run(
             cmd,
-            cwd=str(phase_dir),
+            cwd=str(Path(phase_dir).resolve()),
             env=env,
             capture_output=True,
             text=True,

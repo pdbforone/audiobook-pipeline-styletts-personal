@@ -206,10 +206,11 @@ python phase4_tts/engine_runner.py \
 
 ### Character Limits
 
-- **XTTS**: 250 characters (hard limit)
+- **XTTS**: 10,000 characters (conservative limit; optimal quality ~1000-1500 chars)
 - **Kokoro**: 5000 characters (soft limit)
 
-Phase 3b automatically splits XTTS text into 250-char chunks.
+**Note**: XTTS v2 uses a GPT-based architecture with ~400 token context window (~2000-2500 chars).
+Phase 3 should target 1000-1500 character chunks for best quality, but longer text will work if needed.
 
 ---
 

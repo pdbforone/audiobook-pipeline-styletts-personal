@@ -40,36 +40,66 @@ DEFAULT_CHARS_PER_MINUTE = 1050  # Shared speaking cadence assumption
 from pipeline_common import PipelineState, ensure_phase_and_file, ensure_phase_block
 from pipeline_common.state_manager import StateTransaction
 from pipeline_common.astromech_notify import play_success_beep, play_alert_beep
-from io_helpers import ensure_absolute_path, validate_audio_file
-
-if not hasattr(StateTransaction, "update_phase"):
-
-    def _phase4_update_phase(  # type: ignore[override]
-        self,
-        file_id: str,
-        phase_name: str,
-        status: str,
-        timestamps: Optional[Dict[str, Any]] = None,
-        artifacts: Optional[Dict[str, Any]] = None,
-        metrics: Optional[Dict[str, Any]] = None,
-        errors: Optional[List[Any]] = None,
-        *,
-        chunks: Optional[List[Dict[str, Any]]] = None,
-        extra_fields: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        phase_block, file_entry = ensure_phase_and_file(self.data, phase_name, file_id)
-        envelope = file_entry
-        envelope["status"] = status
-        envelope["timestamps"] = dict(timestamps or {})
-        envelope["artifacts"] = dict(artifacts or {})
-        envelope["metrics"] = dict(metrics or {})
-        envelope["errors"] = list(errors or [])
-        envelope["chunks"] = list(chunks or [])
-        if extra_fields:
-            envelope.update(extra_fields)
-        return envelope
-
-    setattr(StateTransaction, "update_phase", _phase4_update_phase)
+from io_helpers import ensure_absolute_path, validate_audio_file
+
+
+
+if not hasattr(StateTransaction, "update_phase"):
+
+
+
+    def _phase4_update_phase(  # type: ignore[override]
+
+        self,
+
+        file_id: str,
+
+        phase_name: str,
+
+        status: str,
+
+        timestamps: Optional[Dict[str, Any]] = None,
+
+        artifacts: Optional[Dict[str, Any]] = None,
+
+        metrics: Optional[Dict[str, Any]] = None,
+
+        errors: Optional[List[Any]] = None,
+
+        *,
+
+        chunks: Optional[List[Dict[str, Any]]] = None,
+
+        extra_fields: Optional[Dict[str, Any]] = None,
+
+    ) -> Dict[str, Any]:
+
+        phase_block, file_entry = ensure_phase_and_file(self.data, phase_name, file_id)
+
+        envelope = file_entry
+
+        envelope["status"] = status
+
+        envelope["timestamps"] = dict(timestamps or {})
+
+        envelope["artifacts"] = dict(artifacts or {})
+
+        envelope["metrics"] = dict(metrics or {})
+
+        envelope["errors"] = list(errors or [])
+
+        envelope["chunks"] = list(chunks or [])
+
+        if extra_fields:
+
+            envelope.update(extra_fields)
+
+        return envelope
+
+
+
+    setattr(StateTransaction, "update_phase", _phase4_update_phase)
+
 
 
 
@@ -976,12 +1006,22 @@ def update_phase4_summary(
     end_ts = time.time()
     start_ts = end_ts - duration_sec if duration_sec else None
     with state.transaction(operation="phase4_summary") as txn:
-        status = "success" if failed == 0 else "partial"
+        # If there were chunks to synthesize but none succeeded, mark the file as
+        # failed so downstream phases don't treat it as a successful run with
+        # zero artifacts. Otherwise use success/partial semantics.
+        if total > 0 and completed == 0:
+            status = "failed"
+        elif failed == 0:
+            status = "success"
+        else:
+            status = "partial"
         timestamps = {
             "start": start_ts,
             "end": end_ts,
             "duration": duration_sec,
         }
+        # Always include `chunk_audio_paths` (possibly empty) so downstream
+        # phases can rely on the key existing in the pipeline envelope.
         artifacts = {
             "audio_dir": serialize_path_for_pipeline(output_dir),
             "chunk_audio_paths": [
@@ -1026,8 +1066,17 @@ def update_phase4_summary(
             extra_fields=extra_fields,
         )
 
+        file_entry.setdefault("chunk_audio_paths", 
+            file_entry.get("artifacts", {}).get("chunk_audio_paths", []))
+
+        # Ensure the phase block records this file entry (robust against
+        # partial serializations or other anomalies).
         phase_block = ensure_phase_block(txn.data, "phase4")
         files_section = phase_block.setdefault("files", {})
+        try:
+            files_section[file_id] = file_entry
+        except Exception:
+            files_section[file_id] = dict(file_entry or {})
         phase_block.setdefault("chunks", [])
         all_files = files_section.values()
         block_success = all(entry.get("status") == "success" for entry in all_files)
