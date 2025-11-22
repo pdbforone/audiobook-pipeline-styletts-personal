@@ -1455,24 +1455,51 @@ def run_phase4_multi_engine(
             if not entry:
                 return []
 
-            # Check the actual contract: chunk_audio_paths should contain all successful chunks
-            chunk_audio_paths = entry.get("chunk_audio_paths") or []
-            expected_chunks = entry.get("chunks_processed", 0) or entry.get("metrics", {}).get("chunks_total", 0)
+            # Check the actual contract: Phase 4 should record a file-level
+            # `chunk_audio_paths` array listing successful outputs. For older
+            # or mixed-format pipeline.json files this key may be absent; in
+            # that case persist a one-line fallback for compatibility so
+            # downstream logic can rely on the canonical key.
+            chunk_audio_paths = entry.get("chunk_audio_paths")
+            if chunk_audio_paths is None:
+                try:
+                    # Persist an explicit empty list to ease backward-compatibility
+                    state = PipelineState(pipeline_json, validate_on_read=False)
+                    with state.transaction() as txn:
+                        phase4 = txn.data.get("phase4", {}) or {}
+                        files = phase4.get("files", {}) or {}
+                        files.setdefault(file_id, {})
+                        files[file_id].setdefault("chunk_audio_paths", [])
+                        phase4["files"] = files
+                        txn.data["phase4"] = phase4
+                    chunk_audio_paths = []
+                except Exception:
+                    chunk_audio_paths = []
 
-            # If we have chunk_audio_paths, verify they all exist
+            # Decide expected total from any available hints
+            expected_chunks = (
+                entry.get("total_chunks")
+                or entry.get("chunks_processed")
+                or entry.get("metrics", {}).get("total_chunks", 0)
+            ) or 0
+
+            # If we have chunk_audio_paths, verify they all exist (resolve relative paths)
             if chunk_audio_paths:
                 missing = []
+                output_dir = get_phase4_output_dir(phase_dir, pipeline_json, file_id)
                 for path in chunk_audio_paths:
-                    if not Path(path).exists():
-                        # Extract chunk ID from path (e.g., chunk_0001.wav -> chunk_0001)
+                    p = Path(path)
+                    if not p.is_absolute():
+                        p = (output_dir / p).resolve()
+                    if not p.exists() or p.stat().st_size == 0:
                         chunk_id = Path(path).stem
                         missing.append(chunk_id)
+                # Return list of missing chunk ids (empty list => none missing)
                 return missing
 
-            # If chunk_audio_paths is empty but chunks were processed, all failed
+            # If chunk_audio_paths is empty but we expect some chunks, consider all failed
             if expected_chunks > 0:
-                # Generate chunk IDs for failed chunks
-                return [f"chunk_{i:04d}" for i in range(1, expected_chunks + 1)]
+                return [f"chunk_{i:04d}" for i in range(1, int(expected_chunks) + 1)]
 
             return []
         except Exception as exc:
@@ -1535,9 +1562,26 @@ def run_phase4_multi_engine(
         # Re-read failures after fallback attempts
         failed_chunks = collect_failed_chunks()
 
-    success = result.returncode == 0 and not failed_chunks
-    if not success and cfg.per_chunk_fallback and secondary_engine and not failed_chunks:
-        success = True
+        # Determine expected total and available successes
+        try:
+            state = PipelineState(pipeline_json, validate_on_read=False)
+            data = state.read()
+            _, entry = _find_phase_file_entry(data, "phase4", file_id)
+            chunk_audio_paths = (entry or {}).get("chunk_audio_paths") or []
+            expected_total = (entry or {}).get("total_chunks") or (entry or {}).get("chunks_processed") or (entry or {}).get("metrics", {}).get("total_chunks") or 0
+        except Exception:
+            chunk_audio_paths = []
+            expected_total = 0
+
+        # Success criteria:
+        # - At least one chunk_audio_paths entry exists, and
+        # - If an expected_total is recorded, the number of paths >= expected_total, and
+        # - No missing chunks reported by collect_failed_chunks()
+        success = bool(chunk_audio_paths) and (int(expected_total) == 0 or len(chunk_audio_paths) >= int(expected_total)) and not failed_chunks
+
+        # Respect a clean zero-exit status as success even if pipeline.json lacked totals
+        if result.returncode == 0 and not failed_chunks:
+            success = True
     if success:
         logger.info("Phase 4 SUCCESS with %s", engine)
         record_phase4_metadata(file_id, pipeline_json, chunk_hash)

@@ -11,6 +11,7 @@ import sys
 import json
 import time
 from pathlib import Path
+import datetime
 import numpy as np
 import librosa
 import soundfile as sf
@@ -51,6 +52,12 @@ if str(REPO_ROOT) not in sys.path:
 
 from pipeline_common import PipelineState, ensure_phase_and_file, ensure_phase_block
 from pipeline_common.astromech_notify import play_success_beep, play_alert_beep
+try:
+    # Preferred name if available in astromech_notify
+    from pipeline_common.astromech_notify import play_success_sound
+except Exception:
+    # Fallback to the existing play_success_beep if the preferred name isn't present
+    play_success_sound = play_success_beep
 
 # Simple serializer placeholder (matching Phase 4 usage)
 def serialize_path_for_pipeline(path: Path) -> str:
@@ -1001,12 +1008,134 @@ def update_pipeline_json(config: EnhancementConfig, file_id: str, phase5_data: d
 
 
 def run_ffmpeg(cmd: list[str], desc: str) -> None:
-    """Run an ffmpeg command and raise on failure."""
+    """Run an ffmpeg command and raise on failure.
+
+    On failure, capture stdout/stderr, write a timestamped failure log under
+    `phase5_enhancement/logs/` and include command/exit-code/stderr-preview in
+    the raised RuntimeError. This improves diagnostics while preserving the
+    original failure semantics.
+    """
+    # Run ffmpeg and capture output
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode != 0:
-        logger.error("FFmpeg %s failed (exit %s)", desc, result.returncode)
-        logger.error("stderr (tail): %s", result.stderr[-500:])
-        raise RuntimeError(f"FFmpeg {desc} failed")
+        # Prepare diagnostics and ensure a log is written no matter what.
+        try:
+            # Prefer repository-root logs for discoverability. Fall back to a
+            # path resolved from the module if REPO_ROOT is unavailable.
+            if 'REPO_ROOT' in globals():
+                pkg_root = REPO_ROOT
+            else:
+                pkg_root = Path(__file__).resolve().parents[2]
+        except Exception:
+            pkg_root = Path.cwd()
+
+        # Use a phase-specific logs directory under the repo root
+        primary_logs_dir = pkg_root / "phase5_enhancement" / "logs"
+        fallback_dirs = [Path(tempfile.gettempdir()), Path.cwd()]
+
+        # Try to create the primary logs directory. If that fails,
+        # we'll try fallback locations.
+        try:
+            primary_logs_dir.mkdir(parents=True, exist_ok=True)
+            logs_dir = primary_logs_dir
+        except Exception:
+            logs_dir = None
+
+        timestamp = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        pid = os.getpid()
+        safe_desc = desc.replace(" ", "_").replace('/', '_')
+        log_name = f"ffmpeg_failure_{safe_desc}_{timestamp}_{pid}.log"
+
+        stderr_text = result.stderr or ""
+        stdout_text = result.stdout or ""
+
+        # Create previews
+        stderr_lines = stderr_text.splitlines()
+        stderr_preview = "\n".join(stderr_lines[:200])
+        stdout_preview = "\n".join(stdout_text.splitlines()[:50])
+
+        # Attempt to write diagnostics to the primary logs dir, otherwise
+        # fall back to system temp or CWD.
+        log_path = None
+        log_path = None
+        write_contents = (
+            f"FFmpeg command: {' '.join(cmd)}\n"
+            f"Exit code: {result.returncode}\n"
+            "\n--- STDOUT (preview) ---\n"
+            f"{stdout_preview}\n"
+            "\n--- STDERR (preview) ---\n"
+            f"{stderr_preview}\n"
+        )
+
+        try_locations = []
+        # Preference order for writing diagnostics:
+        # 1) primary phase5 logs dir
+        # 2) previously-determined logs_dir (if any)
+        # 3) system temp and CWD
+        if primary_logs_dir is not None:
+            try_locations.append(primary_logs_dir)
+        if logs_dir is not None and logs_dir not in try_locations:
+            try_locations.append(logs_dir)
+        try_locations.extend(fallback_dirs)
+
+        for base in try_locations:
+            try:
+                base.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                # mkdir may fail for fallback dirs on rare systems; ignore
+                pass
+            candidate = base / log_name
+            try:
+                with open(candidate, "w", encoding="utf-8") as fh:
+                    fh.write(write_contents)
+                    # If stderr was long, append a truncation note
+                    if len(stderr_lines) > 200:
+                        fh.write(
+                            f"\n... (stderr truncated, total lines={len(stderr_lines)})\n"
+                        )
+                log_path = candidate
+                break
+            except Exception:
+                continue
+
+        # If we couldn't write any file, create a minimal fallback file in temp
+        # and include a stderr snippet in the raised RuntimeError.
+        if log_path is None:
+            # As a last resort, attempt to write a minimal file in tempfile
+            try:
+                candidate = Path(tempfile.gettempdir()) / log_name
+                with open(candidate, "w", encoding="utf-8") as fh:
+                    fh.write(write_contents)
+                log_path = candidate
+            except Exception:
+                # Nothing more we can do; raise with stderr preview inline
+                raise RuntimeError(
+                    f"FFmpeg {desc} failed (exit {result.returncode}). "
+                    f"Could not write diagnostics log (attempted locations). "
+                    f"stderr preview:\n{stderr_preview[:3000]}"
+                )
+
+        # At this point, diagnostics have been written to `log_path`.
+        # Log a short summary for console visibility.
+        try:
+            logger.error(
+                "FFmpeg %s failed (exit %s). Diagnostics written to: %s",
+                desc,
+                result.returncode,
+                str(log_path),
+            )
+            logger.error("FFmpeg stderr (preview): %s", stderr_preview[:3000])
+        except Exception:
+            # Logging must not prevent raising the runtime error
+            pass
+
+        # Finally raise with contextual info including the diagnostics path
+        # and a stderr preview
+        raise RuntimeError(
+            f"FFmpeg {desc} failed (exit {result.returncode}). "
+            f"See ffmpeg diagnostics: {str(log_path)} \n"
+            f"stderr preview:\n{stderr_preview[:3000]}"
+        )
 
 
 def main(argv: Optional[list[str]] = None):
@@ -1597,15 +1726,23 @@ def main(argv: Optional[list[str]] = None):
 
     except ValidationError as e:
         logger.error(f"Configuration validation failed: {e}")
-        if args.play_notification:
-            play_alert_beep()
+        play_notification = getattr(args, "play_notification", False)
+        if play_notification:
+            try:
+                play_success_sound()
+            except Exception as exc:
+                logger.warning("play_success_sound failed during error handling: %s", exc)
         return 1
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         import traceback
         traceback.print_exc()
-        if args.play_notification:
-            play_alert_beep()
+        play_notification = getattr(args, "play_notification", False)
+        if play_notification:
+            try:
+                play_success_sound()
+            except Exception as exc:
+                logger.warning("play_success_sound failed during error handling: %s", exc)
         return 1
 
 
