@@ -1,0 +1,270 @@
+# Engine Registry - Canonical Source of TTS Engine Capabilities
+#
+# This file defines the capabilities, limits, and performance characteristics
+# of each TTS engine. The EngineManager loads this at startup to make
+# intelligent decisions about chunk routing, fallback, and resource allocation.
+#
+# All limits are CONSERVATIVE - engines may handle more, but these ensure
+# reliable, high-quality output across all text types.
+
+version: "1.0"
+updated: "2025-11-22"
+
+# Default values applied to all engines unless overridden
+defaults:
+  sample_rate: 24000
+  output_format: "wav"
+  mono: true
+  dtype: "float32"
+
+engines:
+  xtts:
+    # Coqui XTTS v2 - Primary expressive engine
+    class: "phase4_tts.engines.xtts_engine.XTTSEngine"
+    display_name: "XTTS v2 (Expressive)"
+
+    # Capability flags
+    cpu_friendly: true
+    gpu_accelerated: true  # Can use GPU if available
+    supports_cloning: true
+    supports_emotions: true  # Via reference audio tone
+    supports_streaming: false
+
+    # Language support
+    languages:
+      - en
+      - es
+      - fr
+      - de
+      - it
+      - pt
+      - pl
+      - tr
+      - ru
+      - nl
+      - cs
+      - ar
+      - zh-cn
+      - ja
+      - hu
+      - ko
+
+    # Text limits
+    # XTTS uses GPT-based architecture with ~400 token context
+    # At ~4 chars/token for English, this is ~1600 chars optimal
+    limits:
+      max_tokens: 400           # Model's actual token limit
+      chars_per_token: 4.0      # Average for English
+      max_chars: 1400           # Conservative: tokens * chars_per_token * 0.875
+      soft_max_chars: 1000      # Optimal quality threshold
+      min_chars: 50             # Below this, quality degrades
+      emergency_max: 2000       # Absolute max before forced split
+
+    # Performance characteristics (CPU, Ryzen 5 5500U baseline)
+    performance:
+      typical_rtf_cpu: 3.2      # Wall time / audio duration
+      typical_rtf_gpu: 0.4      # With CUDA
+      memory_mb: 4000           # RAM usage when loaded
+      load_time_sec: 15         # Time to load model
+      warmup_chunks: 2          # Chunks before stable performance
+
+    # Quality characteristics
+    quality:
+      mos_estimate: 4.5         # Mean Opinion Score (1-5)
+      prosody: "excellent"      # Natural rhythm and intonation
+      consistency: "good"       # Voice stability across chunks
+      failure_modes:
+        - "truncation on long sentences"
+        - "occasional word repetition"
+        - "silence insertion at boundaries"
+
+    # Reference audio requirements
+    reference_audio:
+      min_duration_sec: 6
+      max_duration_sec: 30
+      optimal_duration_sec: 15
+      sample_rate: 24000
+      formats: ["wav", "mp3", "flac"]
+
+    # License
+    license:
+      name: "Coqui Public Model License"
+      commercial: false
+      attribution_required: true
+
+  kokoro:
+    # Kokoro-82M - Fast CPU fallback
+    class: "phase4_tts.engines.kokoro_engine.KokoroEngine"
+    display_name: "Kokoro-82M (Fast CPU)"
+
+    # Capability flags
+    cpu_friendly: true
+    gpu_accelerated: false
+    supports_cloning: false
+    supports_emotions: false
+    supports_streaming: false
+
+    # Language support
+    languages:
+      - en
+
+    # Text limits
+    # Kokoro uses ONNX runtime, more tolerant of long text
+    limits:
+      max_tokens: 512
+      chars_per_token: 4.0
+      max_chars: 1800           # More tolerant than XTTS
+      soft_max_chars: 1200
+      min_chars: 30
+      emergency_max: 3000
+
+    # Performance characteristics
+    performance:
+      typical_rtf_cpu: 1.3      # Very fast on CPU
+      typical_rtf_gpu: null     # N/A
+      memory_mb: 800            # Lightweight
+      load_time_sec: 3
+      warmup_chunks: 1
+
+    # Quality characteristics
+    quality:
+      mos_estimate: 4.0
+      prosody: "good"
+      consistency: "excellent"  # Very stable
+      failure_modes:
+        - "flat intonation on complex sentences"
+        - "limited emotional range"
+
+    # Reference audio (not used for cloning, but for style matching)
+    reference_audio:
+      required: false
+      voice_pack: "models/kokoro/voices-v1.0.bin"
+
+    # License
+    license:
+      name: "Apache-2.0"
+      commercial: true
+      attribution_required: true
+
+  piper:
+    # Piper TTS - Ultra-fast CPU synthesis
+    class: "phase4_tts.engines.piper_engine.PiperEngine"
+    display_name: "Piper (Ultra-Fast)"
+    enabled: false  # Set to true after implementation
+
+    # Capability flags
+    cpu_friendly: true
+    gpu_accelerated: false
+    supports_cloning: false
+    supports_emotions: false
+    supports_streaming: true
+
+    # Language support
+    languages:
+      - en
+      - de
+      - es
+      - fr
+      - it
+      - pl
+      - pt
+      - ru
+      - uk
+      - nl
+
+    # Text limits
+    # Piper is sentence-based, very tolerant
+    limits:
+      max_tokens: 1000
+      chars_per_token: 4.0
+      max_chars: 3500
+      soft_max_chars: 2000
+      min_chars: 10
+      emergency_max: 5000
+
+    # Performance characteristics
+    performance:
+      typical_rtf_cpu: 0.3      # 3x faster than real-time!
+      typical_rtf_gpu: null
+      memory_mb: 200            # Very lightweight
+      load_time_sec: 1
+      warmup_chunks: 0
+
+    # Quality characteristics
+    quality:
+      mos_estimate: 3.8
+      prosody: "fair"
+      consistency: "excellent"
+      failure_modes:
+        - "robotic on complex text"
+        - "limited voice variety"
+
+    # Voice models
+    voices:
+      default: "en_US-lessac-medium"
+      available:
+        - id: "en_US-lessac-medium"
+          size_mb: 75
+          quality: "medium"
+        - id: "en_US-amy-medium"
+          size_mb: 75
+          quality: "medium"
+        - id: "en_GB-alan-medium"
+          size_mb: 75
+          quality: "medium"
+
+    # License
+    license:
+      name: "Apache-2.0"
+      commercial: true
+      attribution_required: false
+
+# Engine selection strategy
+selection:
+  # Default engine for new synthesis
+  default: "xtts"
+
+  # Fallback chain when primary fails
+  fallback_order:
+    - "kokoro"
+    - "piper"
+
+  # RTF-based fallback threshold
+  # If primary engine RTF exceeds this, try fallback
+  rtf_fallback_threshold: 4.0
+
+  # Genre-based engine recommendations
+  genre_preferences:
+    philosophy:
+      primary: "xtts"
+      reason: "Superior prosody for complex ideas"
+    fiction:
+      primary: "xtts"
+      reason: "Emotional range via reference audio"
+    technical:
+      primary: "kokoro"
+      reason: "Consistent, clear delivery"
+    draft:
+      primary: "piper"
+      reason: "Ultra-fast for iteration"
+
+# Profiling configuration
+profiling:
+  # Enable runtime capability profiling
+  enabled: true
+
+  # Update registry after N successful chunks
+  update_interval_chunks: 100
+
+  # Test corpus for benchmarking
+  test_texts:
+    short: "The quick brown fox jumps over the lazy dog."
+    medium: "Philosophy is the study of fundamental questions about existence, knowledge, values, reason, mind, and language. Such questions are often posed as problems to be studied or resolved."
+    long: "In the beginning, there was nothing but darkness and silence. Then, from the void, emerged a spark of consciousness—a thought that would reshape the universe itself. This is the story of how that thought became reality, how dreams took form and substance, and how the impossible became not just possible, but inevitable."
+
+  # Metrics to track
+  metrics:
+    - rtf
+    - memory_peak_mb
+    - first_token_latency_ms
+    - quality_variance
