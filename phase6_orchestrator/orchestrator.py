@@ -1593,6 +1593,9 @@ def run_phase4_multi_engine(
     result = run_cmd(primary_cmd)
 
     failed_chunks = collect_failed_chunks()
+    # Ensure `success` is always defined. If primary command exited cleanly
+    # and no failed chunks reported, consider this a success by default.
+    success = (result.returncode == 0 and not failed_chunks)
     if failed_chunks and cfg.per_chunk_fallback and secondary_engine:
         RUN_SUMMARY["per_chunk_fallback_used"] = True
         logger.info(
