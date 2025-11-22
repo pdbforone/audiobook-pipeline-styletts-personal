@@ -8,10 +8,8 @@ import argparse
 import logging
 import os
 import sys
-import json
 import time
 from pathlib import Path
-import datetime
 import numpy as np
 import librosa
 import soundfile as sf
@@ -28,15 +26,19 @@ import psutil
 import tempfile
 import shutil
 import threading
-import subprocess
-from typing import Callable, Optional
+from typing import Optional
+
 try:
     from rnnoise import RNNoise  # CPU RNNoise wrapper
 except ImportError:
     RNNoise = None
 try:
     import torch
-    from silero_vad import load_silero_vad, get_speech_timestamps, collect_chunks
+    from silero_vad import (
+        load_silero_vad,
+        get_speech_timestamps,
+        collect_chunks,
+    )
 except ImportError:
     load_silero_vad = None
     torch = None
@@ -50,8 +52,12 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from pipeline_common import PipelineState, ensure_phase_and_file, ensure_phase_block
-from pipeline_common.astromech_notify import play_success_beep, play_alert_beep
+from pipeline_common import PipelineState, ensure_phase_and_file  # noqa: E402
+from pipeline_common.astromech_notify import (  # noqa: E402
+    play_success_beep,
+    play_alert_beep,
+)
+
 try:
     # Preferred name if available in astromech_notify
     from pipeline_common.astromech_notify import play_success_sound
@@ -59,9 +65,11 @@ except Exception:
     # Fallback to the existing play_success_beep if the preferred name isn't present
     play_success_sound = play_success_beep
 
+
 # Simple serializer placeholder (matching Phase 4 usage)
 def serialize_path_for_pipeline(path: Path) -> str:
     return str(path)
+
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -89,14 +97,10 @@ def load_config(config_path: str) -> EnhancementConfig:
 def setup_logging(config: EnhancementConfig):
     """Setup console and file logging"""
     numeric_level = getattr(logging, config.log_level.upper(), logging.INFO)
-    logging.basicConfig(
-        level=numeric_level, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
+    logging.basicConfig(level=numeric_level, format="%(asctime)s - %(levelname)s - %(message)s")
     file_handler = logging.FileHandler(config.log_file)
     file_handler.setLevel(numeric_level)
-    file_handler.setFormatter(
-        logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    )
+    file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
     logging.getLogger().addHandler(file_handler)
 
 
@@ -140,33 +144,29 @@ def wait_for_throttle(throttle_event: Optional[threading.Event], chunk_label: st
         time.sleep(0.5)
 
 
-def normalize_volume(
-    audio: np.ndarray, sr: int, headroom: float = 0.1
-) -> tuple[np.ndarray, float, float]:
+def normalize_volume(audio: np.ndarray, sr: int, headroom: float = 0.1) -> tuple[np.ndarray, float, float]:
     """Normalize volume using pydub to even out audio levels.
-    
+
     Args:
         audio: Input audio as numpy array (mono, float32, range [-1, 1])
         sr: Sample rate
         headroom: Headroom to prevent clipping (0.0-1.0)
-    
+
     Returns:
         Tuple of (normalized_audio, pre_rms, post_rms)
     """
     try:
         # Compute pre-normalization RMS
         pre_rms = float(np.sqrt(np.mean(audio**2)))
-        
+
         # Skip if audio is silent or too short
         if len(audio) == 0 or pre_rms < 1e-6:
-            logger.warning(
-                "Audio is silent or empty, skipping volume normalization"
-            )
+            logger.warning("Audio is silent or empty, skipping volume normalization")
             return audio, pre_rms, pre_rms
-        
+
         # Convert numpy float32 [-1, 1] to int16 for pydub
         audio_int16 = (audio * 32767).astype(np.int16)
-        
+
         # Create AudioSegment from raw audio data
         audio_segment = AudioSegment(
             audio_int16.tobytes(),
@@ -174,30 +174,24 @@ def normalize_volume(
             sample_width=2,  # 16-bit = 2 bytes
             channels=1,  # Mono
         )
-        
+
         # Normalize with headroom
         normalized_segment = audio_segment.normalize(headroom=headroom)
-        
+
         # Convert back to numpy float32 [-1, 1]
-        normalized_array = np.array(
-            normalized_segment.get_array_of_samples(), dtype=np.float32
-        ) / 32768.0
-        
+        normalized_array = np.array(normalized_segment.get_array_of_samples(), dtype=np.float32) / 32768.0
+
         # Compute post-normalization RMS
         post_rms = float(np.sqrt(np.mean(normalized_array**2)))
-        
+
         logger.debug(
-            f"Volume normalization: Pre-RMS={pre_rms:.4f}, "
-            f"Post-RMS={post_rms:.4f}, Delta={post_rms - pre_rms:.4f}"
+            f"Volume normalization: Pre-RMS={pre_rms:.4f}, " f"Post-RMS={post_rms:.4f}, Delta={post_rms - pre_rms:.4f}"
         )
-        
+
         return normalized_array, pre_rms, post_rms
-        
+
     except Exception as e:
-        logger.warning(
-            f"Pydub volume normalization failed: {e}. "
-            f"Falling back to librosa peak normalization."
-        )
+        logger.warning(f"Pydub volume normalization failed: {e}. " f"Falling back to librosa peak normalization.")
         # Fallback: simple peak normalization
         pre_rms = float(np.sqrt(np.mean(audio**2)))
         peak = np.max(np.abs(audio))
@@ -209,9 +203,7 @@ def normalize_volume(
         return normalized, pre_rms, post_rms
 
 
-def reduce_noise(
-    audio: np.ndarray, sr: int, reduction_factor: float = 0.8
-) -> np.ndarray:
+def reduce_noise(audio: np.ndarray, sr: int, reduction_factor: float = 0.8) -> np.ndarray:
     try:
         reduced = nr.reduce_noise(
             y=audio,
@@ -226,9 +218,7 @@ def reduce_noise(
         return audio
 
 
-def reduce_noise_deepfilternet(
-    audio: np.ndarray, sr: int
-) -> np.ndarray:
+def reduce_noise_deepfilternet(audio: np.ndarray, sr: int) -> np.ndarray:
     """
     Professional noise reduction using DeepFilterNet (MIT licensed).
 
@@ -273,6 +263,8 @@ def reduce_noise_deepfilternet(
 
 
 _rnnoise_model = None
+
+
 def apply_rnnoise(audio: np.ndarray, sr: int, frame_seconds: float = 0.02) -> np.ndarray:
     """Apply RNNoise denoising with graceful fallback when unavailable."""
     global _rnnoise_model
@@ -280,11 +272,9 @@ def apply_rnnoise(audio: np.ndarray, sr: int, frame_seconds: float = 0.02) -> np
         raise ImportError("rnnoise not installed")
 
     target_sr = 48000
-    work_audio = (
-        librosa.resample(audio, orig_sr=sr, target_sr=target_sr)
-        if sr != target_sr
-        else audio
-    ).astype(np.float32)
+    work_audio = (librosa.resample(audio, orig_sr=sr, target_sr=target_sr) if sr != target_sr else audio).astype(
+        np.float32
+    )
 
     if _rnnoise_model is None:
         _rnnoise_model = RNNoise()
@@ -337,6 +327,8 @@ def apply_compression_and_limit(
 
 
 _silero_vad_model = None
+
+
 def analyze_silero_vad(
     audio: np.ndarray,
     sr: int,
@@ -365,7 +357,10 @@ def analyze_silero_vad(
 
     wav_tensor = torch.from_numpy(audio_16k.astype(np.float32))
     speech_ts = get_speech_timestamps(
-        wav_tensor, _silero_vad_model, sampling_rate=work_sr, threshold=threshold
+        wav_tensor,
+        _silero_vad_model,
+        sampling_rate=work_sr,
+        threshold=threshold,
     )
     speech_seconds = sum((t["end"] - t["start"]) / work_sr for t in speech_ts)
     total_seconds = len(audio_16k) / work_sr if work_sr else 0.0
@@ -377,9 +372,7 @@ def analyze_silero_vad(
         if collected is not None and len(collected) > 0:
             trimmed_audio = collected.numpy()
             if sr != work_sr:
-                trimmed_audio = librosa.resample(
-                    trimmed_audio, orig_sr=work_sr, target_sr=sr
-                )
+                trimmed_audio = librosa.resample(trimmed_audio, orig_sr=work_sr, target_sr=sr)
 
     return float(speech_ratio), float(speech_seconds), trimmed_audio
 
@@ -388,7 +381,7 @@ def apply_matchering(
     input_path: str,
     output_path: str,
     reference_path: str,
-    config: EnhancementConfig
+    config: EnhancementConfig,
 ) -> bool:
     """
     Apply reference-based mastering using Matchering (GPL-3.0, internal use only).
@@ -446,9 +439,7 @@ def apply_matchering(
         return False
 
 
-def normalize_lufs(
-    audio: np.ndarray, sr: int, target: float = -23.0
-) -> tuple[np.ndarray, float]:
+def normalize_lufs(audio: np.ndarray, sr: int, target: float = -23.0) -> tuple[np.ndarray, float]:
     try:
         if np.max(np.abs(audio)) < 1e-6:
             logger.warning("Silent audio, skipping LUFS normalization")
@@ -462,7 +453,7 @@ def normalize_lufs(
             normalized = audio * (0.5 / peak) if peak > 0 else audio
             return normalized, loudness
         normalized = pln.normalize.loudness(audio_2d, loudness, target)
-        return normalized.flatten() if audio.ndim == 1 else normalized, loudness
+        return (normalized.flatten() if audio.ndim == 1 else normalized), loudness
     except Exception as e:
         logger.warning(f"LUFS failed: {e}, applying peak normalization")
         peak = np.max(np.abs(audio))
@@ -470,9 +461,7 @@ def normalize_lufs(
         return normalized, float("-inf")
 
 
-def validate_audio_quality(
-    audio: np.ndarray, sr: int, config: EnhancementConfig
-) -> tuple[float, float, float, bool]:
+def validate_audio_quality(audio: np.ndarray, sr: int, config: EnhancementConfig) -> tuple[float, float, float, bool]:
     try:
         rms = np.sqrt(np.mean(audio**2))
         meter = pln.Meter(sr)
@@ -488,9 +477,7 @@ def validate_audio_quality(
         is_clipped = False  # [PATCHED] Ignore clipping
         quality_good = True  # [PATCHED] Accept all chunks
         if not quality_good:
-            logger.debug(
-                f"Quality: RMS={rms:.4f}, SNR={snr:.1f}dB, LUFS={lufs:.1f}, Clipped={is_clipped}"
-            )
+            logger.debug(f"Quality: RMS={rms:.4f}, SNR={snr:.1f}dB, LUFS={lufs:.1f}, Clipped={is_clipped}")
         return snr, rms, lufs, quality_good
     except Exception as e:
         logger.warning(f"Quality validation failed: {e}")
@@ -514,13 +501,13 @@ def enhance_chunk(
     temp_dir: str,
     phrase_cleaner: PhraseCleaner = None,
     throttle_event: Optional[threading.Event] = None,
-    chunk_index: Optional[int] = None
+    chunk_index: Optional[int] = None,
 ) -> tuple[AudioMetadata, np.ndarray]:
     """
     Enhance audio chunk with optional phrase cleaning, noise reduction, and normalization.
-    
+
     NEW: Integrates phrase cleaning BEFORE enhancement.
-    
+
     Args:
         metadata: Chunk metadata with wav_path
         config: Enhancement configuration
@@ -528,7 +515,7 @@ def enhance_chunk(
         phrase_cleaner: Optional PhraseCleaner instance
         throttle_event: Shared throttle flag set by resource monitor
         chunk_index: 1-based ordering of the chunk (used for cleanup scope)
-    
+
     Returns:
         Tuple of (metadata, enhanced_audio_array)
     """
@@ -536,7 +523,7 @@ def enhance_chunk(
     wait_for_throttle(throttle_event, str(metadata.chunk_id))
     wav_path = Path(metadata.wav_path)
     enhanced = None
-    
+
     try:
         # ===== STEP 1: PHRASE CLEANUP (NEW) =====
         if phrase_cleaner and config.enable_phrase_cleanup:
@@ -553,9 +540,7 @@ def enhance_chunk(
 
             if cleaned_audio is not None:
                 # Phrase was removed - use cleaned audio
-                logger.info(
-                    f"[OK] Removed {metadata.phrases_removed} phrase(s) from chunk {metadata.chunk_id}"
-                )
+                logger.info(f"[OK] Removed {metadata.phrases_removed} phrase(s) from chunk {metadata.chunk_id}")
                 audio = cleaned_audio
                 # Update sample rate from cleaner
                 if sr > 0:
@@ -571,27 +556,20 @@ def enhance_chunk(
         else:
             # Phrase cleanup disabled - load audio normally
             audio, sr = librosa.load(wav_path, sr=config.sample_rate, mono=True)
-            metadata.cleanup_status = 'disabled'
-        
+            metadata.cleanup_status = "disabled"
+
         # ===== STEP 2: VALIDATION =====
         if len(audio) == 0:
             raise ValueError("Empty audio file")
 
         # ===== STEP 3: VOLUME NORMALIZATION =====
         if config.enable_volume_normalization:
-            audio, vol_rms_pre, vol_rms_post = normalize_volume(
-                audio, sr, config.volume_norm_headroom
-            )
+            audio, vol_rms_pre, vol_rms_post = normalize_volume(audio, sr, config.volume_norm_headroom)
             metadata.rms_volume_norm_pre = vol_rms_pre
             metadata.rms_volume_norm_post = vol_rms_post
-            logger.info(
-                f"Volume normalized chunk {metadata.chunk_id}: "
-                f"RMS {vol_rms_pre:.4f} -> {vol_rms_post:.4f}"
-            )
+            logger.info(f"Volume normalized chunk {metadata.chunk_id}: " f"RMS {vol_rms_pre:.4f} -> {vol_rms_post:.4f}")
         else:
-            logger.debug(
-                f"Volume normalization disabled for chunk {metadata.chunk_id}"
-            )
+            logger.debug(f"Volume normalization disabled for chunk {metadata.chunk_id}")
 
         # ===== STEP 4: PRE-ENHANCEMENT METRICS =====
         snr_pre, rms_pre, lufs_pre, _ = validate_audio_quality(audio, sr, config)
@@ -628,7 +606,10 @@ def enhance_chunk(
             # Noise reduction - choose between DeepFilterNet or noisereduce
             if already_denoised:
                 enhanced = audio.copy()
-                logger.debug("Chunk %s appears already denoised; skipping heavy NR", metadata.chunk_id)
+                logger.debug(
+                    "Chunk %s appears already denoised; skipping heavy NR",
+                    metadata.chunk_id,
+                )
             elif config.enable_deepfilternet:
                 # Use DeepFilterNet (professional, MIT licensed)
                 if len(audio) / sr > config.chunk_size_seconds:
@@ -684,7 +665,7 @@ def enhance_chunk(
 
             # Normalization
             enhanced, lufs_post = normalize_lufs(enhanced, sr, config.lufs_target)
-            
+
             # Safety: Hard limit to prevent clipping
             peak = np.max(np.abs(enhanced))
             if peak > 0.95:
@@ -712,11 +693,9 @@ def enhance_chunk(
                     logger.warning(f"Silero VAD post-check failed: {exc}")
 
             # Post metrics
-            snr_post, rms_post, _, quality_good_temp = validate_audio_quality(
-                enhanced, sr, config
-            )
+            snr_post, rms_post, _, quality_good_temp = validate_audio_quality(enhanced, sr, config)
             quality_good = True  # [PATCHED] Force acceptance of all chunks
-            
+
             if quality_good or not config.quality_validation_enabled:
                 metadata.snr_post = float(snr_post)
                 metadata.rms_post = float(rms_post)
@@ -724,26 +703,22 @@ def enhance_chunk(
                 metadata.status = "complete"
                 metadata.duration = time.perf_counter() - start_time
                 return metadata, enhanced
-            
+
             if attempt < config.retries:
-                logger.warning(
-                    f"Quality failed for {wav_path}, retry {attempt + 1}/{config.retries}"
-                )
+                logger.warning(f"Quality failed for {wav_path}, retry {attempt + 1}/{config.retries}")
             else:
                 # Fallback: skip noise reduction, just normalize
-                logger.warning(f"All retries failed, using fallback (no noise reduction)")
+                logger.warning("All retries failed, using fallback (no noise reduction)")
                 enhanced, lufs_post = normalize_lufs(audio, sr, config.lufs_target)
-                
+
                 # Safety: Hard limit to prevent clipping
                 peak = np.max(np.abs(enhanced))
                 if peak > 0.95:
                     logger.warning(f"Clipping detected in fallback (peak={peak:.3f}), applying limiter")
                     enhanced = enhanced * (0.95 / peak)
-                
-                snr_post, rms_post, _, quality_good = validate_audio_quality(
-                    enhanced, sr, config
-                )
-                
+
+                snr_post, rms_post, _, quality_good = validate_audio_quality(enhanced, sr, config)
+
                 # CRITICAL: Accept ALL chunks when quality validation is disabled!
                 if quality_good or not config.quality_validation_enabled:
                     metadata.snr_post = float(snr_post)
@@ -751,7 +726,8 @@ def enhance_chunk(
                     metadata.lufs_post = float(lufs_post)
                     metadata.status = "complete_fallback"
                     metadata.duration = time.perf_counter() - start_time
-                    logger.info(f"Fallback accepted chunk {metadata.chunk_id} (quality_validation={config.quality_validation_enabled})")
+                    qv = config.quality_validation_enabled
+                    logger.info(f"Fallback accepted chunk {metadata.chunk_id} " f"(quality_validation={qv})")
                     return metadata, enhanced
                 else:
                     # [PATCHED] Accept chunk even if quality is questionable
@@ -762,7 +738,7 @@ def enhance_chunk(
                     metadata.status = "complete_forced"
                     metadata.duration = time.perf_counter() - start_time
                     return metadata, enhanced
-                    
+
     except Exception as e:
         metadata.status = "failed"
         metadata.error_message = str(e)
@@ -779,9 +755,7 @@ def concatenate_with_crossfades(
     silence_guard_sec: float = 0.2,
     enable_silence_guard: bool = True,
 ) -> np.ndarray:
-    def _detect_seam_pop(
-        a: np.ndarray, b: np.ndarray, fade_len: int, threshold: float = 0.2
-    ) -> bool:
+    def _detect_seam_pop(a: np.ndarray, b: np.ndarray, fade_len: int, threshold: float = 0.2) -> bool:
         """
         Heuristic seam pop detector: check energy discontinuity at join.
         - Compare RMS of last 100 samples of 'a' to first 100 samples of 'b'
@@ -798,8 +772,12 @@ def concatenate_with_crossfades(
         jump = abs(rms_head - rms_tail)
         denom = max(rms_head, rms_tail, 1e-3)
         return (jump / denom) > threshold
+
     def _leading_silence_seconds(
-        audio: np.ndarray, sample_rate: int, threshold: float = 1e-4, max_scan_sec: float = 0.6
+        audio: np.ndarray,
+        sample_rate: int,
+        threshold: float = 1e-4,
+        max_scan_sec: float = 0.6,
     ) -> float:
         """Estimate leading silence; returns seconds until signal crosses threshold."""
         if audio.size == 0 or sample_rate <= 0:
@@ -833,9 +811,7 @@ def concatenate_with_crossfades(
             combined = np.concatenate([combined, chunk])
         else:
             if _detect_seam_pop(combined, chunk, effective_fade):
-                logger.warning(
-                    "Potential seam discontinuity detected; consider increasing fade or adjusting guard"
-                )
+                logger.warning("Potential seam discontinuity detected; consider increasing fade or adjusting guard")
             fade_out = np.linspace(1, 0, effective_fade)
             fade_in = np.linspace(0, 1, effective_fade)
             combined[-effective_fade:] *= fade_out
@@ -850,9 +826,7 @@ def embed_metadata(mp3_path: str, config: EnhancementConfig):
         audio["TIT2"] = TIT2(encoding=3, text=config.audiobook_title)
         audio["TPE1"] = TPE1(encoding=3, text=config.audiobook_author)
         audio.save()
-        logger.info(
-            f"Embedded metadata: '{config.audiobook_title}' by {config.audiobook_author}"
-        )
+        logger.info(f"Embedded metadata: '{config.audiobook_title}' by {config.audiobook_author}")
     except Exception as e:
         logger.warning(f"Failed to embed metadata: {e}")
 
@@ -872,17 +846,18 @@ def create_playlist(output_dir: str, mp3_file: str):
 def extract_chunk_number_from_filename(filepath: str) -> int:
     """Extract chunk number from filename like 'file_chunk_001.wav' or 'chunk_41.wav'"""
     import re
+
     filename = Path(filepath).name
     # Try pattern: _chunk_NNN
-    match = re.search(r'_chunk_(\d+)', filename)
+    match = re.search(r"_chunk_(\d+)", filename)
     if match:
         return int(match.group(1))
     # Try pattern: chunk_NNN
-    match = re.search(r'chunk_(\d+)', filename)
+    match = re.search(r"chunk_(\d+)", filename)
     if match:
         return int(match.group(1))
     # Fallback: find any number
-    match = re.search(r'(\d+)', filename)
+    match = re.search(r"(\d+)", filename)
     if match:
         return int(match.group(1))
     logger.warning(f"Could not extract chunk number from: {filename}")
@@ -895,7 +870,9 @@ def _normalize_file_key(value: str | None) -> str | None:
     return "".join(ch for ch in value.lower() if ch.isalnum())
 
 
-def get_audio_chunks_from_json(config: EnhancementConfig) -> list[AudioMetadata]:
+def get_audio_chunks_from_json(
+    config: EnhancementConfig,
+) -> list[AudioMetadata]:
     target_file = os.environ.get("PHASE5_FILE_ID") or config.audiobook_title
     target_key = _normalize_file_key(target_file)
     chunks = []
@@ -904,52 +881,51 @@ def get_audio_chunks_from_json(config: EnhancementConfig) -> list[AudioMetadata]
         state = PipelineState(config.pipeline_json, validate_on_read=False)
         pipeline = state.read(validate=False)
         phase4_files = pipeline.get("phase4", {}).get("files", {})
-        
+
         logger.info(f"Phase 4 files in JSON: {list(phase4_files.keys())}")
-        
+
         for file_id, data in phase4_files.items():
             file_key = _normalize_file_key(file_id)
             if target_key and file_key != target_key:
                 continue
             chunk_audio_paths = data.get("chunk_audio_paths") or data.get("artifacts", {}).get("chunk_audio_paths", [])
-            
+
             logger.info(f"File ID '{file_id}': {len(chunk_audio_paths)} audio paths")
-            
+
             if not chunk_audio_paths:
                 logger.warning(f"No chunk_audio_paths found for file_id: {file_id}")
                 continue
-            
+
             status = data.get("status", "pending")
             logger.info(f"File ID '{file_id}' status: {status}")
-            
+
             if status not in ["success", "complete", "partial"]:
                 logger.warning(f"Skipping file_id {file_id} with status: {status}")
                 continue
-            
+
             for idx, wav_path in enumerate(chunk_audio_paths):
                 chunk_num = extract_chunk_number_from_filename(wav_path)
                 logger.info(f"Processing chunk (filename={chunk_num}, array_idx={idx}): {wav_path}")
-                
+
                 if Path(wav_path).is_absolute():
                     abs_wav = Path(wav_path)
                 else:
                     abs_wav = Path(config.input_dir) / Path(wav_path).name
-                
+
                 logger.info(f"Looking for audio at: {abs_wav}")
-                
+
                 if abs_wav.exists():
-                    chunks.append(
-                        AudioMetadata(chunk_id=chunk_num, wav_path=str(abs_wav))
-                    )
+                    chunks.append(AudioMetadata(chunk_id=chunk_num, wav_path=str(abs_wav)))
                     logger.info(f"[OK] Added chunk {chunk_num}")
                 else:
                     logger.warning(f"Audio file not found: {abs_wav}")
-        
+
         logger.info(f"Found {len(chunks)} completed audio chunks from pipeline.json")
         return sorted(chunks, key=lambda x: x.chunk_id)
     except Exception as e:
         logger.error(f"JSON query failed: {e}")
         import traceback
+
         traceback.print_exc()
         return []
 
@@ -1007,155 +983,29 @@ def update_pipeline_json(config: EnhancementConfig, file_id: str, phase5_data: d
         logger.error(f"Failed to update pipeline.json: {e}")
 
 
-def run_ffmpeg(cmd: list[str], desc: str) -> None:
-    """Run an ffmpeg command and raise on failure.
-
-    On failure, capture stdout/stderr, write a timestamped failure log under
-    `phase5_enhancement/logs/` and include command/exit-code/stderr-preview in
-    the raised RuntimeError. This improves diagnostics while preserving the
-    original failure semantics.
-    """
-    # Run ffmpeg and capture output
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    if result.returncode != 0:
-        # Prepare diagnostics and ensure a log is written no matter what.
-        try:
-            # Prefer repository-root logs for discoverability. Fall back to a
-            # path resolved from the module if REPO_ROOT is unavailable.
-            if 'REPO_ROOT' in globals():
-                pkg_root = REPO_ROOT
-            else:
-                pkg_root = Path(__file__).resolve().parents[2]
-        except Exception:
-            pkg_root = Path.cwd()
-
-        # Use a phase-specific logs directory under the repo root
-        primary_logs_dir = pkg_root / "phase5_enhancement" / "logs"
-        fallback_dirs = [Path(tempfile.gettempdir()), Path.cwd()]
-
-        # Try to create the primary logs directory. If that fails,
-        # we'll try fallback locations.
-        try:
-            primary_logs_dir.mkdir(parents=True, exist_ok=True)
-            logs_dir = primary_logs_dir
-        except Exception:
-            logs_dir = None
-
-        timestamp = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-        pid = os.getpid()
-        safe_desc = desc.replace(" ", "_").replace('/', '_')
-        log_name = f"ffmpeg_failure_{safe_desc}_{timestamp}_{pid}.log"
-
-        stderr_text = result.stderr or ""
-        stdout_text = result.stdout or ""
-
-        # Create previews
-        stderr_lines = stderr_text.splitlines()
-        stderr_preview = "\n".join(stderr_lines[:200])
-        stdout_preview = "\n".join(stdout_text.splitlines()[:50])
-
-        # Attempt to write diagnostics to the primary logs dir, otherwise
-        # fall back to system temp or CWD.
-        log_path = None
-        log_path = None
-        write_contents = (
-            f"FFmpeg command: {' '.join(cmd)}\n"
-            f"Exit code: {result.returncode}\n"
-            "\n--- STDOUT (preview) ---\n"
-            f"{stdout_preview}\n"
-            "\n--- STDERR (preview) ---\n"
-            f"{stderr_preview}\n"
-        )
-
-        try_locations = []
-        # Preference order for writing diagnostics:
-        # 1) primary phase5 logs dir
-        # 2) previously-determined logs_dir (if any)
-        # 3) system temp and CWD
-        if primary_logs_dir is not None:
-            try_locations.append(primary_logs_dir)
-        if logs_dir is not None and logs_dir not in try_locations:
-            try_locations.append(logs_dir)
-        try_locations.extend(fallback_dirs)
-
-        for base in try_locations:
-            try:
-                base.mkdir(parents=True, exist_ok=True)
-            except Exception:
-                # mkdir may fail for fallback dirs on rare systems; ignore
-                pass
-            candidate = base / log_name
-            try:
-                with open(candidate, "w", encoding="utf-8") as fh:
-                    fh.write(write_contents)
-                    # If stderr was long, append a truncation note
-                    if len(stderr_lines) > 200:
-                        fh.write(
-                            f"\n... (stderr truncated, total lines={len(stderr_lines)})\n"
-                        )
-                log_path = candidate
-                break
-            except Exception:
-                continue
-
-        # If we couldn't write any file, create a minimal fallback file in temp
-        # and include a stderr snippet in the raised RuntimeError.
-        if log_path is None:
-            # As a last resort, attempt to write a minimal file in tempfile
-            try:
-                candidate = Path(tempfile.gettempdir()) / log_name
-                with open(candidate, "w", encoding="utf-8") as fh:
-                    fh.write(write_contents)
-                log_path = candidate
-            except Exception:
-                # Nothing more we can do; raise with stderr preview inline
-                raise RuntimeError(
-                    f"FFmpeg {desc} failed (exit {result.returncode}). "
-                    f"Could not write diagnostics log (attempted locations). "
-                    f"stderr preview:\n{stderr_preview[:3000]}"
-                )
-
-        # At this point, diagnostics have been written to `log_path`.
-        # Log a short summary for console visibility.
-        try:
-            logger.error(
-                "FFmpeg %s failed (exit %s). Diagnostics written to: %s",
-                desc,
-                result.returncode,
-                str(log_path),
-            )
-            logger.error("FFmpeg stderr (preview): %s", stderr_preview[:3000])
-        except Exception:
-            # Logging must not prevent raising the runtime error
-            pass
-
-        # Finally raise with contextual info including the diagnostics path
-        # and a stderr preview
-        raise RuntimeError(
-            f"FFmpeg {desc} failed (exit {result.returncode}). "
-            f"See ffmpeg diagnostics: {str(log_path)} \n"
-            f"stderr preview:\n{stderr_preview[:3000]}"
-        )
+from .ffmpeg_utils import run_ffmpeg  # noqa: E402
 
 
 def main(argv: Optional[list[str]] = None):
-    parser = argparse.ArgumentParser(
-        description="Phase 5: Audio Enhancement with Integrated Phrase Cleanup"
-    )
-    parser.add_argument(
-        "--config", type=str, default="config.yaml", help="YAML config path"
-    )
+    parser = argparse.ArgumentParser(description="Phase 5: Audio Enhancement with Integrated Phrase Cleanup")
+    parser.add_argument("--config", type=str, default="config.yaml", help="YAML config path")
     parser.add_argument(
         "--profile",
         type=str,
         choices=["auto", "laptop_safe", "full_master"],
         help="Override enhancement profile (auto = default)",
     )
+    parser.add_argument("--pipeline-json", type=str, help="Override pipeline.json path")
     parser.add_argument(
-        "--pipeline-json", type=str, help="Override pipeline.json path"
+        "--file_id",
+        type=str,
+        help="Target file_id (matches phase4 entry)",
     )
-    parser.add_argument("--file_id", type=str, help="Target file_id (matches phase4 entry)")
-    parser.add_argument("--chunk_id", type=int, help="Process specific chunk only")
+    parser.add_argument(
+        "--chunk_id",
+        type=int,
+        help="Process specific chunk only",
+    )
     parser.add_argument(
         "--skip_concatenation",
         action="store_true",
@@ -1174,7 +1024,7 @@ def main(argv: Optional[list[str]] = None):
     parser.add_argument(
         "--crossfade_silence_guard_sec",
         type=float,
-        help="Silence guard threshold in seconds (skip crossfade when leading silence exceeds this)",
+        help=("Silence guard threshold in seconds (skip crossfade when " "leading silence exceeds this)"),
     )
     parser.add_argument(
         "--disable_crossfade_silence_guard",
@@ -1217,7 +1067,7 @@ def main(argv: Optional[list[str]] = None):
         os.environ["PHASE5_FILE_ID"] = target_file_id
 
         logger.info("=" * 60)
-        logger.info("Phase 5: Audio Enhancement with Integrated Phrase Cleanup")
+        logger.info("Phase 5: Audio Enhancement (phrase cleanup enabled)")
         logger.info("=" * 60)
 
         os.makedirs(config.output_dir, exist_ok=True)
@@ -1232,35 +1082,29 @@ def main(argv: Optional[list[str]] = None):
                 enabled=True,
                 target_phrases=config.cleanup_target_phrases,
                 model_size=config.cleanup_whisper_model,
-                save_transcripts=config.cleanup_save_transcripts
+                save_transcripts=config.cleanup_save_transcripts,
             )
             phrase_cleaner = PhraseCleaner(cleaner_config)
-            logger.info(
-                f"[OK] Phrase cleaner initialized (model: {config.cleanup_whisper_model})"
-            )
+            logger.info(f"[OK] Phrase cleaner initialized (model: " f"{config.cleanup_whisper_model})")
             logger.info(f"  Target phrases: {config.cleanup_target_phrases}")
         else:
-            logger.info("Phrase cleanup disabled in configuration or scope set to 'none'")
+            logger.info("Phrase cleanup disabled in configuration or" " scope set to 'none'")
 
         # ===== START RESOURCE MONITORING =====
         throttle_event = threading.Event()
         stop_monitor = threading.Event()
-        monitor_thread = threading.Thread(
-            target=monitor_resources, args=(stop_monitor, throttle_event)
-        )
+        monitor_thread = threading.Thread(target=monitor_resources, args=(stop_monitor, throttle_event))
         monitor_thread.start()
 
         try:
             # ===== LOAD CHUNKS =====
             if args.chunk_id is not None:
-                chunk_path = Path(config.input_dir) / f"chunk_{args.chunk_id}.wav"
+                chunk_path = Path(config.input_dir) / (f"chunk_{args.chunk_id}.wav")
                 if not chunk_path.exists():
                     logger.error(f"Chunk file not found: {chunk_path}")
                     return 1
                 logger.info(f"Processing single chunk: {chunk_path}")
-                chunks = [
-                    AudioMetadata(chunk_id=args.chunk_id, wav_path=str(chunk_path))
-                ]
+                chunks = [AudioMetadata(chunk_id=args.chunk_id, wav_path=str(chunk_path))]
             else:
                 chunks = get_audio_chunks_from_json(config)
 
@@ -1279,28 +1123,27 @@ def main(argv: Optional[list[str]] = None):
                 file_entry = phase5_files.get(target_file_id, {})
                 phase5_existing = file_entry.get("chunks", [])
 
-                # Legacy support: if older top-level chunks exist, only count ones
-                # whose paths reference the target file_id to avoid skipping others.
-                legacy_chunks = [
-                    c
-                    for c in pipeline.get("phase5", {}).get("chunks", [])
-                    if target_file_id in str(c.get("wav_path", "")) or target_file_id in str(c.get("enhanced_path", ""))
-                ]
+                # Legacy support: if older top-level chunks exist, only count
+                # ones whose paths reference the target file_id to avoid
+                # skipping others.
+                legacy_chunks = []
+                for c in pipeline.get("phase5", {}).get("chunks", []):
+                    wav_path = str(c.get("wav_path", ""))
+                    enhanced_path = str(c.get("enhanced_path", ""))
+                    if target_file_id in wav_path or target_file_id in enhanced_path:
+                        legacy_chunks.append(c)
 
-                existing_ids = {
-                    c["chunk_id"] for c in phase5_existing + legacy_chunks if c.get("status") == "complete"
-                }
+                existing_ids = {c["chunk_id"] for c in phase5_existing + legacy_chunks if c.get("status") == "complete"}
 
                 # Also skip if enhanced WAV already exists on disk
                 output_dir = Path(config.output_dir)
-                disk_existing = {
-                    c.chunk_id
-                    for c in chunks
-                    if (output_dir / f"enhanced_{c.chunk_id:04d}.wav").exists()
-                }
+                disk_existing = {c.chunk_id for c in chunks if (output_dir / f"enhanced_{c.chunk_id:04d}.wav").exists()}
                 existing_all = existing_ids.union(disk_existing)
                 chunks = [c for c in chunks if c.chunk_id not in existing_all]
-                logger.info(f"Resume enabled: {len(chunks)} chunks remain unprocessed")
+                logger.info(
+                    "Resume enabled: %d chunks remain unprocessed",
+                    len(chunks),
+                )
 
             # ===== ADAPTIVE WORKER SELECTION =====
             physical_cores = psutil.cpu_count(logical=False) or psutil.cpu_count() or 1
@@ -1344,42 +1187,40 @@ def main(argv: Optional[list[str]] = None):
                     ): chunk
                     for idx, chunk in enumerate(chunks, start=1)
                 }
-                
+
                 for future in as_completed(futures):
                     try:
-                        metadata, enhanced_audio = future.result(
-                            timeout=config.processing_timeout
-                        )
+                        metadata, enhanced_audio = future.result(timeout=config.processing_timeout)
                     except TimeoutError:
                         metadata = futures[future]
                         metadata.status = "failed"
                         metadata.error_message = "Processing timeout"
                         enhanced_audio = np.array([], dtype=np.float32)
                         logger.error(f"Timeout for chunk {metadata.chunk_id}")
-                    
+
                     processed_metadata.append(metadata)
-                    if metadata.cleanup_status and metadata.cleanup_status not in {"disabled", "skipped"}:
+                    if metadata.cleanup_status and metadata.cleanup_status not in {
+                        "disabled",
+                        "skipped",
+                    }:
                         cleanup_operations += 1
-                    
+
                     # Log cleanup results if applicable
                     if metadata.cleanup_status:
-                        if metadata.cleanup_status == 'cleaned':
+                        if metadata.cleanup_status == "cleaned":
                             logger.info(
                                 f"[CLEANUP] Chunk {metadata.chunk_id}: "
                                 f"Removed {metadata.phrases_removed} phrase(s) "
                                 f"in {metadata.cleanup_processing_time:.1f}s"
                             )
-                        elif metadata.cleanup_status == 'error':
+                        elif metadata.cleanup_status == "error":
                             logger.warning(
-                                f"[WARNING] Chunk {metadata.chunk_id}: Cleanup error, "
-                                f"continuing with original audio"
+                                "[WARNING] Chunk %s: Cleanup error, continuing",
+                                metadata.chunk_id,
                             )
-                    
+
                     if metadata.status.startswith("complete") and len(enhanced_audio) > 0:
-                        enhanced_path = (
-                            Path(config.output_dir)
-                            / f"enhanced_{metadata.chunk_id:04d}.wav"
-                        )
+                        enhanced_path = Path(config.output_dir) / f"enhanced_{metadata.chunk_id:04d}.wav"
                         sf.write(
                             enhanced_path,
                             enhanced_audio,
@@ -1390,7 +1231,9 @@ def main(argv: Optional[list[str]] = None):
                         metadata.enhanced_path = str(enhanced_path)
                         enhanced_paths.append(enhanced_path)
                         logger.info(
-                            f"[OK] Saved enhanced chunk {metadata.chunk_id}: {enhanced_path}"
+                            "[OK] Saved enhanced chunk %s: %s",
+                            metadata.chunk_id,
+                            enhanced_path,
                         )
 
             # If nothing was processed this run but resume is enabled, fall back to cached enhanced files
@@ -1403,7 +1246,10 @@ def main(argv: Optional[list[str]] = None):
                 for cached in candidate_sets:
                     if cached:
                         enhanced_paths = cached
-                        logger.info("Resume concat using cached enhanced files: %d found", len(enhanced_paths))
+                        logger.info(
+                            "Resume concat using cached enhanced files: %d found",
+                            len(enhanced_paths),
+                        )
                         if enhanced_paths and not processed_metadata:
                             for p in enhanced_paths:
                                 try:
@@ -1420,7 +1266,10 @@ def main(argv: Optional[list[str]] = None):
             final_output_path = None
             if enhanced_paths and not args.skip_concatenation:
                 enhanced_paths = sorted(enhanced_paths)
-                logger.info("Batch-concatenating %d enhanced chunks (streaming)...", len(enhanced_paths))
+                logger.info(
+                    "Batch-concatenating %d enhanced chunks (streaming)...",
+                    len(enhanced_paths),
+                )
 
                 output_dir = Path(config.output_dir)
                 output_dir.mkdir(parents=True, exist_ok=True)
@@ -1459,7 +1308,10 @@ def main(argv: Optional[list[str]] = None):
                         run_ffmpeg(cmd, f"batch concat {batch_wav.name}")
                         batch_files.append(batch_wav)
 
-                    logger.info("Created %d batch WAVs; starting crossfade merge...", len(batch_files))
+                    logger.info(
+                        "Created %d batch WAVs; starting crossfade merge...",
+                        len(batch_files),
+                    )
 
                     # 2) Iteratively crossfade batches to keep filters small
                     crossfade_sec = min(
@@ -1498,21 +1350,18 @@ def main(argv: Optional[list[str]] = None):
                         current = merged_out
 
                     # Optional final-only phrase cleanup on the merged WAV
-                    if (
-                        phrase_cleaner
-                        and config.enable_phrase_cleanup
-                        and config.cleanup_scope == "final_only"
-                    ):
+                    if phrase_cleaner and config.enable_phrase_cleanup and config.cleanup_scope == "final_only":
                         logger.info("Running final-only phrase cleanup on merged audio...")
                         cleaned_audio, cleaned_sr, final_cleanup_meta = phrase_cleaner.clean_audio(
                             current, is_final_pass=True
                         )
-                        if final_cleanup_meta.get("status") not in {"disabled", "skipped"}:
+                        if final_cleanup_meta.get("status") not in {
+                            "disabled",
+                            "skipped",
+                        }:
                             cleanup_operations += 1
                         if cleaned_audio is not None and cleaned_sr > 0:
-                            cleaned_audio, _ = normalize_lufs(
-                                cleaned_audio, cleaned_sr, config.lufs_target
-                            )
+                            cleaned_audio, _ = normalize_lufs(cleaned_audio, cleaned_sr, config.lufs_target)
                             cleaned_path = temp_session / "final_cleaned.wav"
                             sf.write(
                                 cleaned_path,
@@ -1545,7 +1394,10 @@ def main(argv: Optional[list[str]] = None):
                             reuse_final = True
                             logger.info("Reusing existing mastered MP3 at %s", mp3_path)
                         except Exception as exc:  # noqa: BLE001
-                            logger.warning("Existing MP3 failed validation (%s); re-encoding.", exc)
+                            logger.warning(
+                                "Existing MP3 failed validation (%s); re-encoding.",
+                                exc,
+                            )
                     if not reuse_final:
                         encode_cmd = [
                             "ffmpeg",
@@ -1596,50 +1448,32 @@ def main(argv: Optional[list[str]] = None):
                 create_playlist(config.output_dir, "audiobook.mp3")
 
             # ===== METRICS AND SUMMARY =====
-            successful = sum(
-                1 for m in processed_metadata if m.status.startswith("complete")
-            )
+            successful = sum(1 for m in processed_metadata if m.status.startswith("complete"))
             failed = len(processed_metadata) - successful
             total_duration = time.perf_counter() - overall_start
 
             # Compute aggregate metrics
             snr_improvs = [
-                m.snr_post - m.snr_pre
-                for m in processed_metadata
-                if m.snr_post is not None and m.snr_pre is not None
+                m.snr_post - m.snr_pre for m in processed_metadata if m.snr_post is not None and m.snr_pre is not None
             ]
             avg_snr_improv = float(np.mean(snr_improvs)) if snr_improvs else 0.0
-            
+
             # Volume normalization metrics
             vol_norm_deltas = [
                 m.rms_volume_norm_post - m.rms_volume_norm_pre
                 for m in processed_metadata
                 if m.rms_volume_norm_post is not None and m.rms_volume_norm_pre is not None
             ]
-            avg_vol_norm_delta = (
-                float(np.mean(vol_norm_deltas)) if vol_norm_deltas else 0.0
-            )
-            vol_norm_applied = sum(
-                1
-                for m in processed_metadata
-                if m.rms_volume_norm_post is not None
-            )
+            avg_vol_norm_delta = float(np.mean(vol_norm_deltas)) if vol_norm_deltas else 0.0
+            vol_norm_applied = sum(1 for m in processed_metadata if m.rms_volume_norm_post is not None)
 
             chunk_durations = [m.duration for m in processed_metadata if m.duration is not None]
             avg_chunk_duration = float(np.mean(chunk_durations)) if chunk_durations else 0.0
-            
+
             # Cleanup metrics (NEW)
-            phrases_cleaned_total = sum(
-                m.phrases_removed or 0 for m in processed_metadata
-            )
-            chunks_with_phrases = sum(
-                1 for m in processed_metadata
-                if m.cleanup_status == 'cleaned'
-            )
-            cleanup_errors = sum(
-                1 for m in processed_metadata
-                if m.cleanup_status == 'error'
-            )
+            phrases_cleaned_total = sum(m.phrases_removed or 0 for m in processed_metadata)
+            chunks_with_phrases = sum(1 for m in processed_metadata if m.cleanup_status == "cleaned")
+            cleanup_errors = sum(1 for m in processed_metadata if m.cleanup_status == "error")
 
             if final_cleanup_meta:
                 phrases_cleaned_total += final_cleanup_meta.get("phrases_removed", 0) or 0
@@ -1662,13 +1496,11 @@ def main(argv: Optional[list[str]] = None):
             }
 
             chunk_artifacts = [
-                serialize_path_for_pipeline(Path(m.enhanced_path))
-                for m in processed_metadata
-                if m.enhanced_path
+                serialize_path_for_pipeline(Path(m.enhanced_path)) for m in processed_metadata if m.enhanced_path
             ]
             phase5_data = {
                 "status": "success" if successful > 0 else "failed",
-                "output_file": serialize_path_for_pipeline(Path(final_output_path)) if final_output_path else None,
+                "output_file": (serialize_path_for_pipeline(Path(final_output_path)) if final_output_path else None),
                 "metrics": {
                     "successful": successful,
                     "failed": failed,
@@ -1684,11 +1516,11 @@ def main(argv: Optional[list[str]] = None):
                 "summary": summary_block,
                 "artifacts": {
                     "enhanced_chunks": chunk_artifacts,
-                    "final_output": serialize_path_for_pipeline(Path(final_output_path)) if final_output_path else None,
+                    "final_output": (
+                        serialize_path_for_pipeline(Path(final_output_path)) if final_output_path else None
+                    ),
                 },
-                "errors": [
-                    m.error_message for m in processed_metadata if m.error_message
-                ],
+                "errors": [m.error_message for m in processed_metadata if m.error_message],
                 "timestamps": {
                     "start": overall_start,
                     "end": time.perf_counter(),
@@ -1704,7 +1536,12 @@ def main(argv: Optional[list[str]] = None):
             logger.info(f"[OK] Enhancement complete: {successful} successful, {failed} failed")
             logger.info(f"[OK] Total processing time: {total_duration:.2f}s")
             if config.enable_phrase_cleanup:
-                logger.info(f"[CLEANUP] Phrase cleanup: {phrases_cleaned_total} phrases removed from {chunks_with_phrases} chunks")
+                logger.info(
+                    (
+                        f"[CLEANUP] Phrase cleanup: {phrases_cleaned_total} phrases "
+                        f"removed from {chunks_with_phrases} chunks"
+                    )
+                )
                 if cleanup_errors > 0:
                     logger.warning(f"[WARNING] Cleanup errors: {cleanup_errors} chunks had cleanup failures")
             logger.info("=" * 60)
@@ -1736,6 +1573,7 @@ def main(argv: Optional[list[str]] = None):
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         import traceback
+
         traceback.print_exc()
         play_notification = getattr(args, "play_notification", False)
         if play_notification:
