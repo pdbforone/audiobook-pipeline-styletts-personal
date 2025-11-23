@@ -18,24 +18,28 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
     # Try importing all extraction libraries lazily so pytest imports stay quiet.
     try:
         import pdfplumber  # type: ignore
+
         print("✓ pdfplumber available")
     except ImportError:
         print("✗ pdfplumber not available")
         pdfplumber = None
     try:
         import pymupdf as fitz  # type: ignore
+
         print("✓ PyMuPDF (fitz) available")
     except ImportError:
         print("✗ PyMuPDF not available")
         fitz = None
     try:
         from pypdf import PdfReader  # type: ignore
+
         print("✓ pypdf available")
     except ImportError:
         print("✗ pypdf not available - try: pip install pypdf")
         PdfReader = None
     try:
         from unstructured.partition.auto import partition  # type: ignore
+
         print("✓ unstructured available")
     except ImportError:
         print("✗ unstructured not available")
@@ -51,7 +55,7 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
     results = {}
 
     # Method 1: pdfplumber
-    if 'pdfplumber' in locals() and pdfplumber:
+    if "pdfplumber" in locals() and pdfplumber:
         print("\n🔧 METHOD 1: pdfplumber")
         try:
             with pdfplumber.open(pdf_path) as pdf:
@@ -60,7 +64,7 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
                     page_text = page.extract_text()
                     if page_text:
                         text += page_text + "\n"
-            results['pdfplumber'] = text
+            results["pdfplumber"] = text
             sample = text[:500]
             print(f"   Length: {len(text)} chars")
             print(f"   First 500 chars:\n{sample}")
@@ -69,10 +73,10 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
             )
         except Exception as e:
             print(f"   ❌ Error: {e}")
-            results['pdfplumber'] = None
+            results["pdfplumber"] = None
 
     # Method 2: PyMuPDF basic
-    if 'fitz' in locals() and fitz:
+    if "fitz" in locals() and fitz:
         print("\n🔧 METHOD 2: PyMuPDF (basic get_text)")
         try:
             doc = fitz.open(pdf_path)
@@ -80,7 +84,7 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
             for page_num in range(min(2, len(doc))):
                 text += doc[page_num].get_text()
             doc.close()
-            results['pymupdf_basic'] = text
+            results["pymupdf_basic"] = text
             sample = text[:500]
             print(f"   Length: {len(text)} chars")
             print(f"   First 500 chars:\n{sample}")
@@ -89,10 +93,10 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
             )
         except Exception as e:
             print(f"   ❌ Error: {e}")
-            results['pymupdf_basic'] = None
+            results["pymupdf_basic"] = None
 
     # Method 3: PyMuPDF with layout preservation
-    if 'fitz' in locals() and fitz:
+    if "fitz" in locals() and fitz:
         print("\n🔧 METHOD 3: PyMuPDF (with layout='blocks')")
         try:
             doc = fitz.open(pdf_path)
@@ -104,7 +108,7 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
                     if len(block) >= 5:
                         text += block[4]
             doc.close()
-            results['pymupdf_blocks'] = text
+            results["pymupdf_blocks"] = text
             sample = text[:500]
             print(f"   Length: {len(text)} chars")
             print(f"   First 500 chars:\n{sample}")
@@ -113,10 +117,10 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
             )
         except Exception as e:
             print(f"   ❌ Error: {e}")
-            results['pymupdf_blocks'] = None
+            results["pymupdf_blocks"] = None
 
     # Method 4: PyMuPDF with text extraction dict
-    if 'fitz' in locals() and fitz:
+    if "fitz" in locals() and fitz:
         print("\n🔧 METHOD 4: PyMuPDF (with rawdict for font info)")
         try:
             doc = fitz.open(pdf_path)
@@ -130,7 +134,7 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
                             text += span.get("text", "") + " "
                     text += "\n"
             doc.close()
-            results['pymupdf_dict'] = text
+            results["pymupdf_dict"] = text
             sample = text[:500]
             print(f"   Length: {len(text)} chars")
             print(f"   First 500 chars:\n{sample}")
@@ -139,17 +143,17 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
             )
         except Exception as e:
             print(f"   ❌ Error: {e}")
-            results['pymupdf_dict'] = None
+            results["pymupdf_dict"] = None
 
     # Method 5: pypdf
-    if 'PdfReader' in locals() and PdfReader:
+    if "PdfReader" in locals() and PdfReader:
         print("\n🔧 METHOD 5: pypdf (PyPDF2 successor)")
         try:
             reader = PdfReader(str(pdf_path))
             text = ""
             for page_num in range(min(2, len(reader.pages))):
                 text += reader.pages[page_num].extract_text()
-            results['pypdf'] = text
+            results["pypdf"] = text
             sample = text[:500]
             print(f"   Length: {len(text)} chars")
             print(f"   First 500 chars:\n{sample}")
@@ -158,15 +162,15 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
             )
         except Exception as e:
             print(f"   ❌ Error: {e}")
-            results['pypdf'] = None
+            results["pypdf"] = None
 
     # Method 6: unstructured
-    if 'partition' in locals() and partition:
+    if "partition" in locals() and partition:
         print("\n🔧 METHOD 6: unstructured")
         try:
             elements = partition(filename=str(pdf_path), strategy="fast")
             text = "\n".join(str(el) for el in elements[:10])
-            results['unstructured'] = text
+            results["unstructured"] = text
             sample = text[:500]
             print(f"   Length: {len(text)} chars")
             print(f"   First 500 chars:\n{sample}")
@@ -175,7 +179,7 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
             )
         except Exception as e:
             print(f"   ❌ Error: {e}")
-            results['unstructured'] = None
+            results["unstructured"] = None
 
     # Summary
     print("\n" + "=" * 80)
@@ -186,7 +190,19 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
         if text and len(text) > 100:
             words = text[:1000].lower().split()
             common_words = sum(
-                word in ['the', 'and', 'of', 'to', 'a', 'in', 'is', 'that', 'for', 'it']
+                word
+                in [
+                    "the",
+                    "and",
+                    "of",
+                    "to",
+                    "a",
+                    "in",
+                    "is",
+                    "that",
+                    "for",
+                    "it",
+                ]
                 for word in words
             )
             readable = "✓ READABLE" if common_words > 5 else "✗ GIBBERISH"
@@ -200,9 +216,13 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
     readable_methods = [
         m
         for m, t in results.items()
-        if t and len(t) > 100 and sum(
-            w in ['the', 'and', 'of', 'to', 'a'] for w in t[:1000].lower().split()
-        ) > 5
+        if t
+        and len(t) > 100
+        and sum(
+            w in ["the", "and", "of", "to", "a"]
+            for w in t[:1000].lower().split()
+        )
+        > 5
     ]
     if readable_methods:
         print(f"   Use: {readable_methods[0]}")
@@ -214,7 +234,9 @@ def main(pdf_path: Path = DEFAULT_PDF_PATH) -> int:
         print("      - Encryption or DRM protection")
         print("      - Scanned images instead of text (needs OCR)")
         print("\n   Next steps:")
-        print("      1. Try opening PDF in Adobe Reader and check Document Properties → Security")
+        print(
+            "      1. Try opening PDF in Adobe Reader and check Document Properties → Security"
+        )
         print("      2. Check if text is selectable in PDF viewer")
         print("      3. May need to use OCR (EasyOCR/Tesseract) as fallback")
 

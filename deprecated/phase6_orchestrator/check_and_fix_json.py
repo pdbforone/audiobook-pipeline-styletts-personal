@@ -3,7 +3,7 @@ from pathlib import Path
 
 # Load the JSON
 json_path = Path("pipeline_magi.json")
-with open(json_path, 'r') as f:
+with open(json_path, "r") as f:
     data = json.load(f)
 
 # Check what file_ids are in phase4
@@ -26,10 +26,10 @@ if len(files) > 1:
     print("\nWe need to:")
     print("1. Keep only 'Gift of the Magi' in phase4")
     print("2. Remove other file_ids")
-    
+
     # Ask for confirmation
     response = input("\nRemove non-Magi files from JSON? (y/n): ")
-    if response.lower() == 'y':
+    if response.lower() == "y":
         # Keep only Gift of Magi
         magi_files = {}
         for file_id, file_data in files.items():
@@ -38,18 +38,18 @@ if len(files) > 1:
                 print(f"✓ Keeping: {file_id}")
             else:
                 print(f"✗ Removing: {file_id}")
-        
+
         # Update JSON
         phase4["files"] = magi_files
         data["phase4"] = phase4
-        
+
         # Remove phase5 so it re-runs
         data.pop("phase5", None)
-        
+
         # Save
-        with open(json_path, 'w') as f:
+        with open(json_path, "w") as f:
             json.dump(data, f, indent=2)
-        
+
         print("\n✓ JSON updated!")
         print("✓ Removed phase5 status")
         print("\nNow run Phase 5 again")

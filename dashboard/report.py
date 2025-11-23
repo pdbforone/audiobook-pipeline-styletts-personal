@@ -22,11 +22,22 @@ def build_weekly_report(output_path: Path) -> Path:
     charts_dir.mkdir(parents=True, exist_ok=True)
 
     chart_paths = {
-        "RTF Trend": plot_rtf_trend(metrics.get("rtf_points") or [], charts_dir / "rtf_trend.png"),
-        "Chunk Size History": plot_chunk_history(metrics.get("chunk_history") or [], charts_dir / "chunk_history.png"),
-        "Engine Usage": plot_engine_usage(metrics.get("engine_counts") or {}, charts_dir / "engine_usage.png"),
-        "Failure Reasons": plot_failure_table(metrics.get("failure_counts") or {}, charts_dir / "failures.png"),
-        "CPU & Memory": plot_system_usage(metrics.get("system_points") or [], charts_dir / "system.png"),
+        "RTF Trend": plot_rtf_trend(
+            metrics.get("rtf_points") or [], charts_dir / "rtf_trend.png"
+        ),
+        "Chunk Size History": plot_chunk_history(
+            metrics.get("chunk_history") or [],
+            charts_dir / "chunk_history.png",
+        ),
+        "Engine Usage": plot_engine_usage(
+            metrics.get("engine_counts") or {}, charts_dir / "engine_usage.png"
+        ),
+        "Failure Reasons": plot_failure_table(
+            metrics.get("failure_counts") or {}, charts_dir / "failures.png"
+        ),
+        "CPU & Memory": plot_system_usage(
+            metrics.get("system_points") or [], charts_dir / "system.png"
+        ),
     }
 
     lines = [
@@ -41,9 +52,13 @@ def build_weekly_report(output_path: Path) -> Path:
     ]
 
     lines.extend(_chart_section("RTF Trend", chart_paths["RTF Trend"]))
-    lines.extend(_chart_section("Chunk Size History", chart_paths["Chunk Size History"]))
+    lines.extend(
+        _chart_section("Chunk Size History", chart_paths["Chunk Size History"])
+    )
     lines.extend(_chart_section("Engine Usage", chart_paths["Engine Usage"]))
-    lines.extend(_chart_section("Failure Reasons", chart_paths["Failure Reasons"]))
+    lines.extend(
+        _chart_section("Failure Reasons", chart_paths["Failure Reasons"])
+    )
     lines.extend(_chart_section("CPU & Memory", chart_paths["CPU & Memory"]))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -59,7 +74,9 @@ def _chart_section(title: str, chart_path: Optional[Path]) -> List[str]:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Generate the weekly policy report.")
+    parser = argparse.ArgumentParser(
+        description="Generate the weekly policy report."
+    )
     parser.add_argument(
         "--output",
         type=Path,

@@ -20,12 +20,13 @@ import numpy as np
 # Try to import pypdf for better font encoding support
 try:
     from pypdf import PdfReader
+
     PYPDF_AVAILABLE = True
 except ImportError:
     PYPDF_AVAILABLE = False
 
 # Fix relative imports for script mode
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.path.append(str(Path(__file__).parent))
 from structure_detector import extract_structure, structure_to_dict
 from tts_normalizer import normalize_for_tts, validate_tts_readiness
@@ -72,16 +73,22 @@ def load_from_json(json_path: str, file_id: str, file_arg: str = None) -> Dict:
         with open(json_path, "r") as f:
             data = json.load(f)
         file_data = data.get("phase1", {}).get("files", {}).get(file_id, {})
-        file_path = file_data.get("file_path") or file_data.get("artifacts_path")
-        
+        file_path = file_data.get("file_path") or file_data.get(
+            "artifacts_path"
+        )
+
         if file_arg:
             file_path = file_arg  # Prefer CLI --file if provided
         elif not file_path:
             file_path = os.environ.get("AUDIOBOOK_INPUT_PATH")
             if not file_path:
-                raise ValueError(f"No file_path found for file_id '{file_id}' and AUDIOBOOK_INPUT_PATH not set")
-            logger.warning(f"Using fallback path from environment: {file_path}")
-        
+                raise ValueError(
+                    f"No file_path found for file_id '{file_id}' and AUDIOBOOK_INPUT_PATH not set"
+                )
+            logger.warning(
+                f"Using fallback path from environment: {file_path}"
+            )
+
         return {
             "file_path": file_path,
             "classification": file_data.get("classification", "text"),
@@ -148,10 +155,13 @@ def extract_text_easyocr(file_path: str) -> str:
         logger.info(f"Starting OCR on {len(doc)} pages...")
         for page_num, page in enumerate(doc):
             if (page_num + 1) % 10 == 0:
-                logger.info(f"  OCR progress: {page_num + 1}/{len(doc)} pages...")
+                logger.info(
+                    f"  OCR progress: {page_num + 1}/{len(doc)} pages..."
+                )
             pix = page.get_pixmap()
             import io
             from PIL import Image
+
             img_bytes = pix.tobytes("png")
             img = Image.open(io.BytesIO(img_bytes))
             img_array = np.array(img)
@@ -218,20 +228,22 @@ def main(config: ExtractionConfig, file_arg: str = None):
                 logger.info(f"✓ pypdf succeeded: {len(text)} chars")
             else:
                 logger.info("pypdf failed, trying fallbacks...")
-                text = extract_text_pdfplumber(file_path) or extract_text_pymupdf(file_path)
+                text = extract_text_pdfplumber(
+                    file_path
+                ) or extract_text_pymupdf(file_path)
                 tool_used = "pdfplumber or pymupdf"
-            
+
             if not text.strip() and classification == "mixed":
                 text = extract_text_unstructured(file_path)
                 tool_used = "unstructured"
                 if text.strip():
                     errors.append("Fallback to unstructured")
-            
+
             if not text.strip() and classification == "mixed":
                 text = extract_text_easyocr(file_path)
                 tool_used = "easyocr"
                 errors.append("Fallback to EasyOCR (last resort)")
-        
+
         elif classification == "scanned":
             text = extract_text_easyocr(file_path)
             tool_used = "easyocr"
@@ -257,11 +269,13 @@ def main(config: ExtractionConfig, file_arg: str = None):
             logger.info("Applying TTS normalization...")
             text = normalize_for_tts(text, remove_artifacts=True)
             logger.info(f"✓ Normalized: {raw_length:,} → {len(text):,} chars")
-        
+
         # Validate quality AFTER normalization
         gibberish_score = evaluate_gibberish(text)
         if gibberish_score > 0.7:  # Stricter threshold
-            errors.append(f"HIGH GIBBERISH: {gibberish_score:.3f} (threshold: 0.7)")
+            errors.append(
+                f"HIGH GIBBERISH: {gibberish_score:.3f} (threshold: 0.7)"
+            )
         elif gibberish_score > config.gibberish_threshold:
             errors.append(f"Gibberish score: {gibberish_score:.3f}")
 
@@ -277,36 +291,59 @@ def main(config: ExtractionConfig, file_arg: str = None):
         tts_validation = validate_tts_readiness(text)
         tts_ready = tts_validation["ready"]
         tts_metrics = tts_validation["metrics"]
-        
+
         if tts_validation["issues"]:
-            errors.extend([f"TTS CRITICAL: {issue}" for issue in tts_validation["issues"]])
+            errors.extend(
+                [
+                    f"TTS CRITICAL: {issue}"
+                    for issue in tts_validation["issues"]
+                ]
+            )
         if tts_validation["warnings"]:
-            errors.extend([f"TTS WARNING: {warn}" for warn in tts_validation["warnings"]])
-        
-        logger.info(f"TTS Readiness: {'✓ READY' if tts_ready else '✗ NOT READY'}")
+            errors.extend(
+                [f"TTS WARNING: {warn}" for warn in tts_validation["warnings"]]
+            )
+
+        logger.info(
+            f"TTS Readiness: {'✓ READY' if tts_ready else '✗ NOT READY'}"
+        )
         if tts_ready:
-            logger.info(f"  Punctuation density: {tts_metrics['punct_density']:.1f}/100 words")
-            logger.info(f"  Common words found: {tts_metrics['common_words']}/8")
+            logger.info(
+                f"  Punctuation density: {tts_metrics['punct_density']:.1f}/100 words"
+            )
+            logger.info(
+                f"  Common words found: {tts_metrics['common_words']}/8"
+            )
 
         file_size = os.path.getsize(file_path)
         yield_pct = len(text) / file_size * 100 if file_size else 0.0
-        
+
         # Update status logic based on TTS readiness
         if not tts_ready:
             status = "failed"  # Not TTS-ready = failed
-        elif yield_pct > 98 and perplexity > config.perplexity_threshold and not errors:
+        elif (
+            yield_pct > 98
+            and perplexity > config.perplexity_threshold
+            and not errors
+        ):
             status = "success"
         else:
             status = "partial_success"
 
-        extracted_path = str(Path(config.extracted_dir) / f"{config.file_id}.txt")
+        extracted_path = str(
+            Path(config.extracted_dir) / f"{config.file_id}.txt"
+        )
         with open(extracted_path, "w", encoding="utf-8") as f:
             f.write(text)
-        
+
         logger.info(f"✓ Saved: {extracted_path}")
-        logger.info(f"  Yield: {yield_pct:.2f}%, Gibberish: {gibberish_score:.3f}, Perplexity: {perplexity:.3f}")
-        logger.info(f"  Language: {lang_info['language']} (confidence: {lang_info['confidence']:.3f})")
-        
+        logger.info(
+            f"  Yield: {yield_pct:.2f}%, Gibberish: {gibberish_score:.3f}, Perplexity: {perplexity:.3f}"
+        )
+        logger.info(
+            f"  Language: {lang_info['language']} (confidence: {lang_info['confidence']:.3f})"
+        )
+
         structure = None
         if config.extract_structure:
             try:
@@ -314,11 +351,17 @@ def main(config: ExtractionConfig, file_arg: str = None):
                 structure_nodes = extract_structure(file_path, text)
                 if structure_nodes:
                     structure = structure_to_dict(structure_nodes)
-                    logger.info(f"Structure detected: {len(structure)} sections")
+                    logger.info(
+                        f"Structure detected: {len(structure)} sections"
+                    )
                 else:
-                    logger.info("No structure detected - will use fixed chunking")
+                    logger.info(
+                        "No structure detected - will use fixed chunking"
+                    )
             except Exception as e:
-                logger.warning(f"Structure extraction failed (non-critical): {e}")
+                logger.warning(
+                    f"Structure extraction failed (non-critical): {e}"
+                )
                 structure = None
 
     end_time = perf_counter()
@@ -336,10 +379,14 @@ def main(config: ExtractionConfig, file_arg: str = None):
             lang_confidence=lang_info["confidence"],
             status=status,
             errors=errors,
-            timestamps={"start": start_time, "end": end_time, "duration": duration},
+            timestamps={
+                "start": start_time,
+                "end": end_time,
+                "duration": duration,
+            },
             structure=structure,
             tts_ready=tts_ready,
-            tts_metrics=tts_metrics
+            tts_metrics=tts_metrics,
         )
         merge_to_json(record, config.json_path, config.file_id)
     except ValidationError as e:
@@ -367,13 +414,25 @@ def merge_to_json(record: ExtractionRecord, json_path: str, file_id: str):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Phase 2: TTS-Grade Text Extraction")
-    parser.add_argument("--file_id", required=True, help="File ID from Phase 1")
+    parser = argparse.ArgumentParser(
+        description="Phase 2: TTS-Grade Text Extraction"
+    )
+    parser.add_argument(
+        "--file_id", required=True, help="File ID from Phase 1"
+    )
     parser.add_argument("--file", type=str, help="Input file path (optional)")
-    parser.add_argument("--json_path", default="pipeline.json", help="Pipeline JSON path")
-    parser.add_argument("--extracted_dir", default="extracted_text", help="Output directory")
+    parser.add_argument(
+        "--json_path", default="pipeline.json", help="Pipeline JSON path"
+    )
+    parser.add_argument(
+        "--extracted_dir", default="extracted_text", help="Output directory"
+    )
     parser.add_argument("--config", help="Path to YAML config file")
-    parser.add_argument("--no-tts-normalize", action="store_true", help="Skip TTS normalization")
+    parser.add_argument(
+        "--no-tts-normalize",
+        action="store_true",
+        help="Skip TTS normalization",
+    )
     args = parser.parse_args()
 
     if args.config:
@@ -390,6 +449,6 @@ if __name__ == "__main__":
         gibberish_threshold=config_data.get("gibberish_threshold", 0.5),
         perplexity_threshold=config_data.get("perplexity_threshold", 0.92),
         lang_confidence=config_data.get("lang_confidence", 0.9),
-        tts_normalize=not args.no_tts_normalize
+        tts_normalize=not args.no_tts_normalize,
     )
     main(config, file_arg=args.file)

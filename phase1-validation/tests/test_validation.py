@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -33,31 +32,52 @@ def test_validate_pdf_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     pdf_path.write_bytes(b"pdf-bytes")
 
     mock_doc = _mock_pdf_doc()
-    monkeypatch.setattr(validation.fitz, "open", MagicMock(return_value=mock_doc))
+    monkeypatch.setattr(
+        validation.fitz, "open", MagicMock(return_value=mock_doc)
+    )
 
     result = validation.validate_and_repair(
-        str(pdf_path), artifacts_dir=str(tmp_path / "artifacts"), pipeline_json=None, file_id=None
+        str(pdf_path),
+        artifacts_dir=str(tmp_path / "artifacts"),
+        pipeline_json=None,
+        file_id=None,
     )
     assert isinstance(result, validation.FileMetadata)
     assert result.classification == "text"
     assert result.repair_attempted is False
 
 
-def test_validate_pdf_repair_flow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_validate_pdf_repair_flow(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     pdf_path = tmp_path / "test.pdf"
     pdf_path.write_bytes(b"pdf-bytes")
 
     repaired_doc = _mock_pdf_doc()
-    fitz_open = MagicMock(side_effect=[Exception("Corrupted"), repaired_doc, repaired_doc, repaired_doc])
+    fitz_open = MagicMock(
+        side_effect=[
+            Exception("Corrupted"),
+            repaired_doc,
+            repaired_doc,
+            repaired_doc,
+        ]
+    )
     monkeypatch.setattr(validation.fitz, "open", fitz_open)
 
     pdf_ctx = MagicMock()
-    pdf_ctx.__enter__.return_value = MagicMock(save=lambda *args, **kwargs: None)
+    pdf_ctx.__enter__.return_value = MagicMock(
+        save=lambda *args, **kwargs: None
+    )
     pdf_ctx.__exit__.return_value = None
-    monkeypatch.setattr(validation.pikepdf, "open", MagicMock(return_value=pdf_ctx))
+    monkeypatch.setattr(
+        validation.pikepdf, "open", MagicMock(return_value=pdf_ctx)
+    )
 
     result = validation.validate_and_repair(
-        str(pdf_path), artifacts_dir=str(tmp_path / "artifacts"), pipeline_json=None, file_id=None
+        str(pdf_path),
+        artifacts_dir=str(tmp_path / "artifacts"),
+        pipeline_json=None,
+        file_id=None,
     )
     assert result is not None
     assert result.repair_attempted is True
@@ -81,7 +101,9 @@ def test_persist_metadata_updates_pipeline(tmp_path: Path):
 
     validation.persist_metadata(metadata, json_path, "book")
 
-    state = PipelineState(json_path, validate_on_read=False).read(validate=False)
+    state = PipelineState(json_path, validate_on_read=False).read(
+        validate=False
+    )
     phase_block = state["phase1"]
     file_entry = phase_block["files"]["book"]
     assert file_entry["sha256"] == "def"

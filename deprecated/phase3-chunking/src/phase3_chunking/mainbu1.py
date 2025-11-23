@@ -13,7 +13,6 @@ from .utils import (
     save_chunks,
     log_chunk_times,
 )
-import nltk
 
 logger = logging.getLogger(__name__)  # For consistent logging
 
@@ -45,7 +44,8 @@ def process_chunking(
     avg_flesch = sum(readability) / len(readability) if readability else 0
     status = (
         "success"
-        if avg_coherence > coherence_threshold and avg_flesch > flesch_threshold
+        if avg_coherence > coherence_threshold
+        and avg_flesch > flesch_threshold
         else "partial"
     )
     errors = []
@@ -70,7 +70,11 @@ def process_chunking(
         embeddings=[emb.tolist() for emb in embeddings],
         status=status,
         errors=errors,
-        timestamps={"start": start_time, "end": end_time, "duration": duration},
+        timestamps={
+            "start": start_time,
+            "end": end_time,
+            "duration": duration,
+        },
     )
 
 
@@ -85,7 +89,9 @@ def load_from_json(json_path: str, file_id: str) -> str:
             .get("extracted_text_path", "")
         )
         if not text_path:
-            logger.warning("No extracted_text_path in phase2; using absolute fallback.")
+            logger.warning(
+                "No extracted_text_path in phase2; using absolute fallback."
+            )
             text_path = f"C:\\Users\\myson\\Pipeline\\audiobook-pipeline\\phase2-extraction\\extracted_text\\{file_id}.txt"  # Absolute based on structure
         return text_path
     except (FileNotFoundError, json.JSONDecodeError):
@@ -132,11 +138,15 @@ def merge_to_json(record: ChunkRecord, json_path: str, file_id: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Phase 3: Chunking")
-    parser.add_argument("--file_id", required=True, help="File ID from Phase 2")
+    parser.add_argument(
+        "--file_id", required=True, help="File ID from Phase 2"
+    )
     parser.add_argument(
         "--json_path", default="pipeline.json", help="Pipeline JSON path"
     )
-    parser.add_argument("--chunks_dir", default="chunks", help="Chunks directory")
+    parser.add_argument(
+        "--chunks_dir", default="chunks", help="Chunks directory"
+    )
     parser.add_argument("--config", help="Path to YAML config file")
     args = parser.parse_args()
 
@@ -146,7 +156,9 @@ def main():
             with open(args.config, "r") as f:
                 config_data = yaml.safe_load(f)
         except FileNotFoundError:
-            logger.warning(f"Config file {args.config} not found; using defaults.")
+            logger.warning(
+                f"Config file {args.config} not found; using defaults."
+            )
 
     min_words = config_data.get("chunk_min_words", 250)
     max_words = config_data.get("chunk_max_words", 400)

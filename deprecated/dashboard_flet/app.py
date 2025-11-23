@@ -19,7 +19,9 @@ except Exception:  # pragma: no cover - fallback when Flet is missing
 
 def main(page: "ft.Page") -> None:
     if ft is None:
-        raise RuntimeError("Flet is not installed. Install with `pip install flet` to launch the dashboard.")
+        raise RuntimeError(
+            "Flet is not installed. Install with `pip install flet` to launch the dashboard."
+        )
 
     page.title = "Policy Engine Dashboard (Archived Flet UI)"
     page.scroll = "auto"
@@ -42,11 +44,22 @@ def main(page: "ft.Page") -> None:
 def _build_charts(metrics):
     charts_dir = Path("policy_reports") / "charts"
     charts = {
-        "RTF Trend": plot_rtf_trend(metrics.get("rtf_points") or [], charts_dir / "rtf_trend.png"),
-        "Chunk Size History": plot_chunk_history(metrics.get("chunk_history") or [], charts_dir / "chunk_history.png"),
-        "Engine Usage": plot_engine_usage(metrics.get("engine_counts") or {}, charts_dir / "engine_usage.png"),
-        "Failure Reasons": plot_failure_table(metrics.get("failure_counts") or {}, charts_dir / "failures.png"),
-        "CPU & Memory": plot_system_usage(metrics.get("system_points") or [], charts_dir / "system.png"),
+        "RTF Trend": plot_rtf_trend(
+            metrics.get("rtf_points") or [], charts_dir / "rtf_trend.png"
+        ),
+        "Chunk Size History": plot_chunk_history(
+            metrics.get("chunk_history") or [],
+            charts_dir / "chunk_history.png",
+        ),
+        "Engine Usage": plot_engine_usage(
+            metrics.get("engine_counts") or {}, charts_dir / "engine_usage.png"
+        ),
+        "Failure Reasons": plot_failure_table(
+            metrics.get("failure_counts") or {}, charts_dir / "failures.png"
+        ),
+        "CPU & Memory": plot_system_usage(
+            metrics.get("system_points") or [], charts_dir / "system.png"
+        ),
     }
     return charts
 

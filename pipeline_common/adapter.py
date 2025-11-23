@@ -15,7 +15,9 @@ from .schema import (
 from .state_manager import PipelineState, StateError
 
 
-def adapt_payload(payload: Dict[str, Any], *, touch_timestamps: bool = True) -> Dict[str, Any]:
+def adapt_payload(
+    payload: Dict[str, Any], *, touch_timestamps: bool = True
+) -> Dict[str, Any]:
     """Return a normalized copy of a legacy pipeline payload."""
     normalized = canonicalize_state(
         payload,

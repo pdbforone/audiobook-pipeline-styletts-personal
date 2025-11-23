@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Optional, Sequence, Tuple
 
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 
-def plot_rtf_trend(points: Sequence[Tuple[float, float]], output_path: Path) -> Optional[Path]:
+def plot_rtf_trend(
+    points: Sequence[Tuple[float, float]], output_path: Path
+) -> Optional[Path]:
     if not points:
         return None
     times, values = zip(*points)
@@ -21,7 +23,9 @@ def plot_rtf_trend(points: Sequence[Tuple[float, float]], output_path: Path) -> 
     return _save(fig, output_path)
 
 
-def plot_chunk_history(history: Sequence[Dict[str, float]], output_path: Path) -> Optional[Path]:
+def plot_chunk_history(
+    history: Sequence[Dict[str, float]], output_path: Path
+) -> Optional[Path]:
     if not history:
         return None
     indices = list(range(len(history)))
@@ -36,7 +40,9 @@ def plot_chunk_history(history: Sequence[Dict[str, float]], output_path: Path) -
     return _save(fig, output_path)
 
 
-def plot_engine_usage(engine_counts: Dict[str, int], output_path: Path) -> Optional[Path]:
+def plot_engine_usage(
+    engine_counts: Dict[str, int], output_path: Path
+) -> Optional[Path]:
     if not engine_counts:
         return None
     labels = list(engine_counts.keys())
@@ -48,10 +54,14 @@ def plot_engine_usage(engine_counts: Dict[str, int], output_path: Path) -> Optio
     return _save(fig, output_path)
 
 
-def plot_failure_table(failure_counts: Dict[str, int], output_path: Path) -> Optional[Path]:
+def plot_failure_table(
+    failure_counts: Dict[str, int], output_path: Path
+) -> Optional[Path]:
     if not failure_counts:
         return None
-    rows = sorted(failure_counts.items(), key=lambda item: item[1], reverse=True)
+    rows = sorted(
+        failure_counts.items(), key=lambda item: item[1], reverse=True
+    )
     fig, ax = _new_figure(figsize=(8, max(1, 0.4 * len(rows) + 1)))
     ax.axis("off")
     table = ax.table(
@@ -67,7 +77,9 @@ def plot_failure_table(failure_counts: Dict[str, int], output_path: Path) -> Opt
     return _save(fig, output_path)
 
 
-def plot_system_usage(points: Sequence[Tuple[float, float, float]], output_path: Path) -> Optional[Path]:
+def plot_system_usage(
+    points: Sequence[Tuple[float, float, float]], output_path: Path
+) -> Optional[Path]:
     if not points:
         return None
     times = [p[0] for p in points]
@@ -86,7 +98,9 @@ def plot_system_usage(points: Sequence[Tuple[float, float, float]], output_path:
     return _save(fig, output_path)
 
 
-def _new_figure(figsize: Tuple[float, float] = (8, 4)) -> Tuple[Figure, plt.Axes]:
+def _new_figure(
+    figsize: Tuple[float, float] = (8, 4)
+) -> Tuple[Figure, plt.Axes]:
     fig, ax = plt.subplots(figsize=figsize)
     fig.tight_layout()
     return fig, ax

@@ -59,7 +59,9 @@ def run_pipeline(book_path: pathlib.Path) -> int:
     if result.stderr:
         print("STDERR:", result.stderr)
     if result.returncode != 0:
-        print(f"Run for {book_path.name} failed with exit code {result.returncode}")
+        print(
+            f"Run for {book_path.name} failed with exit code {result.returncode}"
+        )
     return result.returncode
 
 

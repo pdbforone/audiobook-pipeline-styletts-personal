@@ -60,7 +60,12 @@ def convert_numbers_to_words(text: str) -> Tuple[str, int]:
         conversion_count += 1
         return f"{prefix} {num2words(num, to='ordinal').title()}"
 
-    text = re.sub(r"\b(Book|Chapter|Section|Part)\s+(\d+)\b", replace_book_chapter, text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"\b(Book|Chapter|Section|Part)\s+(\d+)\b",
+        replace_book_chapter,
+        text,
+        flags=re.IGNORECASE,
+    )
 
     def replace_line_start_number(match: re.Match[str]) -> str:
         nonlocal conversion_count
@@ -70,11 +75,18 @@ def convert_numbers_to_words(text: str) -> Tuple[str, int]:
             return num2words(num).title() + " "
         return match.group(0)
 
-    text = re.sub(r"^(\d+)\s+(?=[A-Z])", replace_line_start_number, text, flags=re.MULTILINE)
+    text = re.sub(
+        r"^(\d+)\s+(?=[A-Z])",
+        replace_line_start_number,
+        text,
+        flags=re.MULTILINE,
+    )
     return text, conversion_count
 
 
-def _apply_primary_normalizer(text: str, use_nemo: bool) -> Tuple[str, Dict[str, Any]]:
+def _apply_primary_normalizer(
+    text: str, use_nemo: bool
+) -> Tuple[str, Dict[str, Any]]:
     """Route text through the configured primary normalizer."""
     metrics: Dict[str, Any] = {"changes": []}
 
@@ -90,7 +102,9 @@ def _apply_primary_normalizer(text: str, use_nemo: bool) -> Tuple[str, Dict[str,
             {
                 "normalizer": "noop",
                 "tts_ready": False,
-                "changes": ["TTS normalizer unavailable; returned text unchanged"],
+                "changes": [
+                    "TTS normalizer unavailable; returned text unchanged"
+                ],
             }
         )
         return text, metrics
@@ -173,7 +187,9 @@ def normalize_text(
             metrics["removed_junk_lines"] += 1
             continue
 
-        if re.match(r"^\s*page\s+\d+(\s+of\s+\d+)?\s*$", line_stripped, re.IGNORECASE):
+        if re.match(
+            r"^\s*page\s+\d+(\s+of\s+\d+)?\s*$", line_stripped, re.IGNORECASE
+        ):
             metrics["removed_junk_lines"] += 1
             continue
 
@@ -186,15 +202,21 @@ def normalize_text(
         cleaned_lines.append(line)
 
     text = "\n".join(cleaned_lines)
-    metrics["changes"].append(f"Removed {metrics['removed_junk_lines']} junk lines")
+    metrics["changes"].append(
+        f"Removed {metrics['removed_junk_lines']} junk lines"
+    )
     if metrics["removed_inline_numbers"] > 0:
-        metrics["changes"].append(f"Removed {metrics['removed_inline_numbers']} inline page numbers")
+        metrics["changes"].append(
+            f"Removed {metrics['removed_inline_numbers']} inline page numbers"
+        )
 
     # Stage 3: Convert Numbers to Words
     text, num_conversions = convert_numbers_to_words(text)
     if num_conversions > 0:
         metrics["converted_numbers_to_words"] = num_conversions
-        metrics["changes"].append(f"Converted {num_conversions} numbers to words for TTS")
+        metrics["changes"].append(
+            f"Converted {num_conversions} numbers to words for TTS"
+        )
 
     # Stage 4: Extract and Tag Footnotes
     footnotes = []
@@ -214,7 +236,10 @@ def normalize_text(
             footnote_dir = artifacts_dir / "footnotes"
             footnote_dir.mkdir(parents=True, exist_ok=True)
             footnote_path = footnote_dir / f"{file_id}_footnotes.json"
-            footnote_path.write_text(json.dumps(footnotes, indent=2, ensure_ascii=False), encoding="utf-8")
+            footnote_path.write_text(
+                json.dumps(footnotes, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
         except Exception as exc:  # pragma: no cover - filesystem issues
             logger.warning(f"Failed to save footnotes: {exc}")
 
@@ -225,8 +250,12 @@ def normalize_text(
         metrics["changes"].append(f"Preserved {heading_count} headings")
 
     # Stage 6: Delegate to Primary Normalizer (whitespace/unicode cleanup lives here)
-    normalized_text, normalizer_metrics = _apply_primary_normalizer(text, use_nemo)
-    metrics.update({k: v for k, v in normalizer_metrics.items() if k != "changes"})
+    normalized_text, normalizer_metrics = _apply_primary_normalizer(
+        text, use_nemo
+    )
+    metrics.update(
+        {k: v for k, v in normalizer_metrics.items() if k != "changes"}
+    )
     for change in normalizer_metrics.get("changes", []):
         if change not in metrics["changes"]:
             metrics["changes"].append(change)
@@ -235,7 +264,9 @@ def normalize_text(
     metrics["original_length"] = original_length
     metrics["final_length"] = len(normalized_text)
     metrics["size_change"] = len(normalized_text) - original_length
-    metrics["text_yield"] = len(normalized_text) / original_length if original_length > 0 else 0.0
+    metrics["text_yield"] = (
+        len(normalized_text) / original_length if original_length > 0 else 0.0
+    )
 
     logger.info("Normalization complete")
     logger.info(f"  Original: {original_length:,} chars")

@@ -28,13 +28,15 @@ class KaraokeGenerator:
                 - shadow: Shadow depth (e.g., 2)
                 - alignment: Text alignment (2 = bottom center)
                 - margin_v: Vertical margin in pixels (e.g., 80)
-                
+
         Note: ASS karaoke format uses {\k##} tags where:
             - SecondaryColour = color BEFORE karaoke timing (unread words)
             - PrimaryColour = color AFTER karaoke timing starts (currently being read)
         """
         self.style = style_config
-        logger.info(f"Initialized KaraokeGenerator with font: {style_config['fontname']} {style_config['fontsize']}px")
+        logger.info(
+            f"Initialized KaraokeGenerator with font: {style_config['fontname']} {style_config['fontsize']}px"
+        )
 
     def _format_ass_timestamp(self, seconds: float) -> str:
         """
@@ -53,10 +55,12 @@ class KaraokeGenerator:
 
         return f"{hours}:{minutes:02d}:{secs:02d}.{centiseconds:02d}"
 
-    def _generate_karaoke_line(self, words: List[Dict[str, Any]], line_start: float, line_end: float) -> str:
+    def _generate_karaoke_line(
+        self, words: List[Dict[str, Any]], line_start: float, line_end: float
+    ) -> str:
         """
         Generate karaoke tags for a subtitle line.
-        
+
         CRITICAL: Karaoke duration includes the word PLUS any gap until the next word starts.
         This ensures the highlighting stays synced with actual speech timing.
 
@@ -79,11 +83,11 @@ class KaraokeGenerator:
             # (or to line end for the last word)
             if i < len(words) - 1:
                 # Duration = time until next word starts
-                duration = words[i + 1]['start'] - word['start']
+                duration = words[i + 1]["start"] - word["start"]
             else:
                 # Last word: duration = time until line ends
-                duration = line_end - word['start']
-            
+                duration = line_end - word["start"]
+
             # Convert to centiseconds (1/100th of a second)
             duration_cs = int(duration * 100)
 
@@ -91,7 +95,7 @@ class KaraokeGenerator:
             duration_cs = max(10, duration_cs)
 
             # Clean up the word text (remove extra spaces)
-            word_text = word['word'].strip()
+            word_text = word["word"].strip()
 
             # Add karaoke tag
             karaoke_text += f"{{\\k{duration_cs}}}{word_text}"
@@ -125,12 +129,16 @@ Style: Default,{fontname},{fontsize},{primary_color},{secondary_color},{outline_
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """.format(
-            fontname=self.style['fontname'],
-            fontsize=self.style['fontsize'],
-            primary_color=self.style['primary_color'],  # Yellow (currently being read/highlighted)
-            secondary_color=self.style['secondary_color'],  # White (not yet read)
-            outline_color='&H00000000',  # Black outline
-            back_color='&H00000000',  # Black background (transparent)
+            fontname=self.style["fontname"],
+            fontsize=self.style["fontsize"],
+            primary_color=self.style[
+                "primary_color"
+            ],  # Yellow (currently being read/highlighted)
+            secondary_color=self.style[
+                "secondary_color"
+            ],  # White (not yet read)
+            outline_color="&H00000000",  # Black outline
+            back_color="&H00000000",  # Black background (transparent)
             bold=1,  # Bold text
             italic=0,
             underline=0,
@@ -140,18 +148,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             spacing=0,
             angle=0,
             border_style=1,  # Outline + drop shadow
-            outline=self.style['outline'],
-            shadow=self.style['shadow'],
-            alignment=self.style['alignment'],  # 2 = bottom center
+            outline=self.style["outline"],
+            shadow=self.style["shadow"],
+            alignment=self.style["alignment"],  # 2 = bottom center
             margin_l=10,
             margin_r=10,
-            margin_v=self.style['margin_v'],
-            encoding=1  # Default encoding
+            margin_v=self.style["margin_v"],
+            encoding=1,  # Default encoding
         )
 
         return header
 
-    def generate_ass(self, segments: List[Dict[str, Any]], output_path: Path) -> Dict[str, Any]:
+    def generate_ass(
+        self, segments: List[Dict[str, Any]], output_path: Path
+    ) -> Dict[str, Any]:
         """
         Generate ASS format subtitles with karaoke word-level highlighting.
 
@@ -177,28 +187,32 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
         for seg in segments:
             # Check if word-level data is available
-            if 'words' in seg and seg['words']:
+            if "words" in seg and seg["words"]:
                 # Use FIRST WORD start time as line start (not segment start)
                 # This ensures karaoke timing matches actual speech
-                first_word_start = seg['words'][0]['start']
-                last_word_end = seg['words'][-1]['end']
-                
+                first_word_start = seg["words"][0]["start"]
+                last_word_end = seg["words"][-1]["end"]
+
                 start_time = self._format_ass_timestamp(first_word_start)
                 end_time = self._format_ass_timestamp(last_word_end)
-                
+
                 # Generate karaoke line with word-level timing
-                karaoke_text = self._generate_karaoke_line(seg['words'], first_word_start, last_word_end)
-                total_words += len(seg['words'])
+                karaoke_text = self._generate_karaoke_line(
+                    seg["words"], first_word_start, last_word_end
+                )
+                total_words += len(seg["words"])
 
                 # Calculate average word duration for this segment
-                for word in seg['words']:
-                    word_durations.append(word['end'] - word['start'])
+                for word in seg["words"]:
+                    word_durations.append(word["end"] - word["start"])
             else:
                 # Fallback: Use plain text without karaoke tags
-                start_time = self._format_ass_timestamp(seg['start'])
-                end_time = self._format_ass_timestamp(seg['end'])
-                karaoke_text = seg['text']
-                logger.warning(f"No word-level data for segment at {seg['start']:.2f}s - using plain text")
+                start_time = self._format_ass_timestamp(seg["start"])
+                end_time = self._format_ass_timestamp(seg["end"])
+                karaoke_text = seg["text"]
+                logger.warning(
+                    f"No word-level data for segment at {seg['start']:.2f}s - using plain text"
+                )
 
             # Format dialogue line
             # Format: Dialogue: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
@@ -206,20 +220,22 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             ass_content += dialogue_line
 
         # Write to file
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             f.write(ass_content)
 
         # Calculate statistics
-        avg_word_duration = sum(word_durations) / len(word_durations) if word_durations else 0
+        avg_word_duration = (
+            sum(word_durations) / len(word_durations) if word_durations else 0
+        )
 
         stats = {
-            'total_segments': len(segments),
-            'total_words': total_words,
-            'avg_word_duration': avg_word_duration,
-            'output_path': str(output_path)
+            "total_segments": len(segments),
+            "total_words": total_words,
+            "avg_word_duration": avg_word_duration,
+            "output_path": str(output_path),
         }
 
-        logger.info(f"Karaoke ASS generation complete:")
+        logger.info("Karaoke ASS generation complete:")
         logger.info(f"  Segments: {stats['total_segments']}")
         logger.info(f"  Words: {stats['total_words']}")
         logger.info(f"  Avg word duration: {stats['avg_word_duration']:.3f}s")

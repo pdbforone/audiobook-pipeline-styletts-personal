@@ -33,7 +33,7 @@ VOICE_CATALOG = {
             ],
             "extract_segment": {"start": 30, "duration": 25},
             "quality": "excellent",
-            "commercial_use": True
+            "commercial_use": True,
         }
     },
     "horror": {
@@ -46,7 +46,7 @@ VOICE_CATALOG = {
             ],
             "extract_segment": {"start": 30, "duration": 25},
             "quality": "excellent",
-            "commercial_use": True
+            "commercial_use": True,
         },
         "Mark Nelson": {
             "work": "The Dunwich Horror (H.P. Lovecraft)",
@@ -57,14 +57,15 @@ VOICE_CATALOG = {
             ],
             "extract_segment": {"start": 20, "duration": 25},
             "quality": "excellent",
-            "commercial_use": True
-        }
-    }
+            "commercial_use": True,
+        },
+    },
 }
 
 # ================================
 # DOWNLOAD UTILS
 # ================================
+
 
 def download_file(url, dest_folder="samples", filename=None):
     """Downloads a file from the web with error handling."""
@@ -109,10 +110,13 @@ def download_narrator_samples(genre, narrator, data):
 # MAIN
 # ================================
 
+
 def main():
     if len(sys.argv) == 1:
         print("Usage:")
-        print("  python voice_sample_downloader.py [--all | --genre GENRE | --narrator 'Name']")
+        print(
+            "  python voice_sample_downloader.py [--all | --genre GENRE | --narrator 'Name']"
+        )
         sys.exit(1)
 
     # Parse args

@@ -53,10 +53,16 @@ def _summarize_recent(values: deque[float]) -> Dict[str, float]:
     return _summarize_numbers(list(values))
 
 
-def _build_phase_duration_analysis(summary: Dict[str, Dict[str, float]]) -> Dict[str, Any]:
+def _build_phase_duration_analysis(
+    summary: Dict[str, Dict[str, float]],
+) -> Dict[str, Any]:
     if not summary:
         return {}
-    valid = [(phase, data) for phase, data in summary.items() if data.get("avg_ms") is not None]
+    valid = [
+        (phase, data)
+        for phase, data in summary.items()
+        if data.get("avg_ms") is not None
+    ]
     if not valid:
         return {}
     sorted_avg = sorted(valid, key=lambda item: item[1]["avg_ms"])
@@ -65,8 +71,15 @@ def _build_phase_duration_analysis(summary: Dict[str, Dict[str, float]]) -> Dict
     analysis["slowest_phase"] = {"phase": slowest[0], **slowest[1]}
     fastest = sorted_avg[0]
     analysis["fastest_phase"] = {"phase": fastest[0], **fastest[1]}
-    variability = sorted(valid, key=lambda item: (item[1]["max_ms"] - item[1]["min_ms"]), reverse=True)
-    analysis["most_variable_phase"] = {"phase": variability[0][0], **variability[0][1]}
+    variability = sorted(
+        valid,
+        key=lambda item: (item[1]["max_ms"] - item[1]["min_ms"]),
+        reverse=True,
+    )
+    analysis["most_variable_phase"] = {
+        "phase": variability[0][0],
+        **variability[0][1],
+    }
     return analysis
 
 
@@ -97,7 +110,9 @@ class PolicyAdvisor:
         advice: Dict[str, Any] = {}
         suggestions: List[Dict[str, Any]] = []
 
-        def _add_suggestion(kind: str, payload: Dict[str, Any], *, confidence: float = 0.6) -> None:
+        def _add_suggestion(
+            kind: str, payload: Dict[str, Any], *, confidence: float = 0.6
+        ) -> None:
             suggestions.append(
                 {
                     "type": kind,
@@ -111,13 +126,17 @@ class PolicyAdvisor:
             rec = recommend_chunk_size(file_id, stats=stats)
             if rec:
                 advice["chunk_size"] = rec
-                _add_suggestion("chunk_size", rec, confidence=rec.get("confidence", 0.65))
+                _add_suggestion(
+                    "chunk_size", rec, confidence=rec.get("confidence", 0.65)
+                )
 
         if phase == "phase4" and file_id:
             engine = recommend_engine(file_id, stats=stats)
             if engine:
                 advice["engine"] = engine
-                _add_suggestion("engine", engine, confidence=engine.get("confidence", 0.7))
+                _add_suggestion(
+                    "engine", engine, confidence=engine.get("confidence", 0.7)
+                )
             voice = recommend_voice_variant(file_id, stats=stats)
             if voice:
                 advice["voice_variant"] = voice
@@ -198,7 +217,9 @@ def compute_stats(events: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         return deque(maxlen=ROLLING_WINDOW)
 
     phase_duration: Dict[str, List[float]] = defaultdict(list)
-    rolling_phase_duration: Dict[str, deque[float]] = defaultdict(_rolling_deque)
+    rolling_phase_duration: Dict[str, deque[float]] = defaultdict(
+        _rolling_deque
+    )
     phase_failures: Dict[str, int] = defaultdict(int)
     phase_success: Dict[str, int] = defaultdict(int)
     file_failures: Dict[Tuple[str, str], int] = defaultdict(int)
@@ -208,7 +229,9 @@ def compute_stats(events: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     engine_failure: Dict[str, int] = defaultdict(int)
     hallucination_flags = 0
     hallucination_by_engine: Dict[str, int] = defaultdict(int)
-    hallucination_recent: deque[Dict[str, Any]] = deque(maxlen=HALLUCINATION_WINDOW)
+    hallucination_recent: deque[Dict[str, Any]] = deque(
+        maxlen=HALLUCINATION_WINDOW
+    )
     enhancement_failures = 0
     enhancement_total = 0
     rtf_samples: List[float] = []
@@ -217,7 +240,9 @@ def compute_stats(events: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     fallback_rates: List[float] = []
     rolling_fallback: deque[float] = deque(maxlen=ROLLING_WINDOW)
     fallback_by_engine: Dict[str, List[float]] = defaultdict(list)
-    fallback_recent_by_engine: Dict[str, deque[float]] = defaultdict(_rolling_deque)
+    fallback_recent_by_engine: Dict[str, deque[float]] = defaultdict(
+        _rolling_deque
+    )
     fallback_chunk_counts: List[float] = []
     fallback_chunks_by_engine: Dict[str, List[float]] = defaultdict(list)
     run_info: Dict[str, Dict[str, Any]] = {}
@@ -234,15 +259,23 @@ def compute_stats(events: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         if run_id:
             info = run_info.setdefault(run_id, {"failed": False})
             ts = record.get("timestamp")
-            if ts and (not info.get("timestamp") or ts < info.get("timestamp")):
+            if ts and (
+                not info.get("timestamp") or ts < info.get("timestamp")
+            ):
                 info["timestamp"] = ts
             if event_type == "phase_failure":
                 info["failed"] = True
-            if errors and any("hallucination" in str(err).lower() for err in errors):
+            if errors and any(
+                "hallucination" in str(err).lower() for err in errors
+            ):
                 info["hallucination"] = True
             metrics_bucket = info.setdefault("metrics", {})
             if phase == "phase4" and event_type == "phase_end":
-                for key in ("avg_rt_factor", "fallback_rate", "latency_fallback_chunks"):
+                for key in (
+                    "avg_rt_factor",
+                    "fallback_rate",
+                    "latency_fallback_chunks",
+                ):
                     if metrics.get(key) is not None:
                         metrics_bucket[key] = metrics.get(key)
 
@@ -283,12 +316,16 @@ def compute_stats(events: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
                 if engine:
                     fallback_by_engine[engine].append(fallback_rate)
                     fallback_recent_by_engine[engine].append(fallback_rate)
-            latency_chunks = _safe_float(metrics.get("latency_fallback_chunks"))
+            latency_chunks = _safe_float(
+                metrics.get("latency_fallback_chunks")
+            )
             if latency_chunks is not None:
                 fallback_chunk_counts.append(latency_chunks)
                 if engine:
                     fallback_chunks_by_engine[engine].append(latency_chunks)
-            if errors and any("hallucination" in str(err).lower() for err in errors):
+            if errors and any(
+                "hallucination" in str(err).lower() for err in errors
+            ):
                 hallucination_flags += 1
                 if engine:
                     hallucination_by_engine[engine] += 1
@@ -305,10 +342,14 @@ def compute_stats(events: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
                 enhancement_failures += 1
 
     phase_duration_summary = {
-        key: _summarize_numbers(values) for key, values in phase_duration.items() if values
+        key: _summarize_numbers(values)
+        for key, values in phase_duration.items()
+        if values
     }
     rolling_phase_summary = {
-        key: _summarize_recent(window) for key, window in rolling_phase_duration.items() if window
+        key: _summarize_recent(window)
+        for key, window in rolling_phase_duration.items()
+        if window
     }
     rtf_stats = _build_rtf_stats(rtf_samples, rolling_rt_factor, rtf_by_engine)
     fallback_stats = _build_fallback_stats(
@@ -361,15 +402,25 @@ def compute_stats(events: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         run_rewards.append({"run_id": entry["run_id"], "reward": reward})
     reward_values = [item["reward"] for item in run_rewards]
     reward_average = mean(reward_values) if reward_values else 0.0
-    chunk_error_rate = (chunk_error_count / chunk_event_total) if chunk_event_total else 0.0
-    engine_reliability_data = compute_engine_reliability(engine_success, engine_failure)
-    sorted_engines = sorted(engine_reliability_data.items(), key=lambda item: item[1], reverse=True)
+    chunk_error_rate = (
+        (chunk_error_count / chunk_event_total) if chunk_event_total else 0.0
+    )
+    engine_reliability_data = compute_engine_reliability(
+        engine_success, engine_failure
+    )
+    sorted_engines = sorted(
+        engine_reliability_data.items(), key=lambda item: item[1], reverse=True
+    )
     best_score = sorted_engines[0][1] if sorted_engines else 0.0
     second_score = sorted_engines[1][1] if len(sorted_engines) > 1 else 0.0
     engine_bias = max(0.0, best_score - second_score)
     voice_penalty = min(
         1.0,
-        float(hallucination_flags) / max(1, len(run_history)) if run_history else 0.0,
+        (
+            float(hallucination_flags) / max(1, len(run_history))
+            if run_history
+            else 0.0
+        ),
     )
     skill_weights = {
         "chunk_size": max(0.0, 1.0 - chunk_error_rate),
@@ -388,11 +439,15 @@ def compute_stats(events: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
 
     return {
         "phase_duration": {
-            key: mean(values) for key, values in phase_duration.items() if values
+            key: mean(values)
+            for key, values in phase_duration.items()
+            if values
         },
         "phase_duration_summary": phase_duration_summary,
         "phase_duration_recent": rolling_phase_summary,
-        "phase_duration_analysis": _build_phase_duration_analysis(phase_duration_summary),
+        "phase_duration_analysis": _build_phase_duration_analysis(
+            phase_duration_summary
+        ),
         "phase_failures": dict(phase_failures),
         "phase_success": dict(phase_success),
         "file_failures": dict(file_failures),
@@ -401,7 +456,9 @@ def compute_stats(events: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         "hallucination_flags": hallucination_flags,
         "hallucination_stats": hallucination_stats,
         "enhancement_failure_rate": (
-            enhancement_failures / enhancement_total if enhancement_total else 0.0
+            enhancement_failures / enhancement_total
+            if enhancement_total
+            else 0.0
         ),
         "rtf_stats": rtf_stats,
         "engine_fallback_rates": fallback_stats,
@@ -472,7 +529,11 @@ def _build_fallback_stats(
             "avg_rate": mean(ordered_vals),
             "recent_rate": mean(recent_window) if recent_window else None,
             "samples": len(ordered_vals),
-            "avg_latency_chunks": mean(chunk_counts_for_engine) if chunk_counts_for_engine else None,
+            "avg_latency_chunks": (
+                mean(chunk_counts_for_engine)
+                if chunk_counts_for_engine
+                else None
+            ),
         }
     return {
         "overall": overall,
@@ -497,11 +558,19 @@ def compute_engine_reliability(
     return reliability
 
 
-def build_soft_alerts(stats: Dict[str, Any], ctx: Dict[str, Any]) -> List[Dict[str, Any]]:
+def build_soft_alerts(
+    stats: Dict[str, Any], ctx: Dict[str, Any]
+) -> List[Dict[str, Any]]:
     alerts: List[Dict[str, Any]] = []
     phase = ctx.get("phase")
 
-    def _push(kind: str, message: str, *, confidence: float, extras: Optional[Dict[str, Any]] = None) -> None:
+    def _push(
+        kind: str,
+        message: str,
+        *,
+        confidence: float,
+        extras: Optional[Dict[str, Any]] = None,
+    ) -> None:
         payload = {"message": message}
         if extras:
             payload.update(extras)
@@ -541,7 +610,10 @@ def build_soft_alerts(stats: Dict[str, Any], ctx: Dict[str, Any]) -> List[Dict[s
             "hallucination_watch",
             f"{recent_hallu} hallucination warnings detected in the last {HALLUCINATION_WINDOW} events.",
             confidence=0.3,
-            extras={"recent_total": recent_hallu, "events": hallucinations.get("recent_events")},
+            extras={
+                "recent_total": recent_hallu,
+                "events": hallucinations.get("recent_events"),
+            },
         )
 
     rolling_phase = (
@@ -580,7 +652,9 @@ def build_telemetry_snapshot(stats: Dict[str, Any]) -> Dict[str, Any]:
     return snapshot
 
 
-def recommend_chunk_size(file_id: str, *, stats: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+def recommend_chunk_size(
+    file_id: str, *, stats: Optional[Dict[str, Any]] = None
+) -> Optional[Dict[str, Any]]:
     stats = stats or {}
     phase3_avg = (stats.get("phase_duration") or {}).get("phase3")
     if not phase3_avg:
@@ -600,7 +674,9 @@ def recommend_chunk_size(file_id: str, *, stats: Optional[Dict[str, Any]] = None
     return None
 
 
-def recommend_engine(file_id: str, *, stats: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+def recommend_engine(
+    file_id: str, *, stats: Optional[Dict[str, Any]] = None
+) -> Optional[Dict[str, Any]]:
     stats = stats or {}
     reliability = stats.get("engine_reliability") or {}
     if not reliability:
@@ -615,7 +691,9 @@ def recommend_engine(file_id: str, *, stats: Optional[Dict[str, Any]] = None) ->
     }
 
 
-def recommend_retry_policy(phase: str, *, stats: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+def recommend_retry_policy(
+    phase: str, *, stats: Optional[Dict[str, Any]] = None
+) -> Optional[Dict[str, Any]]:
     stats = stats or {}
     failures = (stats.get("phase_failures") or {}).get(phase, 0)
     success = (stats.get("phase_success") or {}).get(phase, 0)
@@ -638,7 +716,9 @@ def recommend_retry_policy(phase: str, *, stats: Optional[Dict[str, Any]] = None
     return None
 
 
-def recommend_voice_variant(file_id: str, *, stats: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+def recommend_voice_variant(
+    file_id: str, *, stats: Optional[Dict[str, Any]] = None
+) -> Optional[Dict[str, Any]]:
     stats = stats or {}
     failures = stats.get("file_failures") or {}
     phase4_failures = failures.get(("phase4", file_id), 0)
@@ -675,13 +755,21 @@ def generate_report(output_path: Optional[Path] = None) -> Path:
         lines.append(f"- {phase}: {rate:.1f}% ({count}/{total})")
 
     lines.append("")
-    lines.append(f"- Chunk error rate: {(stats.get('chunk_error_rate') or 0.0)*100:.1f}%")
-    lines.append(f"- Enhancement failure rate: {(stats.get('enhancement_failure_rate') or 0.0)*100:.1f}%")
-    lines.append(f"- Hallucination flags: {stats.get('hallucination_flags', 0)}")
+    lines.append(
+        f"- Chunk error rate: {(stats.get('chunk_error_rate') or 0.0)*100:.1f}%"
+    )
+    lines.append(
+        f"- Enhancement failure rate: {(stats.get('enhancement_failure_rate') or 0.0)*100:.1f}%"
+    )
+    lines.append(
+        f"- Hallucination flags: {stats.get('hallucination_flags', 0)}"
+    )
 
     lines.append("")
     lines.append("## Engine Reliability")
-    for engine, score in sorted((stats.get("engine_reliability") or {}).items()):
+    for engine, score in sorted(
+        (stats.get("engine_reliability") or {}).items()
+    ):
         lines.append(f"- {engine}: {score*100:.1f}% success")
 
     rtf_stats = stats.get("rtf_stats") or {}
@@ -704,13 +792,17 @@ def generate_report(output_path: Optional[Path] = None) -> Path:
         if overall_fb:
             rate = overall_fb.get("avg_rate")
             if rate is not None:
-                lines.append(f"- Overall latency fallback usage: {rate*100:.1f}%")
+                lines.append(
+                    f"- Overall latency fallback usage: {rate*100:.1f}%"
+                )
         per_engine = fallback.get("per_engine") or {}
         for engine, data in sorted(per_engine.items()):
             rate = data.get("avg_rate")
             if rate is None:
                 continue
-            lines.append(f"  - {engine}: {rate*100:.1f}% (samples={data.get('samples', 0)})")
+            lines.append(
+                f"  - {engine}: {rate*100:.1f}% (samples={data.get('samples', 0)})"
+            )
 
     hallu = stats.get("hallucination_stats") or {}
     if hallu:
@@ -724,6 +816,8 @@ def generate_report(output_path: Optional[Path] = None) -> Path:
 
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return report_path
+
+
 def _compute_run_reward(entry: Dict[str, Any]) -> float:
     reward = 1.0
     if entry.get("failed"):

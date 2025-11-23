@@ -9,7 +9,12 @@ from phase7_batch.main import (
     load_config,
     metadata_from_existing,
 )
-from phase7_batch.models import BatchConfig, BatchMetadata, BatchSummary, Phase6Result
+from phase7_batch.models import (
+    BatchConfig,
+    BatchMetadata,
+    BatchSummary,
+    Phase6Result,
+)
 
 
 class TestBatchConfig:
@@ -74,11 +79,15 @@ class TestBatchSummary:
         end = start + timedelta(seconds=90)
         metadata_list = [
             BatchMetadata(file_id="good", status="success"),
-            BatchMetadata(file_id="bad", status="failed", error_message="boom"),
+            BatchMetadata(
+                file_id="bad", status="failed", error_message="boom"
+            ),
             BatchMetadata(file_id="skip", status="skipped"),
         ]
 
-        summary = BatchSummary.from_metadata_list(metadata_list, start, end, avg_cpu=70.0)
+        summary = BatchSummary.from_metadata_list(
+            metadata_list, start, end, avg_cpu=70.0
+        )
 
         assert summary.total_files == 3
         assert summary.status == "partial"
@@ -176,7 +185,10 @@ class TestPipelineHelpers:
         file_path = Path("/tmp/book.pdf")
         record = {
             "status": "success",
-            "timestamps": {"start": "2024-01-01T00:00:00Z", "end": "2024-01-01T00:01:00Z"},
+            "timestamps": {
+                "start": "2024-01-01T00:00:00Z",
+                "end": "2024-01-01T00:01:00Z",
+            },
             "metrics": {"duration": 60.0, "cpu_avg": 40.0},
             "artifacts": {"source_path": "/tmp/book.pdf"},
             "errors": ["minor"],
@@ -215,7 +227,9 @@ class TestRealWorldSummaries:
         metadata_list = []
         for i in range(10):
             status = "success" if i < 6 else "failed" if i < 8 else "skipped"
-            metadata_list.append(BatchMetadata(file_id=f"doc{i}", status=status))
+            metadata_list.append(
+                BatchMetadata(file_id=f"doc{i}", status=status)
+            )
 
         summary = BatchSummary.from_metadata_list(
             metadata_list, now, now + timedelta(seconds=10)

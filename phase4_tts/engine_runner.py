@@ -71,7 +71,10 @@ def get_env_python(engine: str) -> Path:
 
     req_file = ENGINE_REQUIREMENTS.get(engine)
     pip_cmd = [str(python_path), "-m", "pip"]
-    subprocess.run([*pip_cmd, "install", "--upgrade", "pip", "wheel", "setuptools"], check=True)
+    subprocess.run(
+        [*pip_cmd, "install", "--upgrade", "pip", "wheel", "setuptools"],
+        check=True,
+    )
     if req_file and req_file.exists():
         subprocess.run([*pip_cmd, "install", "-r", str(req_file)], check=True)
 
@@ -86,7 +89,9 @@ def find_python(candidates: Iterable[str]) -> str | None:
     return None
 
 
-def build_phase4_command(args: argparse.Namespace, engine_py: Path, engine: str) -> List[str]:
+def build_phase4_command(
+    args: argparse.Namespace, engine_py: Path, engine: str
+) -> List[str]:
     cmd = [
         str(engine_py),
         str(ROOT / "src" / "main_multi_engine.py"),
@@ -119,12 +124,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--json_path", required=True)
     parser.add_argument("--voice")
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--workers", type=int, default=determine_default_workers())
+    parser.add_argument(
+        "--workers", type=int, default=determine_default_workers()
+    )
     parser.add_argument("--language")
     parser.add_argument("--chunk_id", type=int)
     parser.add_argument("--disable_fallback", action="store_true")
     parser.add_argument("--config", default="config.yaml")
-    parser.add_argument("--resume", action="store_true", help="Skip existing chunk outputs (resume)")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip existing chunk outputs (resume)",
+    )
     return parser.parse_args()
 
 

@@ -1385,7 +1385,7 @@ def main(argv: Optional[list[str]] = None):
                     mp3_dir = output_dir / "mp3"
                     mp3_dir.mkdir(parents=True, exist_ok=True)
                     mp3_path = ensure_absolute_path(mp3_dir / "audiobook.mp3")
-                    temp_mp3 = mp3_path.with_suffix(".tmp")
+                    temp_mp3 = mp3_path.with_suffix(".mp3.tmp")
                     reuse_final = False
                     if config.resume_on_failure and mp3_path.exists():
                         try:
@@ -1424,6 +1424,8 @@ def main(argv: Optional[list[str]] = None):
                             "album=Audiobook",
                             "-metadata",
                             "genre=Audiobook",
+                            "-f",
+                            "mp3",
                             str(temp_mp3),
                         ]
                         run_ffmpeg(encode_cmd, "final mp3 encode")

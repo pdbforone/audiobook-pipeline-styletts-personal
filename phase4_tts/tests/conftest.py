@@ -50,12 +50,16 @@ def phase4_assets(tmp_path: Path) -> SimpleNamespace:
         }
     }
     validation_path = tmp_path / "validation_config.yaml"
-    validation_path.write_text(yaml.safe_dump(validation_data), encoding="utf-8")
+    validation_path.write_text(
+        yaml.safe_dump(validation_data), encoding="utf-8"
+    )
 
     chunk_dir = tmp_path / "chunks"
     chunk_dir.mkdir(parents=True, exist_ok=True)
     chunk_file = chunk_dir / "chunk_0001.txt"
-    chunk_file.write_text("This is a synthetic chunk for testing.", encoding="utf-8")
+    chunk_file.write_text(
+        "This is a synthetic chunk for testing.", encoding="utf-8"
+    )
 
     pipeline_data = {
         "phase3": {

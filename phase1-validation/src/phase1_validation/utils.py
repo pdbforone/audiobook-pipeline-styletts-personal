@@ -1,9 +1,7 @@
 import hashlib
 import logging
-import os
 import sys
 from pathlib import Path
-from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +9,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from pipeline_common import PipelineState, StateError, ensure_phase_and_file, ensure_phase_block
+from pipeline_common import (
+    PipelineState,
+    StateError,
+    ensure_phase_and_file,
+    ensure_phase_block,
+)
 
 
 def compute_sha256(path: Path) -> str:
@@ -32,7 +35,13 @@ def _state_for_path(json_path: Path) -> PipelineState:
     return PipelineState(Path(json_path), validate_on_read=False)
 
 
-def log_error(json_path: Path, phase: str, file_id: str, message: str, category: str = "general") -> None:
+def log_error(
+    json_path: Path,
+    phase: str,
+    file_id: str,
+    message: str,
+    category: str = "general",
+) -> None:
     """Log and persist a validation error in a consistent format."""
     logger.error("[%s] %s: %s", phase, category, message)
     error_entry = {

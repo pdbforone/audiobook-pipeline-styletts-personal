@@ -10,7 +10,9 @@ import pytest
 from phase4_tts.src import main_multi_engine as multi
 
 
-def test_normalize_pipeline_path_handles_relative(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_normalize_pipeline_path_handles_relative(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Relative paths should be resolved against PROJECT_ROOT."""
     repo_root = tmp_path / "repo"
     chunk_dir = repo_root / "phase3-chunking" / "chunks"
@@ -20,17 +22,21 @@ def test_normalize_pipeline_path_handles_relative(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(multi, "PROJECT_ROOT", repo_root)
 
-    resolved = multi.normalize_pipeline_path("phase3-chunking/chunks/chunk_0001.txt")
+    resolved = multi.normalize_pipeline_path(
+        "phase3-chunking/chunks/chunk_0001.txt"
+    )
     assert resolved == chunk_file
 
 
-def test_collect_chunks_sanitizes_and_derives_ids(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_collect_chunks_sanitizes_and_derives_ids(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """collect_chunks should sanitize text and derive consistent chunk IDs."""
     repo_root = tmp_path / "repo"
     chunk_dir = repo_root / "chunks"
     chunk_dir.mkdir(parents=True, exist_ok=True)
     chunk_file = chunk_dir / "MyBook_chunk_0005.txt"
-    chunk_file.write_text('Hello “world” -- said he.', encoding="utf-8")
+    chunk_file.write_text("Hello “world” -- said he.", encoding="utf-8")
 
     pipeline_data = {
         "phase3": {

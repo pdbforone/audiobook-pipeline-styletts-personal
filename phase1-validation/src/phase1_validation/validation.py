@@ -17,13 +17,20 @@ import pymupdf as fitz  # PyMuPDF
 from docx import Document
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from pipeline_common import PipelineState, StateError, ensure_phase_and_file, ensure_phase_block
+from pipeline_common import (
+    PipelineState,
+    StateError,
+    ensure_phase_and_file,
+    ensure_phase_block,
+)
 from pipeline_common.state_manager import StateTransaction
 
 from .utils import compute_sha256 as utils_compute_sha256
 from .utils import log_error
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 PHASE_NAME = "phase1"
@@ -49,7 +56,9 @@ def _install_update_phase_api() -> None:
         chunks: Optional[List[Dict[str, Any]]] = None,
         extra_fields: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        phase_block, file_entry = ensure_phase_and_file(self.data, phase_name, file_id)
+        phase_block, file_entry = ensure_phase_and_file(
+            self.data, phase_name, file_id
+        )
         envelope = file_entry
         envelope["status"] = status
         envelope["timestamps"] = dict(timestamps or {})
@@ -171,16 +180,18 @@ def classify_pdf(file_path: Path) -> str:
     text_ratio = text_like_pages / total_pages if total_pages else 0.0
     density_ratio = dense_pages / total_pages if total_pages else 0.0
     avg_alpha = sum(alpha_ratios) / len(alpha_ratios) if alpha_ratios else 0.0
-    replacement_ratio = total_replacements / total_text_len if total_text_len else 0.0
+    replacement_ratio = (
+        total_replacements / total_text_len if total_text_len else 0.0
+    )
 
     classification = "mixed"
     if total_pages == 0:
         classification = "unknown"
     elif text_ratio > 0.8 and avg_alpha > 0.6 and replacement_ratio < 0.05:
         classification = "text"
-    elif (text_ratio < 0.2 and total_text_len < 800 and density_ratio < 0.25) or (
-        replacement_ratio > 0.2 and text_ratio < 0.5
-    ):
+    elif (
+        text_ratio < 0.2 and total_text_len < 800 and density_ratio < 0.25
+    ) or (replacement_ratio > 0.2 and text_ratio < 0.5):
         classification = "scanned"
 
     logger.info(
@@ -249,14 +260,20 @@ def repair_txt(file_path: Path, retries: int = 2) -> bool:
             text = ftfy.fix_text(raw.decode(encoding, errors="replace"))
             with open(file_path, "w", encoding="utf-8") as handle:
                 handle.write(text)
-            logger.info("TXT repair attempt %s succeeded with detected encoding %s.", attempt, encoding)
+            logger.info(
+                "TXT repair attempt %s succeeded with detected encoding %s.",
+                attempt,
+                encoding,
+            )
             return True
         except Exception as exc:
             logger.warning("TXT repair attempt %s failed: %s", attempt, exc)
     return False
 
 
-def validate_pdf(file_path: Path, retries: int, errors: List[str]) -> Tuple[Dict[str, Any], bool, bool]:
+def validate_pdf(
+    file_path: Path, retries: int, errors: List[str]
+) -> Tuple[Dict[str, Any], bool, bool]:
     details: Dict[str, Any] = {}
     repair_attempted = False
     repair_success = False
@@ -285,7 +302,9 @@ def validate_pdf(file_path: Path, retries: int, errors: List[str]) -> Tuple[Dict
     return details, repair_attempted, repair_success
 
 
-def validate_epub(file_path: Path, retries: int, errors: List[str]) -> Tuple[Dict[str, Any], bool, bool]:
+def validate_epub(
+    file_path: Path, retries: int, errors: List[str]
+) -> Tuple[Dict[str, Any], bool, bool]:
     repair_attempted = False
     repair_success = False
     try:
@@ -300,7 +319,9 @@ def validate_epub(file_path: Path, retries: int, errors: List[str]) -> Tuple[Dic
     return {}, repair_attempted, repair_success
 
 
-def validate_docx(file_path: Path, retries: int, errors: List[str]) -> Tuple[Dict[str, Any], bool, bool]:
+def validate_docx(
+    file_path: Path, retries: int, errors: List[str]
+) -> Tuple[Dict[str, Any], bool, bool]:
     repair_attempted = False
     repair_success = False
     try:
@@ -315,7 +336,9 @@ def validate_docx(file_path: Path, retries: int, errors: List[str]) -> Tuple[Dic
     return {}, repair_attempted, repair_success
 
 
-def validate_txt(file_path: Path, retries: int, errors: List[str]) -> Tuple[Dict[str, Any], bool, bool]:
+def validate_txt(
+    file_path: Path, retries: int, errors: List[str]
+) -> Tuple[Dict[str, Any], bool, bool]:
     repair_attempted = False
     repair_success = False
     try:
@@ -336,7 +359,11 @@ def validate_txt(file_path: Path, retries: int, errors: List[str]) -> Tuple[Dict
 
 def extract_metadata(file_path: Path) -> Dict[str, Optional[str]]:
     file_ext = file_path.suffix.lower()
-    metadata_dict: Dict[str, Optional[str]] = {"title": None, "author": None, "creation_date": None}
+    metadata_dict: Dict[str, Optional[str]] = {
+        "title": None,
+        "author": None,
+        "creation_date": None,
+    }
 
     if file_ext == ".pdf":
         try:
@@ -354,9 +381,15 @@ def extract_metadata(file_path: Path) -> Dict[str, Optional[str]]:
         if parser:
             extracted = hachoir.metadata.extractMetadata(parser)
             if extracted:
-                metadata_dict["title"] = metadata_dict["title"] or extracted.get("title")
-                metadata_dict["author"] = metadata_dict["author"] or extracted.get("author")
-                metadata_dict["creation_date"] = metadata_dict["creation_date"] or extracted.get("creation_date")
+                metadata_dict["title"] = metadata_dict[
+                    "title"
+                ] or extracted.get("title")
+                metadata_dict["author"] = metadata_dict[
+                    "author"
+                ] or extracted.get("author")
+                metadata_dict["creation_date"] = metadata_dict[
+                    "creation_date"
+                ] or extracted.get("creation_date")
     except Exception as exc:
         logger.warning("Hachoir metadata extraction failed: %s", exc)
 
@@ -401,7 +434,9 @@ def _read_pipeline_data(json_path: Path) -> Dict[str, Any]:
         return {}
 
 
-def _load_existing_metadata(pipeline_json: Path, file_id: str, sha256_hash: str, size_bytes: int) -> Optional[FileMetadata]:
+def _load_existing_metadata(
+    pipeline_json: Path, file_id: str, sha256_hash: str, size_bytes: int
+) -> Optional[FileMetadata]:
     data = _read_pipeline_data(pipeline_json)
     record = data.get(PHASE_NAME, {}).get("files", {}).get(file_id)
     if not record:
@@ -413,10 +448,18 @@ def _load_existing_metadata(pipeline_json: Path, file_id: str, sha256_hash: str,
 
     record["sha256"] = recorded_hash
     record["hash"] = recorded_hash
-    record["size_bytes"] = record.get("size_bytes") or record.get("file_size_bytes") or size_bytes
-    record["file_size_bytes"] = record.get("file_size_bytes") or record["size_bytes"]
-    record["repair_attempted"] = record.get("repair_attempted", record.get("repair_status") is not None)
-    record["repair_success"] = record.get("repair_success", record.get("repair_status") != "skipped")
+    record["size_bytes"] = (
+        record.get("size_bytes") or record.get("file_size_bytes") or size_bytes
+    )
+    record["file_size_bytes"] = (
+        record.get("file_size_bytes") or record["size_bytes"]
+    )
+    record["repair_attempted"] = record.get(
+        "repair_attempted", record.get("repair_status") is not None
+    )
+    record["repair_success"] = record.get(
+        "repair_success", record.get("repair_status") != "skipped"
+    )
     record.setdefault("errors", [])
     record.setdefault("timestamps", {})
 
@@ -427,7 +470,9 @@ def _load_existing_metadata(pipeline_json: Path, file_id: str, sha256_hash: str,
         return None
 
 
-def _flag_duplicate_hash(json_path: Optional[Path], file_id: str, metadata: FileMetadata) -> None:
+def _flag_duplicate_hash(
+    json_path: Optional[Path], file_id: str, metadata: FileMetadata
+) -> None:
     if not json_path:
         return
     existing = _read_pipeline_data(json_path)
@@ -456,7 +501,9 @@ def _phase1_artifacts_from_metadata(metadata: FileMetadata) -> Dict[str, Any]:
         "author": metadata.author,
         "creation_date": metadata.creation_date,
     }
-    return {key: value for key, value in artifacts.items() if value is not None}
+    return {
+        key: value for key, value in artifacts.items() if value is not None
+    }
 
 
 def _phase1_metrics_from_metadata(metadata: FileMetadata) -> Dict[str, Any]:
@@ -472,7 +519,9 @@ def _phase1_metrics_from_metadata(metadata: FileMetadata) -> Dict[str, Any]:
     return metrics
 
 
-def persist_metadata(metadata: FileMetadata, json_path: Path, file_id: str) -> Dict[str, Any]:
+def persist_metadata(
+    metadata: FileMetadata, json_path: Path, file_id: str
+) -> Dict[str, Any]:
     payload = metadata.as_payload()
     status = "success" if not metadata.errors else "partial"
     timestamps = payload.get("timestamps") or {}
@@ -510,8 +559,12 @@ def persist_metadata(metadata: FileMetadata, json_path: Path, file_id: str) -> D
         files = phase_block.get("files", {})
         phase_metrics = phase_block.setdefault("metrics", {})
         phase_metrics["files_processed"] = len(files)
-        phase_metrics["duplicates"] = sum(1 for entry in files.values() if entry.get("duplicate"))
-        phase_metrics["repaired"] = sum(1 for entry in files.values() if entry.get("repair_success"))
+        phase_metrics["duplicates"] = sum(
+            1 for entry in files.values() if entry.get("duplicate")
+        )
+        phase_metrics["repaired"] = sum(
+            1 for entry in files.values() if entry.get("repair_success")
+        )
 
         phase_timestamps = phase_block.setdefault("timestamps", {})
         if timestamps.get("start") and "start" not in phase_timestamps:
@@ -564,9 +617,13 @@ def validate_and_repair(
     sha256_hash = compute_sha256(path)
 
     if pipeline_json and file_id and not force:
-        reused = _load_existing_metadata(pipeline_json, file_id, sha256_hash, size_bytes)
+        reused = _load_existing_metadata(
+            pipeline_json, file_id, sha256_hash, size_bytes
+        )
         if reused:
-            logger.info("Phase 1: hash match found and force=False; skipping revalidation.")
+            logger.info(
+                "Phase 1: hash match found and force=False; skipping revalidation."
+            )
             return reused
 
     if mode == "fast":
@@ -584,7 +641,11 @@ def validate_and_repair(
                 repair_attempted=False,
                 repair_success=False,
                 errors=[],
-                timestamps={"start": start_time, "end": end_time, "duration": duration},
+                timestamps={
+                    "start": start_time,
+                    "end": end_time,
+                    "duration": duration,
+                },
                 page_count=None,
                 title=meta.get("title"),
                 author=meta.get("author"),
@@ -620,19 +681,33 @@ def validate_and_repair(
         logger.error("Validation failed: %s", exc)
         return None
 
-    artifacts_path = write_artifacts(path, Path(artifacts_dir)) if repair_success else None
+    artifacts_path = (
+        write_artifacts(path, Path(artifacts_dir)) if repair_success else None
+    )
     try:
         classification = classify_file(path)
     except Exception as exc:
         classification = "unknown"
         errors.append(str(exc))
         if pipeline_json and file_id:
-            log_error(pipeline_json, PHASE_NAME, file_id, str(exc), _categorize_error(exc, file_ext))
+            log_error(
+                pipeline_json,
+                PHASE_NAME,
+                file_id,
+                str(exc),
+                _categorize_error(exc, file_ext),
+            )
         logger.error("Classification failed: %s", exc)
     meta = extract_metadata(path)
     end_time = perf_counter()
     duration = end_time - start_time
-    logger.info("Validation complete in %.2fs. Repair attempted=%s success=%s classification=%s", duration, repair_attempted, repair_success, classification)
+    logger.info(
+        "Validation complete in %.2fs. Repair attempted=%s success=%s classification=%s",
+        duration,
+        repair_attempted,
+        repair_success,
+        classification,
+    )
 
     try:
         metadata = FileMetadata(
@@ -645,7 +720,11 @@ def validate_and_repair(
             repair_attempted=repair_attempted,
             repair_success=repair_success,
             errors=errors,
-            timestamps={"start": start_time, "end": end_time, "duration": duration},
+            timestamps={
+                "start": start_time,
+                "end": end_time,
+                "duration": duration,
+            },
             page_count=page_count,
             title=meta.get("title"),
             author=meta.get("author"),
@@ -657,29 +736,56 @@ def validate_and_repair(
     except ValidationError as exc:
         logger.error("Metadata validation error: %s", exc)
         if pipeline_json and file_id:
-            log_error(pipeline_json, PHASE_NAME, file_id or "", str(exc), "Validation")
+            log_error(
+                pipeline_json,
+                PHASE_NAME,
+                file_id or "",
+                str(exc),
+                "Validation",
+            )
         return None
 
     _flag_duplicate_hash(pipeline_json, file_id or "", metadata)
     return metadata
 
 
-def persist_and_log(metadata: FileMetadata, json_path: str, file_id: str) -> None:
+def persist_and_log(
+    metadata: FileMetadata, json_path: str, file_id: str
+) -> None:
     persisted = persist_metadata(metadata, Path(json_path), file_id)
     try:
-        logger.info("Extracted metadata persisted: %s", json.dumps(persisted[PHASE_NAME]["files"][file_id], indent=2))
+        logger.info(
+            "Extracted metadata persisted: %s",
+            json.dumps(persisted[PHASE_NAME]["files"][file_id], indent=2),
+        )
     except Exception:
         logger.info("Persisted metadata for %s", file_id)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Phase 1: Validate and repair audiobook files.")
+    parser = argparse.ArgumentParser(
+        description="Phase 1: Validate and repair audiobook files."
+    )
     parser.add_argument("--file", required=True, help="Path to input file.")
-    parser.add_argument("--max_size_mb", type=int, default=500, help="Max file size in MB.")
-    parser.add_argument("--retries", type=int, default=2, help="Repair retries.")
-    parser.add_argument("--json_path", default="pipeline.json", help="Pipeline JSON path.")
-    parser.add_argument("--artifacts_dir", default="artifacts/phase1", help="Artifacts directory.")
-    parser.add_argument("--force", action="store_true", help="Force revalidation even if hash matches prior run.")
+    parser.add_argument(
+        "--max_size_mb", type=int, default=500, help="Max file size in MB."
+    )
+    parser.add_argument(
+        "--retries", type=int, default=2, help="Repair retries."
+    )
+    parser.add_argument(
+        "--json_path", default="pipeline.json", help="Pipeline JSON path."
+    )
+    parser.add_argument(
+        "--artifacts_dir",
+        default="artifacts/phase1",
+        help="Artifacts directory.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force revalidation even if hash matches prior run.",
+    )
     parser.add_argument(
         "--mode",
         choices=["thorough", "fast"],

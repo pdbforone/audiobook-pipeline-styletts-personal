@@ -9,6 +9,8 @@
 
 # Pipeline data files
 pipeline.json
+pipeline.test.json
+pipeline.test.json.lock
 .pipeline/
 pipeline.json.backup
 pipeline_*.json

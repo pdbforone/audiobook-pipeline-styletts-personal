@@ -56,11 +56,20 @@ def collect_local_clones(config: Dict) -> Dict[str, Path]:
         if ref_path.exists():
             clones[voice_id] = ref_path
         else:
-            logging.warning("Skipping clone '%s' (missing reference: %s)", voice_id, ref_path)
+            logging.warning(
+                "Skipping clone '%s' (missing reference: %s)",
+                voice_id,
+                ref_path,
+            )
     return clones
 
 
-def synthesize_with_xtts(model: TTS, text: str, speaker: str | None = None, speaker_wav: Path | None = None):
+def synthesize_with_xtts(
+    model: TTS,
+    text: str,
+    speaker: str | None = None,
+    speaker_wav: Path | None = None,
+):
     wav = model.tts(
         text=text,
         language="en",
@@ -77,17 +86,34 @@ def synthesize_with_xtts(model: TTS, text: str, speaker: str | None = None, spea
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Create philosophy samples for XTTS voices")
-    parser.add_argument("--out-dir", type=Path, default=ROOT / "voice_tests" / "philosophy_samples")
-    parser.add_argument("--text-file", type=Path, help="Optional text file to use instead of default paragraph")
-    parser.add_argument("--max-builtins", type=int, default=0, help="Limit number of built-in speakers to synthesize (0 = all)")
+    parser = argparse.ArgumentParser(
+        description="Create philosophy samples for XTTS voices"
+    )
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=ROOT / "voice_tests" / "philosophy_samples",
+    )
+    parser.add_argument(
+        "--text-file",
+        type=Path,
+        help="Optional text file to use instead of default paragraph",
+    )
+    parser.add_argument(
+        "--max-builtins",
+        type=int,
+        default=0,
+        help="Limit number of built-in speakers to synthesize (0 = all)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     text = DEFAULT_TEXT
     if args.text_file and args.text_file.exists():
-        text = args.text_file.read_text(encoding="utf-8").strip() or DEFAULT_TEXT
+        text = (
+            args.text_file.read_text(encoding="utf-8").strip() or DEFAULT_TEXT
+        )
 
     config = load_config(CONFIG_PATH)
     builtins = collect_xtts_voices(config)
@@ -97,24 +123,38 @@ def main() -> int:
 
     logging.info("Loading XTTS base model for cloning synthesis...")
     try:
-        model = TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2", progress_bar=False, gpu=False)
+        model = TTS(
+            model_name="tts_models/multilingual/multi-dataset/xtts_v2",
+            progress_bar=False,
+            gpu=False,
+        )
     except Exception as exc:
         logging.error("Failed to load XTTS model: %s", exc)
         return 2
 
     # If there are many built-ins, optionally cap them
-    builtin_targets = builtins if args.max_builtins <= 0 else builtins[: args.max_builtins]
+    builtin_targets = (
+        builtins if args.max_builtins <= 0 else builtins[: args.max_builtins]
+    )
 
     # For built-in speakers we attempt to use a multi-speaker vits model that exposes named speakers
     # Fallback: try to synthesize using XTTS 'speaker' param directly
     try:
-        ms_model = TTS(model_name="tts_models/en/vctk/vits", progress_bar=False, gpu=False)
+        ms_model = TTS(
+            model_name="tts_models/en/vctk/vits", progress_bar=False, gpu=False
+        )
         ms_speakers = list(ms_model.speakers or [])
-        logging.info("Multi-speaker model loaded with %d speakers (cap %d)", len(ms_speakers), len(builtin_targets))
+        logging.info(
+            "Multi-speaker model loaded with %d speakers (cap %d)",
+            len(ms_speakers),
+            len(builtin_targets),
+        )
     except Exception:
         ms_model = None
         ms_speakers = []
-        logging.warning("Multi-speaker model not available; falling back to XTTS speaker param for built-ins.")
+        logging.warning(
+            "Multi-speaker model not available; falling back to XTTS speaker param for built-ins."
+        )
 
     # Built-in voices
     if ms_model and ms_speakers:
@@ -123,27 +163,44 @@ def main() -> int:
             # Attempt to find a speaker with matching substring (case-insensitive)
             match = None
             for s in ms_speakers:
-                if name.lower().split()[0] in s.lower() or s.lower() in name.lower():
+                if (
+                    name.lower().split()[0] in s.lower()
+                    or s.lower() in name.lower()
+                ):
                     match = s
                     break
             target = match or (ms_speakers[0] if ms_speakers else None)
             try:
                 audio = synthesize_with_xtts(ms_model, text, speaker=target)
-                out_path = args.out_dir / f"builtin_{name.replace(' ', '_')}.wav"
-                sf.write(out_path, audio, ms_model.synthesizer.output_sample_rate)
-                logging.info("Wrote built-in sample %s (ms_speaker=%s)", out_path, target)
+                out_path = (
+                    args.out_dir / f"builtin_{name.replace(' ', '_')}.wav"
+                )
+                sf.write(
+                    out_path, audio, ms_model.synthesizer.output_sample_rate
+                )
+                logging.info(
+                    "Wrote built-in sample %s (ms_speaker=%s)",
+                    out_path,
+                    target,
+                )
             except Exception as exc:
-                logging.error("Failed built-in %s via multi-speaker model: %s", name, exc)
+                logging.error(
+                    "Failed built-in %s via multi-speaker model: %s", name, exc
+                )
     else:
         # Use XTTS model speaker arg directly
         for name in builtin_targets:
             try:
                 audio = synthesize_with_xtts(model, text, speaker=name)
-                out_path = args.out_dir / f"builtin_{name.replace(' ', '_')}.wav"
+                out_path = (
+                    args.out_dir / f"builtin_{name.replace(' ', '_')}.wav"
+                )
                 sf.write(out_path, audio, 24000)
                 logging.info("Wrote built-in sample %s", out_path)
             except Exception as exc:
-                logging.error("Failed built-in %s with XTTS model: %s", name, exc)
+                logging.error(
+                    "Failed built-in %s with XTTS model: %s", name, exc
+                )
 
     # Custom clones (local references)
     for voice_id, ref_path in clones.items():

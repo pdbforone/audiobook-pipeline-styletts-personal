@@ -13,7 +13,6 @@ Tests:
 """
 
 import json
-import os
 import pytest
 import shutil
 import tempfile
@@ -24,7 +23,6 @@ from unittest.mock import patch
 
 from pipeline_common.state_manager import (
     PipelineState,
-    StateError,
     StateLockError,
     StateReadError,
     StateTransactionError,
@@ -77,7 +75,7 @@ class TestBasicOperations:
         test_data = {
             "pipeline_version": "1.0",
             "file_id": "test_file",
-            "phase1": {"status": "success"}
+            "phase1": {"status": "success"},
         }
 
         state_manager.write(test_data, validate=False)
@@ -96,7 +94,7 @@ class TestBasicOperations:
         state_manager.write(test_data, validate=False)
 
         # Verify temp file is gone
-        temp_path = state_path.with_suffix('.json.tmp')
+        temp_path = state_path.with_suffix(".json.tmp")
         assert not temp_path.exists()
 
         # Verify actual file exists and is valid JSON
@@ -112,60 +110,60 @@ class TestTransactions:
     def test_transaction_commit(self, state_manager):
         """Successful transaction commits changes"""
         with state_manager.transaction() as txn:
-            txn.data['phase1'] = {'status': 'success', 'duration': 42.0}
-            txn.data['file_id'] = 'test'
+            txn.data["phase1"] = {"status": "success", "duration": 42.0}
+            txn.data["file_id"] = "test"
 
         # Verify changes persisted
         data = state_manager.read()
-        assert data['phase1']['status'] == 'success'
-        assert data['file_id'] == 'test'
+        assert data["phase1"]["status"] == "success"
+        assert data["file_id"] == "test"
 
     def test_transaction_rollback_on_exception(self, state_manager):
         """Transaction rolls back on exception"""
         # Write initial state
-        state_manager.write({'phase1': {'status': 'pending'}}, validate=False)
+        state_manager.write({"phase1": {"status": "pending"}}, validate=False)
 
         # Attempt transaction that raises exception
         with pytest.raises(ValueError):
             with state_manager.transaction() as txn:
-                txn.data['phase1']['status'] = 'success'
+                txn.data["phase1"]["status"] = "success"
                 raise ValueError("Simulated error")
 
         # Verify state unchanged
         data = state_manager.read()
-        assert data['phase1']['status'] == 'pending'
+        assert data["phase1"]["status"] == "pending"
 
     def test_transaction_isolation(self, state_manager):
         """Changes not visible until commit"""
-        state_manager.write({'phase1': {'status': 'pending'}}, validate=False)
+        state_manager.write({"phase1": {"status": "pending"}}, validate=False)
 
         with state_manager.transaction() as txn:
-            txn.data['phase1']['status'] = 'success'
+            txn.data["phase1"]["status"] = "success"
 
             # Read outside transaction - should see old value
             outside_data = state_manager.read()
-            assert outside_data['phase1']['status'] == 'pending'
+            assert outside_data["phase1"]["status"] == "pending"
 
         # After commit, see new value
         data = state_manager.read()
-        assert data['phase1']['status'] == 'success'
+        assert data["phase1"]["status"] == "success"
 
     def test_nested_updates_in_transaction(self, state_manager):
         """Complex nested updates work correctly"""
         with state_manager.transaction() as txn:
-            txn.data['phase1'] = {'status': 'success'}
-            txn.data['phase2'] = {'status': 'success'}
-            txn.data['phase3'] = {
-                'status': 'success',
-                'chunks': [
-                    {'id': 1, 'path': '/path/1'},
-                    {'id': 2, 'path': '/path/2'}
-                ]
+            txn.data["phase1"] = {"status": "success"}
+            txn.data["phase2"] = {"status": "success"}
+            txn.data["phase3"] = {
+                "status": "success",
+                "chunks": [
+                    {"id": 1, "path": "/path/1"},
+                    {"id": 2, "path": "/path/2"},
+                ],
             }
 
         data = state_manager.read()
-        assert len(data['phase3']['chunks']) == 2
-        assert data['phase3']['chunks'][0]['id'] == 1
+        assert len(data["phase3"]["chunks"]) == 2
+        assert data["phase3"]["chunks"][0]["id"] == 1
 
 
 class TestBackups:
@@ -174,10 +172,10 @@ class TestBackups:
     def test_backup_created_before_write(self, state_manager):
         """Backup is created before overwriting state"""
         # Write initial state
-        state_manager.write({'version': 1}, validate=False)
+        state_manager.write({"version": 1}, validate=False)
 
         # Write new state - should create backup
-        state_manager.write({'version': 2}, validate=False)
+        state_manager.write({"version": 2}, validate=False)
 
         # Verify backup exists
         backups = state_manager.list_backups()
@@ -186,7 +184,7 @@ class TestBackups:
         # Verify backup contains old data
         with open(backups[0]) as f:
             backup_data = json.load(f)
-        assert backup_data['version'] == 1
+        assert backup_data["version"] == 1
 
     def test_backup_rotation(self, temp_dir):
         """Old backups are rotated when limit exceeded"""
@@ -195,7 +193,7 @@ class TestBackups:
 
         # Create 10 backups
         for i in range(10):
-            state.write({'version': i}, validate=False)
+            state.write({"version": i}, validate=False)
             time.sleep(0.01)  # Ensure unique timestamps
 
         # Should only have 5 backups
@@ -205,10 +203,10 @@ class TestBackups:
     def test_restore_backup(self, state_manager):
         """Can restore from backup"""
         # Write initial state
-        state_manager.write({'version': 1, 'data': 'original'}, validate=False)
+        state_manager.write({"version": 1, "data": "original"}, validate=False)
 
         # Write new state
-        state_manager.write({'version': 2, 'data': 'modified'}, validate=False)
+        state_manager.write({"version": 2, "data": "modified"}, validate=False)
 
         # Restore backup
         backups = state_manager.list_backups()
@@ -218,11 +216,11 @@ class TestBackups:
 
         # Verify restored data
         data = state_manager.read()
-        assert data['data'] == 'original'
+        assert data["data"] == "original"
 
     def test_no_backup_for_nonexistent_file(self, state_manager):
         """No backup created if file doesn't exist yet"""
-        state_manager.write({'first': 'write'}, validate=False)
+        state_manager.write({"first": "write"}, validate=False)
 
         # Should not have created backup for first write
         backups = state_manager.list_backups(limit=100)
@@ -234,16 +232,14 @@ class TestValidation:
 
     def test_structural_validation_on_read(self, state_manager, state_path):
         """Non-dict top-level structures are rejected"""
-        state_path.write_text('[]')
+        state_path.write_text("[]")
 
         with pytest.raises(StateValidationError):
             state_manager.read()
 
     def test_validation_on_write(self, state_manager):
         """Invalid data rejected on write"""
-        invalid_data = {
-            "phase1": "this should be a dict"  # Wrong type
-        }
+        invalid_data = {"phase1": "this should be a dict"}  # Wrong type
 
         with pytest.raises(StateValidationError):
             state_manager.write(invalid_data, validate=True)
@@ -257,7 +253,7 @@ class TestValidation:
 
         # Verify data was written
         data = relaxed_state_manager.read(validate=False)
-        assert data['phase1'] == "wrong type"
+        assert data["phase1"] == "wrong type"
 
     def test_valid_schema_accepted(self, state_manager):
         """Correct schema passes validation"""
@@ -267,8 +263,8 @@ class TestValidation:
             "phase1": {
                 "status": "success",
                 "files": {},
-                "metrics": {"duration": 42.0}
-            }
+                "metrics": {"duration": 42.0},
+            },
         }
 
         # Should not raise
@@ -279,10 +275,7 @@ class TestValidation:
         data_with_extras = {
             "pipeline_version": "1.0",
             "custom_field": "allowed",
-            "phase1": {
-                "status": "success",
-                "custom_metric": 123
-            }
+            "phase1": {"status": "success", "custom_metric": 123},
         }
 
         # Should not raise
@@ -292,7 +285,9 @@ class TestValidation:
 class TestConcurrency:
     """Test concurrent access safety"""
 
-    def test_file_locking_prevents_concurrent_writes(self, state_manager, state_path):
+    def test_file_locking_prevents_concurrent_writes(
+        self, state_manager, state_path
+    ):
         """File lock prevents simultaneous writes"""
         errors = []
         write_order = []
@@ -309,20 +304,19 @@ class TestConcurrency:
                         data = {}
 
                     # Modify
-                    data[f'worker_{worker_id}'] = time.time()
+                    data[f"worker_{worker_id}"] = time.time()
                     write_order.append(worker_id)
 
                     # Write with delay to increase contention
                     time.sleep(0.1)
-                    with open(state_path, 'w') as f:
+                    with open(state_path, "w") as f:
                         json.dump(data, f)
             except Exception as e:
                 errors.append((worker_id, e))
 
         # Start multiple threads
         threads = [
-            threading.Thread(target=write_worker, args=(i,))
-            for i in range(3)
+            threading.Thread(target=write_worker, args=(i,)) for i in range(3)
         ]
 
         for t in threads:
@@ -372,14 +366,14 @@ class TestTransactionLog:
 
     def test_transaction_log_created(self, state_manager, temp_dir):
         """Transaction log file is created"""
-        state_manager.write({'test': 'data'}, validate=False)
+        state_manager.write({"test": "data"}, validate=False)
 
         log_path = temp_dir / ".pipeline" / "transactions.log"
         assert log_path.exists()
 
     def test_log_records_operations(self, state_manager):
         """Operations are logged"""
-        state_manager.write({'v': 1}, validate=False)
+        state_manager.write({"v": 1}, validate=False)
         state_manager.read()
 
         history = state_manager.get_transaction_history()
@@ -421,31 +415,35 @@ class TestHelpers:
         history = state_manager.get_transaction_history()
         if history:
             record = history[0]
-            assert 'timestamp' in record
-            assert 'operation' in record
-            assert 'success' in record
+            assert "timestamp" in record
+            assert "operation" in record
+            assert "success" in record
 
     def test_log_records_transaction_commits(self, state_manager):
         """Transaction commits are logged"""
         with state_manager.transaction() as txn:
-            txn.data['phase1'] = {'status': 'success'}
-            txn.data['file_id'] = 'abc'
+            txn.data["phase1"] = {"status": "success"}
+            txn.data["file_id"] = "abc"
 
         history = state_manager.get_transaction_history()
-        commit_records = [r for r in history if r['operation'].endswith('_commit')]
+        commit_records = [
+            r for r in history if r["operation"].endswith("_commit")
+        ]
         assert len(commit_records) > 0
 
     def test_log_records_rollbacks(self, state_manager):
         """Transaction rollbacks are logged"""
         try:
             with state_manager.transaction() as txn:
-                txn.data['test'] = 'value'
+                txn.data["test"] = "value"
                 raise ValueError("Test error")
         except ValueError:
             pass
 
         history = state_manager.get_transaction_history()
-        rollback_records = [r for r in history if r['operation'].endswith('_rollback')]
+        rollback_records = [
+            r for r in history if r["operation"].endswith("_rollback")
+        ]
         assert len(rollback_records) > 0
 
 
@@ -455,7 +453,7 @@ class TestErrorRecovery:
     def test_corrupted_json_raises_error(self, state_path, state_manager):
         """Corrupted JSON file raises StateReadError"""
         # Write corrupted JSON
-        with open(state_path, 'w') as f:
+        with open(state_path, "w") as f:
             f.write("{invalid json")
 
         with pytest.raises(StateReadError):
@@ -464,24 +462,26 @@ class TestErrorRecovery:
     def test_atomic_write_cleanup_on_error(self, state_manager, state_path):
         """Temp file is cleaned up if write fails"""
         # Patch json.dump to raise error
-        with patch('json.dump', side_effect=IOError("Simulated error")):
+        with patch("json.dump", side_effect=IOError("Simulated error")):
             with pytest.raises(StateTransactionError) as excinfo:
-                state_manager.write({'test': 'data'}, validate=False)
+                state_manager.write({"test": "data"}, validate=False)
         assert isinstance(excinfo.value.__cause__, StateWriteError)
 
         # Verify no temp files remain for this state
-        tmp_candidates = list(state_path.parent.glob(f"{state_path.name}.*.tmp"))
+        tmp_candidates = list(
+            state_path.parent.glob(f"{state_path.name}.*.tmp")
+        )
         assert not tmp_candidates
 
     def test_partial_write_recovery(self, state_manager, state_path):
         """Can recover from partial writes using backup"""
         # Write initial state
-        state_manager.write({'version': 1}, validate=False)
+        state_manager.write({"version": 1}, validate=False)
         # Force a backup snapshot
         state_manager.backup_manager.create_backup()
 
         # Simulate crash during write by writing corrupted data directly
-        with open(state_path, 'w') as f:
+        with open(state_path, "w") as f:
             f.write("{corrupt")
 
         # Should be able to restore from backup
@@ -491,7 +491,7 @@ class TestErrorRecovery:
             assert success
 
             data = state_manager.read()
-            assert data['version'] == 1
+            assert data["version"] == 1
 
 
 class TestRealWorldScenarios:
@@ -501,41 +501,43 @@ class TestRealWorldScenarios:
         """Simulate orchestrator updating multiple phases"""
         # Phase 1
         with state_manager.transaction() as txn:
-            txn.data['phase1'] = {
-                'status': 'success',
-                'files': {'test.pdf': {'hash': 'abc123'}}
+            txn.data["phase1"] = {
+                "status": "success",
+                "files": {"test.pdf": {"hash": "abc123"}},
             }
 
         # Phase 2
         with state_manager.transaction() as txn:
-            txn.data['phase2'] = {
-                'status': 'success',
-                'files': {'test.pdf': {'extracted_text_path': '/path/text.txt'}}
+            txn.data["phase2"] = {
+                "status": "success",
+                "files": {
+                    "test.pdf": {"extracted_text_path": "/path/text.txt"}
+                },
             }
 
         # Phase 3
         with state_manager.transaction() as txn:
-            txn.data['phase3'] = {
-                'status': 'success',
-                'files': {'test.pdf': {'chunk_paths': ['/path/chunk1.txt']}}
+            txn.data["phase3"] = {
+                "status": "success",
+                "files": {"test.pdf": {"chunk_paths": ["/path/chunk1.txt"]}},
             }
 
         # Verify all phases persisted
         data = state_manager.read()
-        assert data['phase1']['status'] == 'success'
-        assert data['phase2']['status'] == 'success'
-        assert data['phase3']['status'] == 'success'
+        assert data["phase1"]["status"] == "success"
+        assert data["phase2"]["status"] == "success"
+        assert data["phase3"]["status"] == "success"
 
     def test_error_handling_pattern(self, state_manager):
         """Simulate error handling with rollback"""
         # Initial state
-        state_manager.write({'phase1': {'status': 'pending'}}, validate=False)
+        state_manager.write({"phase1": {"status": "pending"}}, validate=False)
 
         # Simulate phase that fails mid-execution
         try:
             with state_manager.transaction() as txn:
-                txn.data['phase1']['status'] = 'running'
-                txn.data['phase1']['start_time'] = time.time()
+                txn.data["phase1"]["status"] = "running"
+                txn.data["phase1"]["start_time"] = time.time()
 
                 # Simulate error
                 raise RuntimeError("TTS engine crashed")
@@ -544,8 +546,8 @@ class TestRealWorldScenarios:
 
         # State should be unchanged
         data = state_manager.read()
-        assert data['phase1']['status'] == 'pending'
-        assert 'start_time' not in data['phase1']
+        assert data["phase1"]["status"] == "pending"
+        assert "start_time" not in data["phase1"]
 
     def test_concurrent_batch_processing(self, temp_dir):
         """Simulate multiple files being processed concurrently"""
@@ -557,12 +559,12 @@ class TestRealWorldScenarios:
                 state = PipelineState(state_path, validate_on_read=False)
 
                 with state.transaction() as txn:
-                    if 'files' not in txn.data:
-                        txn.data['files'] = {}
+                    if "files" not in txn.data:
+                        txn.data["files"] = {}
 
-                    txn.data['files'][file_id] = {
-                        'status': 'success',
-                        'timestamp': time.time()
+                    txn.data["files"][file_id] = {
+                        "status": "success",
+                        "timestamp": time.time(),
                     }
 
                     # Simulate processing time
@@ -572,7 +574,7 @@ class TestRealWorldScenarios:
 
         # Process multiple files concurrently
         threads = [
-            threading.Thread(target=process_file, args=(f'file_{i}',))
+            threading.Thread(target=process_file, args=(f"file_{i}",))
             for i in range(5)
         ]
 
@@ -587,9 +589,9 @@ class TestRealWorldScenarios:
         # All files processed
         state = PipelineState(temp_dir / "pipeline.json")
         data = state.read()
-        assert len(data['files']) == 5
+        assert len(data["files"]) == 5
 
 
 # Run tests
-if __name__ == '__main__':
-    pytest.main([__file__, '-v', '--tb=short'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "--tb=short"])

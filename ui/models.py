@@ -15,15 +15,30 @@ class UISettings:
     output_dir: str = ""
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any], project_root: Optional[Path] = None) -> "UISettings":
+    def from_dict(
+        cls, data: Dict[str, Any], project_root: Optional[Path] = None
+    ) -> "UISettings":
         project_root = Path(project_root) if project_root else None
         return cls(
             sample_rate=int(data.get("sample_rate", cls.sample_rate)),
             lufs_target=int(data.get("lufs_target", cls.lufs_target)),
             max_workers=int(data.get("max_workers", cls.max_workers)),
             enable_gpu=bool(data.get("enable_gpu", cls.enable_gpu)),
-            input_dir=str(data.get("input_dir", project_root / "input" if project_root else "")),
-            output_dir=str(data.get("output_dir", project_root / "phase5_enhancement" / "processed" if project_root else "")),
+            input_dir=str(
+                data.get(
+                    "input_dir", project_root / "input" if project_root else ""
+                )
+            ),
+            output_dir=str(
+                data.get(
+                    "output_dir",
+                    (
+                        project_root / "phase5_enhancement" / "processed"
+                        if project_root
+                        else ""
+                    ),
+                )
+            ),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -50,7 +65,8 @@ class VoiceMetadata:
     def from_dict(cls, voice_id: str, data: Dict[str, Any]) -> "VoiceMetadata":
         return cls(
             voice_id=voice_id,
-            narrator_name=data.get("narrator_name") or voice_id.replace("_", " ").title(),
+            narrator_name=data.get("narrator_name")
+            or voice_id.replace("_", " ").title(),
             preferred_profiles=list(data.get("preferred_profiles", [])),
             description=data.get("description") or "",
             notes=data.get("notes") or "",

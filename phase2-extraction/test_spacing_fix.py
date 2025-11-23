@@ -21,12 +21,18 @@ def test_character_spacing_fix():
     test_cases = [
         # (input, expected)
         ("T h e G i f t o f t h e M a g i", "TheGiftoftheMagi"),
-        ("O. H e n r y", "O. Henry"),  # Period breaks word boundary - keeps space (correct)
+        (
+            "O. H e n r y",
+            "O. Henry",
+        ),  # Period breaks word boundary - keeps space (correct)
         ("T h e", "The"),
         ("A B C D E F", "ABCDEF"),
         # Normal text should not be affected
         ("The quick brown fox", "The quick brown fox"),
-        ("ONE DOLLAR AND EIGHTY-SEVEN CENTS", "ONE DOLLAR AND EIGHTY-SEVEN CENTS"),
+        (
+            "ONE DOLLAR AND EIGHTY-SEVEN CENTS",
+            "ONE DOLLAR AND EIGHTY-SEVEN CENTS",
+        ),
     ]
 
     print("=" * 70)

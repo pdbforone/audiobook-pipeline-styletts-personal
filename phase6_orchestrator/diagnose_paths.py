@@ -13,15 +13,15 @@ pipeline_json = project_root / "pipeline.json"
 phase4_audio_dir = project_root / "phase4_tts" / "audio_chunks"
 file_id = "The_Analects_of_Confucius_20240228"
 
-print("="*80)
+print("=" * 80)
 print("DIAGNOSTIC: Phase 4 → Phase 5 Path Resolution")
-print("="*80)
+print("=" * 80)
 print()
 
 # 1. Check pipeline.json structure
 print("[1] Loading pipeline.json...")
 try:
-    with open(pipeline_json, 'r') as f:
+    with open(pipeline_json, "r") as f:
         pipeline = json.load(f)
     print(f"✓ Loaded pipeline.json: {pipeline_json}")
 except Exception as e:
@@ -53,22 +53,24 @@ chunk_audio_paths = file_data.get("chunk_audio_paths", [])
 print(f"  Found: {len(chunk_audio_paths)} paths in chunk_audio_paths")
 
 if len(chunk_audio_paths) == 0:
-    print(f"\n✗ ERROR: chunk_audio_paths is empty or missing!")
-    print(f"  This is why Phase 5 skips files!")
-    print(f"\n  Run: python finalize_phase4_only.py")
+    print("\n✗ ERROR: chunk_audio_paths is empty or missing!")
+    print("  This is why Phase 5 skips files!")
+    print("\n  Run: python finalize_phase4_only.py")
     sys.exit(1)
 
 # 4. Sample paths and check if they exist
 print()
 print("[4] Validating sample paths...")
-print(f"  First 3 paths:")
+print("  First 3 paths:")
 for i, path in enumerate(chunk_audio_paths[:3]):
     exists = Path(path).exists()
     status_icon = "✓" if exists else "✗"
     print(f"    {i}: {status_icon} {path}")
 
-print(f"  Last 3 paths:")
-for i, path in enumerate(chunk_audio_paths[-3:], start=len(chunk_audio_paths)-3):
+print("  Last 3 paths:")
+for i, path in enumerate(
+    chunk_audio_paths[-3:], start=len(chunk_audio_paths) - 3
+):
     exists = Path(path).exists()
     status_icon = "✓" if exists else "✗"
     print(f"    {i}: {status_icon} {path}")
@@ -84,7 +86,7 @@ print(f"  Existing files:      {len(existing_paths)} ✓")
 print(f"  Missing files:       {len(missing_paths)} ✗")
 
 if missing_paths:
-    print(f"\n  Sample missing paths:")
+    print("\n  Sample missing paths:")
     for path in missing_paths[:5]:
         print(f"    - {path}")
 
@@ -97,9 +99,9 @@ else:
     actual_files = list(phase4_audio_dir.glob("*.wav"))
     print(f"  ✓ Directory exists: {phase4_audio_dir}")
     print(f"  Actual WAV files: {len(actual_files)}")
-    
+
     if actual_files:
-        print(f"  Sample files:")
+        print("  Sample files:")
         for f in actual_files[:3]:
             print(f"    - {f.name}")
 
@@ -110,7 +112,7 @@ print("[7] Simulating Phase 5's get_audio_chunks_from_json()...")
 chunks_phase5_will_find = []
 for idx, wav_path in enumerate(chunk_audio_paths):
     abs_wav = Path(wav_path)
-    
+
     if abs_wav.is_absolute() and abs_wav.exists():
         chunks_phase5_will_find.append(idx)
     else:
@@ -119,13 +121,15 @@ for idx, wav_path in enumerate(chunk_audio_paths):
         print(f"      Absolute: {abs_wav.is_absolute()}")
         print(f"      Exists: {abs_wav.exists()}")
 
-print(f"\n  Phase 5 will process: {len(chunks_phase5_will_find)} / {len(chunk_audio_paths)} chunks")
+print(
+    f"\n  Phase 5 will process: {len(chunks_phase5_will_find)} / {len(chunk_audio_paths)} chunks"
+)
 
 # 8. Summary
 print()
-print("="*80)
+print("=" * 80)
 print("SUMMARY")
-print("="*80)
+print("=" * 80)
 
 if len(chunk_audio_paths) == 0:
     print("❌ CRITICAL: chunk_audio_paths is empty!")
@@ -134,9 +138,13 @@ elif len(missing_paths) > 0:
     print(f"⚠️  WARNING: {len(missing_paths)} paths don't exist!")
     print("   Fix: Check if paths are absolute and correct")
 elif len(chunks_phase5_will_find) < len(chunk_audio_paths):
-    print(f"⚠️  WARNING: Phase 5 will only process {len(chunks_phase5_will_find)} / {len(chunk_audio_paths)} chunks")
+    print(
+        f"⚠️  WARNING: Phase 5 will only process {len(chunks_phase5_will_find)} / {len(chunk_audio_paths)} chunks"
+    )
     print("   Fix: Check Phase 5's path resolution logic")
 else:
-    print(f"✅ SUCCESS: All {len(chunk_audio_paths)} paths are valid and Phase 5 should process them!")
+    print(
+        f"✅ SUCCESS: All {len(chunk_audio_paths)} paths are valid and Phase 5 should process them!"
+    )
 
 print()

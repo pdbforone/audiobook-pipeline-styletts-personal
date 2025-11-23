@@ -20,14 +20,17 @@ import numpy as np
 # Try to import pypdf for better font encoding support
 try:
     from pypdf import PdfReader
+
     PYPDF_AVAILABLE = True
 except ImportError:
     PYPDF_AVAILABLE = False
     logger = logging.getLogger(__name__)
-    logger.warning("pypdf not available - install with 'poetry add pypdf' for better font encoding")
+    logger.warning(
+        "pypdf not available - install with 'poetry add pypdf' for better font encoding"
+    )
 
 # Fix relative imports for script mode
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.path.append(str(Path(__file__).parent))
 from structure_detector import extract_structure, structure_to_dict
 
@@ -70,16 +73,22 @@ def load_from_json(json_path: str, file_id: str, file_arg: str = None) -> Dict:
         with open(json_path, "r") as f:
             data = json.load(f)
         file_data = data.get("phase1", {}).get("files", {}).get(file_id, {})
-        file_path = file_data.get("file_path") or file_data.get("artifacts_path")
-        
+        file_path = file_data.get("file_path") or file_data.get(
+            "artifacts_path"
+        )
+
         if file_arg:
             file_path = file_arg  # Prefer CLI --file if provided
         elif not file_path:
             file_path = os.environ.get("AUDIOBOOK_INPUT_PATH")
             if not file_path:
-                raise ValueError(f"No file_path found for file_id '{file_id}' and AUDIOBOOK_INPUT_PATH not set")
-            logger.warning(f"Using fallback path from environment: {file_path}")
-        
+                raise ValueError(
+                    f"No file_path found for file_id '{file_id}' and AUDIOBOOK_INPUT_PATH not set"
+                )
+            logger.warning(
+                f"Using fallback path from environment: {file_path}"
+            )
+
         return {
             "file_path": file_path,
             "classification": file_data.get("classification", "text"),
@@ -150,6 +159,7 @@ def extract_text_easyocr(file_path: str) -> str:
             pix = page.get_pixmap()
             import io
             from PIL import Image
+
             img_bytes = pix.tobytes("png")
             img = Image.open(io.BytesIO(img_bytes))
             img_array = np.array(img)
@@ -208,17 +218,23 @@ def main(config: ExtractionConfig, file_arg: str = None):
     while retries <= config.retry_limit:
         if classification == "text" or classification == "mixed":
             # Try pypdf FIRST - best for custom fonts and encoding
-            logger.info("Attempting extraction with pypdf (best for font encoding)...")
+            logger.info(
+                "Attempting extraction with pypdf (best for font encoding)..."
+            )
             text = extract_text_pypdf(file_path)
             if text.strip():
                 tool_used = "pypdf"
                 logger.info(f"✓ pypdf succeeded: {len(text)} chars extracted")
             else:
                 # Fallback to pdfplumber/pymupdf
-                logger.info("pypdf failed or not available, trying pdfplumber/pymupdf...")
-                text = extract_text_pdfplumber(file_path) or extract_text_pymupdf(file_path)
+                logger.info(
+                    "pypdf failed or not available, trying pdfplumber/pymupdf..."
+                )
+                text = extract_text_pdfplumber(
+                    file_path
+                ) or extract_text_pymupdf(file_path)
                 tool_used = "pdfplumber or pymupdf"
-            
+
             # If text extraction fails for mixed PDFs, try unstructured
             if not text.strip() and classification == "mixed":
                 logger.info("Text extraction failed, trying unstructured...")
@@ -226,14 +242,16 @@ def main(config: ExtractionConfig, file_arg: str = None):
                 tool_used = "unstructured"
                 if text.strip():
                     errors.append("Fallback to unstructured")
-            
+
             # Only use OCR as absolute last resort for mixed PDFs
             if not text.strip() and classification == "mixed":
-                logger.warning("All text extraction failed, falling back to OCR...")
+                logger.warning(
+                    "All text extraction failed, falling back to OCR..."
+                )
                 text = extract_text_easyocr(file_path)
                 tool_used = "easyocr"
                 errors.append("Fallback to EasyOCR (last resort)")
-        
+
         elif classification == "scanned":
             # For truly scanned PDFs, go straight to OCR
             text = extract_text_easyocr(file_path)
@@ -254,7 +272,9 @@ def main(config: ExtractionConfig, file_arg: str = None):
     else:
         gibberish_score = evaluate_gibberish(text)
         if gibberish_score < config.gibberish_threshold:
-            errors.append(f"Gibberish score low: {gibberish_score}; potential retry")
+            errors.append(
+                f"Gibberish score low: {gibberish_score}; potential retry"
+            )
 
         perplexity = evaluate_perplexity(text)
         lang_info = detect_language(text)
@@ -274,14 +294,20 @@ def main(config: ExtractionConfig, file_arg: str = None):
             else "partial_success"
         )
 
-        extracted_path = str(Path(config.extracted_dir) / f"{config.file_id}.txt")
+        extracted_path = str(
+            Path(config.extracted_dir) / f"{config.file_id}.txt"
+        )
         with open(extracted_path, "w", encoding="utf-8") as f:
             f.write(text)
-        
+
         logger.info(f"✓ Text written to: {extracted_path}")
-        logger.info(f"  Yield: {yield_pct:.2f}%, Gibberish: {gibberish_score:.3f}, Perplexity: {perplexity:.3f}")
-        logger.info(f"  Language: {lang_info['language']} (confidence: {lang_info['confidence']:.3f})")
-        
+        logger.info(
+            f"  Yield: {yield_pct:.2f}%, Gibberish: {gibberish_score:.3f}, Perplexity: {perplexity:.3f}"
+        )
+        logger.info(
+            f"  Language: {lang_info['language']} (confidence: {lang_info['confidence']:.3f})"
+        )
+
         structure = None
         if config.extract_structure:
             try:
@@ -289,16 +315,24 @@ def main(config: ExtractionConfig, file_arg: str = None):
                 structure_nodes = extract_structure(file_path, text)
                 if structure_nodes:
                     structure = structure_to_dict(structure_nodes)
-                    logger.info(f"Structure detected: {len(structure)} sections")
+                    logger.info(
+                        f"Structure detected: {len(structure)} sections"
+                    )
                 else:
-                    logger.info("No structure detected - will use fixed chunking")
+                    logger.info(
+                        "No structure detected - will use fixed chunking"
+                    )
             except Exception as e:
-                logger.warning(f"Structure extraction failed (non-critical): {e}")
+                logger.warning(
+                    f"Structure extraction failed (non-critical): {e}"
+                )
                 structure = None
 
     end_time = perf_counter()
     duration = end_time - start_time
-    logger.info(f"Extraction complete in {duration:.2f}s. Yield: {yield_pct:.2f}%")
+    logger.info(
+        f"Extraction complete in {duration:.2f}s. Yield: {yield_pct:.2f}%"
+    )
 
     try:
         record = ExtractionRecord(
@@ -311,7 +345,11 @@ def main(config: ExtractionConfig, file_arg: str = None):
             lang_confidence=lang_info["confidence"],
             status=status,
             errors=errors,
-            timestamps={"start": start_time, "end": end_time, "duration": duration},
+            timestamps={
+                "start": start_time,
+                "end": end_time,
+                "duration": duration,
+            },
             structure=structure,
         )
         merge_to_json(record, config.json_path, config.file_id)
@@ -341,10 +379,16 @@ def merge_to_json(record: ExtractionRecord, json_path: str, file_id: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Phase 2: Text Extraction")
-    parser.add_argument("--file_id", required=True, help="File ID from Phase 1")
+    parser.add_argument(
+        "--file_id", required=True, help="File ID from Phase 1"
+    )
     parser.add_argument("--file", type=str, help="Input file path (optional)")
-    parser.add_argument("--json_path", default="pipeline.json", help="Pipeline JSON path")
-    parser.add_argument("--extracted_dir", default="extracted_text", help="Output directory")
+    parser.add_argument(
+        "--json_path", default="pipeline.json", help="Pipeline JSON path"
+    )
+    parser.add_argument(
+        "--extracted_dir", default="extracted_text", help="Output directory"
+    )
     parser.add_argument("--config", help="Path to YAML config file")
     args = parser.parse_args()
 

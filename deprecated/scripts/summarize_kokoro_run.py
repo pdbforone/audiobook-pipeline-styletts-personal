@@ -15,21 +15,38 @@ import json
 import math
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
 import soundfile as sf
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Summarize Kokoro run artifacts.")
+    parser = argparse.ArgumentParser(
+        description="Summarize Kokoro run artifacts."
+    )
     parser.add_argument("--pipeline-json", default="pipeline.json")
-    parser.add_argument("--phase4-dir", default="phase4_tts_styletts/audio_chunks")
+    parser.add_argument(
+        "--phase4-dir", default="phase4_tts_styletts/audio_chunks"
+    )
     parser.add_argument("--phase5-dir", default="phase5_enhancement/processed")
     parser.add_argument("--output", default="run_summary.json")
-    parser.add_argument("--qa", action="store_true", help="Run optional QA checks (RMS/peak, WER sample)")
-    parser.add_argument("--wer-model", default="tiny.en", help="Whisper/Faster-Whisper model size")
-    parser.add_argument("--wer-sample-index", type=int, default=0, help="Chunk index to use for WER sample")
+    parser.add_argument(
+        "--qa",
+        action="store_true",
+        help="Run optional QA checks (RMS/peak, WER sample)",
+    )
+    parser.add_argument(
+        "--wer-model",
+        default="tiny.en",
+        help="Whisper/Faster-Whisper model size",
+    )
+    parser.add_argument(
+        "--wer-sample-index",
+        type=int,
+        default=0,
+        help="Chunk index to use for WER sample",
+    )
     return parser.parse_args()
 
 
@@ -67,7 +84,9 @@ def load_kokoro_meta(phase4_dir: Path) -> Optional[Dict]:
 def locate_audiobook(phase5_dir: Path) -> Optional[str]:
     if not phase5_dir.exists():
         return None
-    mp3s = sorted(phase5_dir.glob("*.mp3"), key=lambda p: p.stat().st_mtime, reverse=True)
+    mp3s = sorted(
+        phase5_dir.glob("*.mp3"), key=lambda p: p.stat().st_mtime, reverse=True
+    )
     return str(mp3s[0]) if mp3s else None
 
 
@@ -82,7 +101,7 @@ def compute_audio_stats(files: List[Dict]) -> List[Dict]:
         if audio.size == 0:
             stats.append({"path": str(path), "error": "empty"})
             continue
-        rms = float(np.sqrt(np.mean(audio ** 2)) + 1e-12)
+        rms = float(np.sqrt(np.mean(audio**2)) + 1e-12)
         peak = float(np.max(np.abs(audio)) + 1e-12)
         stats.append(
             {
@@ -123,7 +142,9 @@ def run_wer_sample(
     reference_text = Path(chunk_paths[idx]).read_text(encoding="utf-8").strip()
 
     chunk_name = Path(chunk_paths[idx]).stem  # e.g., chunk_001
-    candidate_audio = phase4_dir / f"{file_id}_chunk_{chunk_name.split('_')[-1]}.wav"
+    candidate_audio = (
+        phase4_dir / f"{file_id}_chunk_{chunk_name.split('_')[-1]}.wav"
+    )
     if not candidate_audio.exists():
         return {"error": f"Audio chunk missing: {candidate_audio}"}
 

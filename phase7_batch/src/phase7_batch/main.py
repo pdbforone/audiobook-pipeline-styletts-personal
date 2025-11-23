@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import logging
-import os
 import subprocess
 import sys
 import time
@@ -37,10 +35,14 @@ def setup_logging(config: BatchConfig) -> None:
     logging.getLogger().handlers.clear()
 
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    console_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    )
 
     file_handler = logging.FileHandler(config.log_file)
-    file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    )
 
     logging.getLogger().setLevel(numeric_level)
     logging.getLogger().addHandler(console_handler)
@@ -107,7 +109,9 @@ def latest_batch_records(pipeline: Dict[str, Any]) -> Dict[str, Any]:
     return runs[-1].get("files", {}) or {}
 
 
-def metadata_from_existing(file_path: Path, record: Dict[str, Any]) -> BatchMetadata:
+def metadata_from_existing(
+    file_path: Path, record: Dict[str, Any]
+) -> BatchMetadata:
     phase6_data = record.get("phase6") or {}
     timestamps = record.get("timestamps") or {}
     metrics = record.get("metrics") or {}
@@ -135,7 +139,9 @@ def metadata_from_existing(file_path: Path, record: Dict[str, Any]) -> BatchMeta
     return metadata
 
 
-def _timestamp_payload(start: Optional[str], end: Optional[str], duration: Optional[float]) -> Dict[str, Any]:
+def _timestamp_payload(
+    start: Optional[str], end: Optional[str], duration: Optional[float]
+) -> Dict[str, Any]:
     payload: Dict[str, Any] = {}
     if start is not None:
         payload["start"] = start
@@ -164,7 +170,9 @@ def _file_entry_from_metadata(meta: BatchMetadata) -> Dict[str, Any]:
     entry: Dict[str, Any] = {
         "file_id": meta.file_id,
         "status": meta.status or "pending",
-        "timestamps": _timestamp_payload(meta.started_at, meta.completed_at, meta.duration_sec),
+        "timestamps": _timestamp_payload(
+            meta.started_at, meta.completed_at, meta.duration_sec
+        ),
         "artifacts": artifacts,
         "metrics": metrics,
         "errors": errors,
@@ -226,8 +234,12 @@ async def process_single_file(
                 stdin=subprocess.DEVNULL,
             )
             duration = time.perf_counter() - start_perf
-            stdout_text = (result.stdout or b"").decode("utf-8", errors="replace")
-            stderr_text = (result.stderr or b"").decode("utf-8", errors="replace")
+            stdout_text = (result.stdout or b"").decode(
+                "utf-8", errors="replace"
+            )
+            stderr_text = (result.stderr or b"").decode(
+                "utf-8", errors="replace"
+            )
             stdout_tail = "\n".join(stdout_text.splitlines()[-20:])
             stderr_tail = "\n".join(stderr_text.splitlines()[-20:])
 
@@ -245,7 +257,9 @@ async def process_single_file(
                 logger.info("[SUCCESS] %s in %.2fs", file_id, duration)
             else:
                 metadata.status = "failed"
-                metadata.error_message = f"Phase 6 exited with code {result.returncode}"
+                metadata.error_message = (
+                    f"Phase 6 exited with code {result.returncode}"
+                )
                 if stderr_tail:
                     metadata.errors.append(stderr_tail)
                 logger.error("[FAIL] %s: %s", file_id, metadata.error_message)
@@ -262,7 +276,9 @@ async def process_single_file(
     return metadata
 
 
-async def monitor_cpu_usage(config: BatchConfig, cpu_readings: List[float], stop_event: trio.Event) -> None:
+async def monitor_cpu_usage(
+    config: BatchConfig, cpu_readings: List[float], stop_event: trio.Event
+) -> None:
     throttling = False
     while not stop_event.is_set():
         await trio.sleep(1)
@@ -283,7 +299,9 @@ async def monitor_cpu_usage(config: BatchConfig, cpu_readings: List[float], stop
             throttling = False
 
 
-def render_reports(summary: BatchSummary, metadata_list: List[BatchMetadata]) -> None:
+def render_reports(
+    summary: BatchSummary, metadata_list: List[BatchMetadata]
+) -> None:
     status_colors = {
         "success": "green",
         "partial": "yellow",
@@ -297,9 +315,13 @@ def render_reports(summary: BatchSummary, metadata_list: List[BatchMetadata]) ->
     summary_table.add_column("Value", style="magenta")
 
     summary_table.add_row("Total Files", str(summary.total_files))
-    summary_table.add_row("Successful", f"[green]{summary.successful_files}[/green]")
+    summary_table.add_row(
+        "Successful", f"[green]{summary.successful_files}[/green]"
+    )
     summary_table.add_row("Failed", f"[red]{summary.failed_files}[/red]")
-    summary_table.add_row("Skipped", f"[yellow]{summary.skipped_files}[/yellow]")
+    summary_table.add_row(
+        "Skipped", f"[yellow]{summary.skipped_files}[/yellow]"
+    )
     summary_table.add_row("Duration (s)", f"{summary.duration_sec:.2f}")
     if summary.avg_cpu_usage is not None:
         summary_table.add_row("Avg CPU (%)", f"{summary.avg_cpu_usage:.1f}")
@@ -316,14 +338,28 @@ def render_reports(summary: BatchSummary, metadata_list: List[BatchMetadata]) ->
     for meta in metadata_list:
         f_color = status_colors.get(meta.status, "white")
         status_display = f"[{f_color}]{meta.status}[/{f_color}]"
-        duration_str = f"{meta.duration_sec:.2f}" if meta.duration_sec is not None else "-"
+        duration_str = (
+            f"{meta.duration_sec:.2f}"
+            if meta.duration_sec is not None
+            else "-"
+        )
         cpu_str = f"{meta.cpu_avg:.1f}%" if meta.cpu_avg is not None else "-"
         error_excerpt = ""
         if meta.error_message:
-            error_excerpt = (meta.error_message[:80] + "...") if len(meta.error_message) > 80 else meta.error_message
+            error_excerpt = (
+                (meta.error_message[:80] + "...")
+                if len(meta.error_message) > 80
+                else meta.error_message
+            )
         elif meta.errors:
-            error_excerpt = (meta.errors[0][:80] + "...") if len(meta.errors[0]) > 80 else meta.errors[0]
-        file_table.add_row(meta.file_id, status_display, duration_str, cpu_str, error_excerpt)
+            error_excerpt = (
+                (meta.errors[0][:80] + "...")
+                if len(meta.errors[0]) > 80
+                else meta.errors[0]
+            )
+        file_table.add_row(
+            meta.file_id, status_display, duration_str, cpu_str, error_excerpt
+        )
 
     console.print("\n")
     console.print(summary_table)
@@ -346,7 +382,9 @@ def persist_batch_state(
     run_entry = {
         "run_id": run_id,
         "status": summary.status,
-        "timestamps": _timestamp_payload(summary.started_at, summary.completed_at, summary.duration_sec),
+        "timestamps": _timestamp_payload(
+            summary.started_at, summary.completed_at, summary.duration_sec
+        ),
         "metrics": {
             "total_files": summary.total_files,
             "successful_files": summary.successful_files,
@@ -361,15 +399,26 @@ def persist_batch_state(
     }
     with state.transaction(operation="batch_run") as txn:
         runs = txn.data.setdefault("batch_runs", [])
-        existing_index = next((idx for idx, run in enumerate(runs) if run.get("run_id") == run_id), None)
+        existing_index = next(
+            (
+                idx
+                for idx, run in enumerate(runs)
+                if run.get("run_id") == run_id
+            ),
+            None,
+        )
         if existing_index is not None:
             runs[existing_index] = run_entry
         else:
             runs.append(run_entry)
-    logger.info("Updated pipeline.json with batch results at %s", pipeline_path)
+    logger.info(
+        "Updated pipeline.json with batch results at %s", pipeline_path
+    )
 
 
-async def run_batch(config: BatchConfig) -> Tuple[BatchSummary, List[BatchMetadata]]:
+async def run_batch(
+    config: BatchConfig,
+) -> Tuple[BatchSummary, List[BatchMetadata]]:
     orchestrator = find_orchestrator()
     pipeline_path = Path(config.pipeline_json)
     pipeline = load_pipeline_state(pipeline_path)
@@ -401,7 +450,8 @@ async def run_batch(config: BatchConfig) -> Tuple[BatchSummary, List[BatchMetada
         summary.artifacts.append(Path(config.log_file).as_posix())
 
         dry_run_panel = Panel(
-            "\n".join([f"- {p.as_posix()}" for p in input_files]) or "No input files found.",
+            "\n".join([f"- {p.as_posix()}" for p in input_files])
+            or "No input files found.",
             title="Dry Run: Files that would be processed",
             style="blue",
         )
@@ -428,7 +478,9 @@ async def run_batch(config: BatchConfig) -> Tuple[BatchSummary, List[BatchMetada
         nursery.start_soon(monitor_cpu_usage, config, cpu_readings, stop_event)
 
         async def run_and_record(file_path: Path) -> None:
-            m = await process_single_file(file_path, config, orchestrator, semaphore, existing_records)
+            m = await process_single_file(
+                file_path, config, orchestrator, semaphore, existing_records
+            )
             metadata_list.append(m)
 
         async with trio.open_nursery() as work_nursery:
@@ -440,7 +492,10 @@ async def run_batch(config: BatchConfig) -> Tuple[BatchSummary, List[BatchMetada
     completed_at = utcnow()
     avg_cpu = sum(cpu_readings) / len(cpu_readings) if cpu_readings else None
     summary = BatchSummary.from_metadata_list(
-        metadata_list, started_at=started_at, completed_at=completed_at, avg_cpu=avg_cpu
+        metadata_list,
+        started_at=started_at,
+        completed_at=completed_at,
+        avg_cpu=avg_cpu,
     )
     summary.artifacts.append(Path(config.log_file).as_posix())
 

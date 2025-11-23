@@ -62,7 +62,9 @@ class TuningOverridesStore:
             json.dump(self.data, handle, indent=2, sort_keys=True)
         self._dirty = False
 
-    def build_run_overrides(self, stats: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def build_run_overrides(
+        self, stats: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Construct runtime overrides while honoring safety limits."""
         results: Dict[str, Any] = {}
         overrides = self.data.setdefault("overrides", {})
@@ -110,7 +112,8 @@ class TuningOverridesStore:
 
         if results:
             results["metadata"] = {
-                "generated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                "generated_at": datetime.utcnow().isoformat(timespec="seconds")
+                + "Z",
             }
         return results
 
@@ -122,7 +125,9 @@ class TuningOverridesStore:
         timestamp = datetime.utcnow().isoformat(timespec="seconds") + "Z"
         chunk_delta = adaptive.get("chunk_size")
         if chunk_delta is not None:
-            self._tune_chunk_from_reward(float(chunk_delta), bool(safety.get("revert_chunk")), timestamp)
+            self._tune_chunk_from_reward(
+                float(chunk_delta), bool(safety.get("revert_chunk")), timestamp
+            )
         engine_bias = adaptive.get("engine_bias")
         if safety.get("revert_engine"):
             self._clear_engine_override()
@@ -131,7 +136,9 @@ class TuningOverridesStore:
         if safety.get("voice_alert"):
             self._clear_voice_override()
 
-    def _build_chunk_override(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _build_chunk_override(
+        self, payload: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         mode = str(payload.get("mode") or "")
         if not mode:
             return None
@@ -152,7 +159,9 @@ class TuningOverridesStore:
             "source": payload.get("source"),
         }
 
-    def _build_engine_override(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _build_engine_override(
+        self, payload: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         confidence = payload.get("confidence")
         try:
             score = float(confidence)
@@ -167,7 +176,9 @@ class TuningOverridesStore:
         result["preferred"] = preferred
         return result
 
-    def _build_voice_override(self, payload: Dict[str, Any], state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _build_voice_override(
+        self, payload: Dict[str, Any], state: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         voice_id = payload.get("voice_id")
         if not voice_id:
             return None
@@ -204,7 +215,9 @@ class TuningOverridesStore:
         self._update_voice_streak(success, voice_applied)
         self.mark_dirty()
 
-    def _update_voice_streak(self, success: bool, voice_override_applied: bool) -> None:
+    def _update_voice_streak(
+        self, success: bool, voice_override_applied: bool
+    ) -> None:
         state = self.runtime_state()
         streak = state.get("voice_success_streak", 0)
         try:
@@ -220,10 +233,14 @@ class TuningOverridesStore:
         state["voice_success_streak"] = streak_value
         self.mark_dirty()
 
-    def _tune_chunk_from_reward(self, delta: float, revert: bool, timestamp: str) -> None:
+    def _tune_chunk_from_reward(
+        self, delta: float, revert: bool, timestamp: str
+    ) -> None:
         overrides = self.data.setdefault("overrides", {})
         phase3 = overrides.setdefault("phase3", {})
-        entry = phase3.setdefault("chunk_size", {"mode": "increase_chunk_size"})
+        entry = phase3.setdefault(
+            "chunk_size", {"mode": "increase_chunk_size"}
+        )
         current = entry.get("delta_percent", 0.0)
         try:
             current_value = float(current)
@@ -235,7 +252,9 @@ class TuningOverridesStore:
             new_value = current_value + max(-2.0, min(2.0, delta))
         new_value = max(-20.0, min(20.0, new_value))
         entry["delta_percent"] = round(new_value, 2)
-        entry["mode"] = "reduce_chunk_size" if new_value < 0 else "increase_chunk_size"
+        entry["mode"] = (
+            "reduce_chunk_size" if new_value < 0 else "increase_chunk_size"
+        )
         entry["reason"] = "Self-driving adaptive tuning"
         entry["source"] = "self_driving"
         entry["updated_at"] = timestamp
@@ -253,11 +272,15 @@ class TuningOverridesStore:
             phase4.pop("voice_variant", None)
             self.mark_dirty()
 
-    def _promote_best_engine(self, stats: Dict[str, Any], timestamp: str) -> None:
+    def _promote_best_engine(
+        self, stats: Dict[str, Any], timestamp: str
+    ) -> None:
         engine_rel = stats.get("engine_reliability") or {}
         if not engine_rel:
             return
-        best_engine, best_score = max(engine_rel.items(), key=lambda item: item[1])
+        best_engine, best_score = max(
+            engine_rel.items(), key=lambda item: item[1]
+        )
         overrides = self.data.setdefault("overrides", {})
         phase4 = overrides.setdefault("phase4", {})
         entry = phase4.setdefault("engine", {})

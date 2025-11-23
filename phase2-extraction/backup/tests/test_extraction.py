@@ -7,13 +7,7 @@ from phase2_extraction.extraction import (
     classify_pdf,
     extract_text_text_pdf,
     extract_with_paddleocr,
-    extract_with_unstructured,
-    extract_with_easyocr,
     extract_text_pdf,
-    extract_text_epub,
-    extract_text_docx,
-    extract_text_txt,
-    check_gibberish,
     check_perplexity,
     check_language,
     main,
@@ -86,8 +80,12 @@ def test_extract_with_paddleocr(mock_ocr):
 # Similar mocks for unstructured, easyocr, epub, docx, txt
 
 
-@patch("phase2_extraction.extraction.extract_text_text_pdf", return_value="text")
-@patch("phase2_extraction.extraction.extract_with_paddleocr", return_value="text")
+@patch(
+    "phase2_extraction.extraction.extract_text_text_pdf", return_value="text"
+)
+@patch(
+    "phase2_extraction.extraction.extract_with_paddleocr", return_value="text"
+)
 def test_extract_text_pdf(mock_paddle, mock_text):
     assert extract_text_pdf("test.pdf", "text", 1) == "text"
     assert extract_text_pdf("test.pdf", "mixed", 1) == "text"
@@ -103,11 +101,16 @@ def test_check_language():
     assert is_en
 
 
-@patch("phase2_extraction.extraction.get_file_info", return_value=("pdf", "text"))
+@patch(
+    "phase2_extraction.extraction.get_file_info", return_value=("pdf", "text")
+)
 @patch("phase2_extraction.extraction.extract_text_pdf", return_value="text")
 @patch("phase2_extraction.extraction.check_gibberish", return_value=0.5)
 @patch("phase2_extraction.extraction.check_perplexity", return_value=200.0)
-@patch("phase2_extraction.extraction.check_language", return_value=(True, "en 0.95"))
+@patch(
+    "phase2_extraction.extraction.check_language",
+    return_value=(True, "en 0.95"),
+)
 @patch("os.makedirs")
 @patch("builtins.open")
 def test_main(

@@ -5,7 +5,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+)
 
 
 def _default_max_workers() -> int:
@@ -20,7 +26,9 @@ def _iso_now() -> str:
 class BatchConfig(BaseModel):
     """Configuration for the Phase 7 batch runner."""
 
-    model_config = ConfigDict(validate_assignment=True, extra="ignore", populate_by_name=True)
+    model_config = ConfigDict(
+        validate_assignment=True, extra="ignore", populate_by_name=True
+    )
 
     pipeline_json: str = Field(default="../pipeline.json")
     input_dir: str = Field(default="../input")
@@ -29,8 +37,13 @@ class BatchConfig(BaseModel):
     max_workers: int = Field(default_factory=_default_max_workers, ge=1)
     cpu_threshold: float = Field(default=85.0, ge=0, le=100)
     throttle_delay: float = Field(default=1.0, ge=0)
-    resume: bool = Field(default=True, validation_alias=AliasChoices("resume", "resume_enabled"))
-    phases: List[int] = Field(default_factory=list, validation_alias=AliasChoices("phases", "phases_to_run"))
+    resume: bool = Field(
+        default=True, validation_alias=AliasChoices("resume", "resume_enabled")
+    )
+    phases: List[int] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("phases", "phases_to_run"),
+    )
     batch_size: Optional[int] = Field(default=None, ge=1)
     phase_timeout: int = Field(default=600, ge=1)
     dry_run: bool = Field(default=False)

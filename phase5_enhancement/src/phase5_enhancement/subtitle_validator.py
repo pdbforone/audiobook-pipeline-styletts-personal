@@ -62,12 +62,12 @@ def format_srt(segments: List[Dict]) -> str:
     lines = []
 
     for i, seg in enumerate(segments, start=1):
-        start_time = _format_timestamp_srt(seg['start'])
-        end_time = _format_timestamp_srt(seg['end'])
+        start_time = _format_timestamp_srt(seg["start"])
+        end_time = _format_timestamp_srt(seg["end"])
 
         lines.append(f"{i}")
         lines.append(f"{start_time} --> {end_time}")
-        lines.append(seg['text'])
+        lines.append(seg["text"])
         lines.append("")  # Blank line between subtitles
 
     return "\n".join(lines)
@@ -89,11 +89,11 @@ def format_vtt(segments: List[Dict]) -> str:
     lines = ["WEBVTT", ""]
 
     for seg in segments:
-        start_time = _format_timestamp_vtt(seg['start'])
-        end_time = _format_timestamp_vtt(seg['end'])
+        start_time = _format_timestamp_vtt(seg["start"])
+        end_time = _format_timestamp_vtt(seg["end"])
 
         lines.append(f"{start_time} --> {end_time}")
-        lines.append(seg['text'])
+        lines.append(seg["text"])
         lines.append("")  # Blank line between subtitles
 
     return "\n".join(lines)

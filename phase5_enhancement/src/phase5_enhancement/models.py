@@ -1,9 +1,14 @@
-from pydantic import BaseModel, Field, field_validator, model_validator, PrivateAttr
+from pydantic import (
+    BaseModel,
+    Field,
+    field_validator,
+    model_validator,
+    PrivateAttr,
+)
 from typing import Optional, List, Literal, Set
 from pathlib import Path
 from dataclasses import dataclass, field as dataclass_field
 import os
-import json
 
 from pipeline_common import PipelineState
 
@@ -32,7 +37,10 @@ class EnhancementConfig(BaseModel):
     # Audio Processing Parameters
     sample_rate: int = Field(default=48000, description="Audio sample rate")
     lufs_target: float = Field(
-        default=-23.0, ge=-40.0, le=-10.0, description="Target LUFS for normalization"
+        default=-23.0,
+        ge=-40.0,
+        le=-10.0,
+        description="Target LUFS for normalization",
     )
     snr_threshold: float = Field(
         default=0.0,
@@ -101,10 +109,16 @@ class EnhancementConfig(BaseModel):
 
     # Output Parameters
     crossfade_duration: float = Field(
-        default=0.05, ge=0.0, le=5.0, description="Crossfade duration in seconds"
+        default=0.05,
+        ge=0.0,
+        le=5.0,
+        description="Crossfade duration in seconds",
     )
     crossfade_max_sec: float = Field(
-        default=0.1, ge=0.0, le=5.0, description="Maximum allowed crossfade duration"
+        default=0.1,
+        ge=0.0,
+        le=5.0,
+        description="Maximum allowed crossfade duration",
     )
     crossfade_silence_guard_sec: float = Field(
         default=0.2,
@@ -113,7 +127,8 @@ class EnhancementConfig(BaseModel):
         description="Skip crossfade when leading silence on next chunk exceeds this duration",
     )
     crossfade_enable_silence_guard: bool = Field(
-        default=True, description="Disable to always apply crossfade regardless of silence"
+        default=True,
+        description="Disable to always apply crossfade regardless of silence",
     )
     mp3_bitrate: str = Field(
         default="192k",
@@ -134,10 +149,16 @@ class EnhancementConfig(BaseModel):
         default=2, ge=0, le=5, description="Max retries on quality failure"
     )
     max_workers: int = Field(
-        default=2, ge=1, le=16, description="Max parallel workers for batch processing"
+        default=2,
+        ge=1,
+        le=16,
+        description="Max parallel workers for batch processing",
     )
     chunk_size_seconds: int = Field(
-        default=30, ge=10, le=300, description="Chunk size for large audio processing"
+        default=30,
+        ge=10,
+        le=300,
+        description="Chunk size for large audio processing",
     )
 
     # Quality Control
@@ -145,7 +166,10 @@ class EnhancementConfig(BaseModel):
         default=True, description="Enable quality validation checks"
     )
     processing_timeout: int = Field(
-        default=60, ge=10, le=300, description="Processing timeout per chunk in seconds"
+        default=60,
+        ge=10,
+        le=300,
+        description="Processing timeout per chunk in seconds",
     )
 
     # System Resources
@@ -168,7 +192,9 @@ class EnhancementConfig(BaseModel):
         pattern=r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
         description="Logging level",
     )
-    log_file: str = Field(default="audio_enhancement.log", description="Log file path")
+    log_file: str = Field(
+        default="audio_enhancement.log", description="Log file path"
+    )
 
     # Recovery Options
     resume_on_failure: bool = Field(
@@ -180,11 +206,14 @@ class EnhancementConfig(BaseModel):
 
     # Phrase Cleanup (NEW)
     enable_phrase_cleanup: bool = Field(
-        default=True, description="Enable automatic phrase removal before enhancement"
+        default=True,
+        description="Enable automatic phrase removal before enhancement",
     )
-    cleanup_scope: Literal["none", "first_n_chunks", "all", "final_only"] = Field(
-        default="all",
-        description="Controls which chunks run Whisper cleanup to save CPU",
+    cleanup_scope: Literal["none", "first_n_chunks", "all", "final_only"] = (
+        Field(
+            default="all",
+            description="Controls which chunks run Whisper cleanup to save CPU",
+        )
     )
     cleanup_first_n: int = Field(
         default=3,
@@ -196,37 +225,38 @@ class EnhancementConfig(BaseModel):
             "You need to add some text for me to talk",
             "You need to add some text for me to talk.",
             "You need to add text for me to talk",
-            "You need to add text for me to talk."
+            "You need to add text for me to talk.",
         ],
-        description="Phrases to detect and remove from audio chunks"
+        description="Phrases to detect and remove from audio chunks",
     )
     cleanup_whisper_model: str = Field(
         default="base",
         pattern=r"^(tiny|base|small|medium|large)$",
-        description="Whisper model size for transcription (tiny, base, small, medium, large)"
+        description="Whisper model size for transcription (tiny, base, small, medium, large)",
     )
     cleanup_save_transcripts: bool = Field(
-        default=False, description="Save SRT transcripts during cleanup for debugging"
+        default=False,
+        description="Save SRT transcripts during cleanup for debugging",
     )
 
     # Advanced Audio Mastering (NEW)
     enable_deepfilternet: bool = Field(
         default=False,
-        description="Use DeepFilterNet for professional noise reduction (replaces noisereduce when enabled)"
+        description="Use DeepFilterNet for professional noise reduction (replaces noisereduce when enabled)",
     )
     enable_matchering: bool = Field(
         default=False,
-        description="Apply reference-based mastering using Matchering (GPL-3.0, internal use only)"
+        description="Apply reference-based mastering using Matchering (GPL-3.0, internal use only)",
     )
     matchering_reference: Optional[str] = Field(
         default=None,
-        description="Path to reference audio file for Matchering mastering (WAV format, stereo recommended)"
+        description="Path to reference audio file for Matchering mastering (WAV format, stereo recommended)",
     )
     matchering_max_length: int = Field(
         default=1800,  # 30 minutes in seconds
         ge=60,
         le=7200,
-        description="Maximum audio length for Matchering processing in seconds"
+        description="Maximum audio length for Matchering processing in seconds",
     )
 
     # Track user-specified overrides so profiles don't clobber them
@@ -277,7 +307,9 @@ class EnhancementConfig(BaseModel):
             set_if_missing("lufs_target", -23.0)
             if "enable_phrase_cleanup" not in self._user_overrides:
                 # Default to skipping cleanup on constrained machines unless user opts in
-                set_if_missing("enable_phrase_cleanup", cleanup_scope_overridden)
+                set_if_missing(
+                    "enable_phrase_cleanup", cleanup_scope_overridden
+                )
             if not cleanup_scope_overridden:
                 set_if_missing("cleanup_scope", "none")
         elif self.profile == "full_master":
@@ -291,7 +323,11 @@ class EnhancementConfig(BaseModel):
         else:
             # auto profile - prefer modest parallelism and lighter models when heavy processors are enabled
             if "max_workers" not in self._user_overrides:
-                default_workers = 1 if self.enable_deepfilternet or self.enable_matchering else min(4, cores)
+                default_workers = (
+                    1
+                    if self.enable_deepfilternet or self.enable_matchering
+                    else min(4, cores)
+                )
                 set_if_missing("max_workers", default_workers)
             if "cleanup_whisper_model" not in self._user_overrides:
                 set_if_missing("cleanup_whisper_model", "small")
@@ -329,7 +365,9 @@ class AudioMetadata(BaseModel):
     error_message: Optional[str] = None
     duration: Optional[float] = None
     # Phrase cleanup metadata
-    cleanup_status: Optional[str] = None  # 'cleaned', 'clean', 'disabled', 'error'
+    cleanup_status: Optional[str] = (
+        None  # 'cleaned', 'clean', 'disabled', 'error'
+    )
     phrases_removed: Optional[int] = None
     cleanup_processing_time: Optional[float] = None
 
@@ -351,7 +389,9 @@ class SubtitleConfig:
 
     # Input/Output
     audio_path: Path
-    output_dir: Path = dataclass_field(default_factory=lambda: Path("subtitles"))
+    output_dir: Path = dataclass_field(
+        default_factory=lambda: Path("subtitles")
+    )
     file_id: str = "audiobook"
     pipeline_json: Optional[Path] = None
 
@@ -379,7 +419,9 @@ class SubtitleConfig:
     enable_checkpoints: bool = True
     checkpoint_interval: int = 300  # Save every 5 minutes of audio
     reference_text_path: Optional[Path] = None  # For WER calculation
-    use_aeneas_alignment: bool = False  # Optional forced alignment with reference text
+    use_aeneas_alignment: bool = (
+        False  # Optional forced alignment with reference text
+    )
 
     # Alignment
     enable_drift_correction: bool = True

@@ -12,4 +12,4 @@ from . import html
 from . import txt
 from . import ocr
 
-__all__ = ['pdf', 'docx', 'epub', 'html', 'txt', 'ocr']
+__all__ = ["pdf", "docx", "epub", "html", "txt", "ocr"]

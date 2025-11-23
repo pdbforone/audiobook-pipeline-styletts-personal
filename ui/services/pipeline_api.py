@@ -38,7 +38,9 @@ PHASE_ORDER.sort(key=lambda item: item[0])
 class PipelineAPI:
     """Single entry point for pipeline state, logs, and orchestration."""
 
-    def __init__(self, project_root: Path, log_files: Optional[Dict[str, Path]] = None) -> None:
+    def __init__(
+        self, project_root: Path, log_files: Optional[Dict[str, Path]] = None
+    ) -> None:
         self.project_root = Path(project_root).resolve()
         self.state = PipelineState(self.project_root / "pipeline.json")
         self.log_files = log_files or {}
@@ -120,24 +122,40 @@ class PipelineAPI:
                         file_id=file_id,
                         phases_complete=phases_complete,
                         phases_incomplete=phases_incomplete,
-                        last_phase=max(phases_complete) if phases_complete else 0,
+                        last_phase=(
+                            max(phases_complete) if phases_complete else 0
+                        ),
                     )
         except Exception as exc:
             logger.warning("Failed to detect incomplete work: %s", exc)
         return None
 
-    def _phase_status(self, data: Dict[str, Any], file_id: str, phase: Any) -> str:
-        phase_key = phase if isinstance(phase, str) and phase.startswith("phase") else f"phase{phase}"
+    def _phase_status(
+        self, data: Dict[str, Any], file_id: str, phase: Any
+    ) -> str:
+        phase_key = (
+            phase
+            if isinstance(phase, str) and phase.startswith("phase")
+            else f"phase{phase}"
+        )
         try:
             phase_block = data.get(phase_key, {}) or {}
             files = phase_block.get("files", {}) or {}
             entry = files.get(file_id, {}) if isinstance(files, dict) else {}
-            return entry.get("status") or phase_block.get("status") or "missing"
+            return (
+                entry.get("status") or phase_block.get("status") or "missing"
+            )
         except Exception:
             return "unknown"
 
-    def _phase_errors(self, data: Dict[str, Any], file_id: str, phase: Any) -> List[str]:
-        phase_key = phase if isinstance(phase, str) and phase.startswith("phase") else f"phase{phase}"
+    def _phase_errors(
+        self, data: Dict[str, Any], file_id: str, phase: Any
+    ) -> List[str]:
+        phase_key = (
+            phase
+            if isinstance(phase, str) and phase.startswith("phase")
+            else f"phase{phase}"
+        )
         try:
             phase_block = data.get(phase_key, {}) or {}
             files = phase_block.get("files", {}) or {}
@@ -146,20 +164,32 @@ class PipelineAPI:
             if isinstance(errors, list):
                 return [str(err) for err in errors if err]
             if isinstance(errors, dict):
-                return [f"{key}: {value}" for key, value in errors.items() if value]
+                return [
+                    f"{key}: {value}" for key, value in errors.items() if value
+                ]
             if isinstance(errors, str):
                 return [errors]
         except Exception:
-            logger.debug("Failed to parse errors for %s/%s", phase_key, file_id, exc_info=True)
+            logger.debug(
+                "Failed to parse errors for %s/%s",
+                phase_key,
+                file_id,
+                exc_info=True,
+            )
         return []
 
     def _process_snapshot(self) -> List[str]:
         lines: List[str] = []
         try:
-            for proc in psutil.process_iter(["pid", "name", "cmdline", "cpu_percent", "memory_info"]):
+            for proc in psutil.process_iter(
+                ["pid", "name", "cmdline", "cpu_percent", "memory_info"]
+            ):
                 cmd = " ".join(proc.info.get("cmdline") or [])[:120]
                 name = proc.info.get("name") or ""
-                if any(key in cmd for key in ["phase4", "phase5", "orchestrator.py"]):
+                if any(
+                    key in cmd
+                    for key in ["phase4", "phase5", "orchestrator.py"]
+                ):
                     mem_info = proc.info.get("memory_info")
                     mem_mb = (mem_info.rss if mem_info else 0) / (1024 * 1024)
                     lines.append(
@@ -193,29 +223,49 @@ class PipelineAPI:
             )
 
         fs_progress = FileSystemProgress(
-            chunk_txt=self._count_files(f"phase3-chunking/chunks/{file_id}_chunk_*.txt"),
+            chunk_txt=self._count_files(
+                f"phase3-chunking/chunks/{file_id}_chunk_*.txt"
+            ),
             phase4_wav=self._count_files("phase4_tts/audio_chunks/*.wav"),
-            phase5_wav=self._count_files("phase5_enhancement/processed/enhanced_*.wav"),
-            mp3_exists=(self.project_root / "phase5_enhancement" / "processed" / "audiobook.mp3").exists(),
+            phase5_wav=self._count_files(
+                "phase5_enhancement/processed/enhanced_*.wav"
+            ),
+            mp3_exists=(
+                self.project_root
+                / "phase5_enhancement"
+                / "processed"
+                / "audiobook.mp3"
+            ).exists(),
         )
 
-        return PipelineStatus(file_id=file_id, phases=phases, fs_progress=fs_progress, processes=self._process_snapshot())
+        return PipelineStatus(
+            file_id=file_id,
+            phases=phases,
+            fs_progress=fs_progress,
+            processes=self._process_snapshot(),
+        )
 
     # ------------------------------------------------------------------ #
     # Phase 4 summary
     # ------------------------------------------------------------------ #
-    def get_phase4_summary(self, file_id: Optional[str], page: int = 1, page_size: int = 20) -> Optional[Phase4Summary]:
+    def get_phase4_summary(
+        self, file_id: Optional[str], page: int = 1, page_size: int = 20
+    ) -> Optional[Phase4Summary]:
         if not file_id:
             return None
 
         data = self._read_state()
         try:
-            phase4_files = (data.get("phase4", {}) or {}).get("files", {}) or {}
+            phase4_files = (data.get("phase4", {}) or {}).get(
+                "files", {}
+            ) or {}
             entry = phase4_files.get(file_id)
             if not entry or not isinstance(entry, dict):
                 return None
 
-            chunk_keys = sorted([k for k in entry.keys() if k.startswith("chunk_")])
+            chunk_keys = sorted(
+                [k for k in entry.keys() if k.startswith("chunk_")]
+            )
             page = max(1, int(page))
             page_size = max(1, min(100, int(page_size)))
             start = (page - 1) * page_size
@@ -230,21 +280,48 @@ class PipelineAPI:
                 audio_path = "-"
                 if isinstance(meta, dict):
                     status = meta.get("status") or meta.get("state") or "-"
-                    engine = meta.get("engine_used") or meta.get("engine") or "-"
-                    rt_factor = meta.get("rt_factor") if isinstance(meta.get("rt_factor"), (int, float)) else None
-                    audio_path = meta.get("output_path") or meta.get("path") or meta.get("chunk_audio_path") or "-"
+                    engine = (
+                        meta.get("engine_used") or meta.get("engine") or "-"
+                    )
+                    rt_factor = (
+                        meta.get("rt_factor")
+                        if isinstance(meta.get("rt_factor"), (int, float))
+                        else None
+                    )
+                    audio_path = (
+                        meta.get("output_path")
+                        or meta.get("path")
+                        or meta.get("chunk_audio_path")
+                        or "-"
+                    )
                 elif isinstance(meta, (list, tuple)) and meta:
                     audio_path = str(meta[0])
                 elif meta is not None:
                     audio_path = str(meta)
-                rows.append(Phase4ChunkSummary(chunk_id=cid, status=status, engine=engine, rt_factor=rt_factor, audio_path=str(audio_path)))
+                rows.append(
+                    Phase4ChunkSummary(
+                        chunk_id=cid,
+                        status=status,
+                        engine=engine,
+                        rt_factor=rt_factor,
+                        audio_path=str(audio_path),
+                    )
+                )
 
             total_chunks = entry.get("total_chunks") or len(chunk_keys)
             completed = entry.get("chunks_completed") or 0
             failed = entry.get("chunks_failed") or 0
             duration_sec = entry.get("duration_seconds")
-            requested_engine = entry.get("requested_engine") or entry.get("engine") or "unknown"
-            total_pages = max(1, math.ceil(len(chunk_keys) / page_size)) if chunk_keys else 1
+            requested_engine = (
+                entry.get("requested_engine")
+                or entry.get("engine")
+                or "unknown"
+            )
+            total_pages = (
+                max(1, math.ceil(len(chunk_keys) / page_size))
+                if chunk_keys
+                else 1
+            )
 
             return Phase4Summary(
                 file_id=file_id,
@@ -252,7 +329,11 @@ class PipelineAPI:
                 total_chunks=total_chunks or len(chunk_keys),
                 completed=completed or 0,
                 failed=failed or 0,
-                duration_seconds=duration_sec if isinstance(duration_sec, (int, float)) else None,
+                duration_seconds=(
+                    duration_sec
+                    if isinstance(duration_sec, (int, float))
+                    else None
+                ),
                 page=page,
                 total_pages=total_pages,
                 chunks=rows,
@@ -349,12 +430,17 @@ class PipelineAPI:
         progress_callback: Any,
         cancel_handle: threading.Event,
     ) -> Dict[str, Any]:
-        def wrapped_progress(phase: int, percentage: float, message: str) -> None:
+        def wrapped_progress(
+            phase: int, percentage: float, message: str
+        ) -> None:
             if cancel_handle.is_set():
                 raise KeyboardInterrupt("Pipeline cancelled by user")
             if progress_callback:
                 try:
-                    progress_callback((phase - 1) / 7 + percentage / 700, desc=f"Phase {phase}: {message}")
+                    progress_callback(
+                        (phase - 1) / 7 + percentage / 700,
+                        desc=f"Phase {phase}: {message}",
+                    )
                 except Exception:
                     # Progress callbacks should never break the pipeline
                     logger.debug("Progress callback failed", exc_info=True)

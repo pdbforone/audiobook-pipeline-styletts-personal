@@ -11,7 +11,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Policy Engine CLI")
     sub = parser.add_subparsers(dest="command")
 
-    report_cmd = sub.add_parser("report", help="Generate policy summary report")
+    report_cmd = sub.add_parser(
+        "report", help="Generate policy summary report"
+    )
     report_cmd.add_argument(
         "--output",
         type=str,

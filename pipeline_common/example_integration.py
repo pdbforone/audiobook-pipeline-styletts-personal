@@ -22,9 +22,9 @@ def pattern1_after(pipeline_json):
     state = PipelineState(pipeline_json)
 
     with state.transaction() as txn:
-        txn.data['phase1'] = {
-            'status': 'success',
-            'metrics': {'duration': 42.0}
+        txn.data["phase1"] = {
+            "status": "success",
+            "metrics": {"duration": 42.0},
         }
     play_success_beep()
 
@@ -38,12 +38,12 @@ def pattern2_after(pipeline_json):
 
     try:
         with state.transaction() as txn:
-            txn.data['phase2']['status'] = 'running'
+            txn.data["phase2"]["status"] = "running"
 
             # If this fails, transaction rolls back automatically
             run_extraction()
 
-            txn.data['phase2']['status'] = 'success'
+            txn.data["phase2"]["status"] = "success"
     except Exception as e:
         # State unchanged - still shows previous status
         print(f"Extraction failed: {e}")
@@ -64,17 +64,14 @@ def pattern3_after(pipeline_json):
 
     # Read current state
     data = state.read()
-    text_path = data['phase2']['files']['book.pdf']['extracted_text_path']
+    text_path = data["phase2"]["files"]["book.pdf"]["extracted_text_path"]
 
     # Process
     chunks = create_chunks(text_path)
 
     # Update atomically
     with state.transaction() as txn:
-        txn.data['phase3'] = {
-            'status': 'success',
-            'chunks': chunks
-        }
+        txn.data["phase3"] = {"status": "success", "chunks": chunks}
 
 
 def create_chunks(text_path):
@@ -86,10 +83,11 @@ def create_chunks(text_path):
 # PATTERN 4: Orchestrator Loop
 # ============================================================================
 
+
 def pattern4_after(pipeline_json, input_file):
     """✅ NEW WAY - Clean transaction handling"""
     state = PipelineState(pipeline_json)
-    phases = ['phase1', 'phase2', 'phase3', 'phase4', 'phase5']
+    phases = ["phase1", "phase2", "phase3", "phase4", "phase5"]
 
     for phase_name in phases:
         print(f"Running {phase_name}...")
@@ -114,12 +112,13 @@ def pattern4_after(pipeline_json, input_file):
 
 def run_phase(phase_name, pipeline, input_file):
     """Dummy function"""
-    return {'status': 'success'}
+    return {"status": "success"}
 
 
 # ============================================================================
 # PATTERN 5: Crash Recovery
 # ============================================================================
+
 
 def pattern5_recovery(pipeline_json):
     """✅ Recover from corruption"""
@@ -150,6 +149,7 @@ def pattern5_recovery(pipeline_json):
 # PATTERN 6: Debugging with Transaction Log
 # ============================================================================
 
+
 def pattern6_debug(pipeline_json):
     """✅ Use transaction log to debug issues"""
     state = PipelineState(pipeline_json)
@@ -159,10 +159,10 @@ def pattern6_debug(pipeline_json):
 
     print("Recent operations:")
     for record in history[:5]:
-        status = "✓" if record['success'] else "✗"
+        status = "✓" if record["success"] else "✗"
         print(f"{status} {record['operation']:10s} at {record['timestamp']}")
 
-        if not record['success']:
+        if not record["success"]:
             print(f"  Error: {record['details']}")
 
 
@@ -170,33 +170,35 @@ def pattern6_debug(pipeline_json):
 # MAIN DEMO
 # ============================================================================
 
+
 def main():
     """Show all patterns"""
     import tempfile
     import os
 
-    print("="*60)
+    print("=" * 60)
     print("PIPELINE STATE INTEGRATION PATTERNS")
-    print("="*60)
+    print("=" * 60)
 
     # Create temp file
-    fd, temp_json = tempfile.mkstemp(suffix='.json')
+    fd, temp_json = tempfile.mkstemp(suffix=".json")
     os.close(fd)
 
     try:
         # Initialize state
         state = PipelineState(temp_json)
-        state.write({
-            'file_id': 'example_book',
-            'phase1': {'status': 'pending'},
-            'phase2': {
-                'files': {
-                    'book.pdf': {
-                        'extracted_text_path': '/tmp/text.txt'
+        state.write(
+            {
+                "file_id": "example_book",
+                "phase1": {"status": "pending"},
+                "phase2": {
+                    "files": {
+                        "book.pdf": {"extracted_text_path": "/tmp/text.txt"}
                     }
-                }
-            }
-        }, validate=False)
+                },
+            },
+            validate=False,
+        )
 
         print("\n1. Simple phase update...")
         pattern1_after(temp_json)
@@ -211,7 +213,7 @@ def main():
         print("   ✓ Read and write in single transaction")
 
         print("\n4. Orchestrator loop...")
-        pattern4_after(temp_json, 'dummy.pdf')
+        pattern4_after(temp_json, "dummy.pdf")
         print("   ✓ All phases coordinated safely")
 
         print("\n5. Crash recovery...")
@@ -222,9 +224,9 @@ def main():
         pattern6_debug(temp_json)
         print("   ✓ Full audit trail available")
 
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("ALL PATTERNS DEMONSTRATED SUCCESSFULLY")
-        print("="*60)
+        print("=" * 60)
 
     finally:
         # Cleanup
@@ -232,5 +234,5 @@ def main():
             os.unlink(temp_json)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

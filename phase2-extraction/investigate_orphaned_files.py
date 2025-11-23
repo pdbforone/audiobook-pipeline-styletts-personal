@@ -3,7 +3,6 @@
 Investigate the orphaned Systematic Theology extraction
 """
 from pathlib import Path
-import os
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 extracted_dir = PROJECT_ROOT / "phase2-extraction" / "extracted_text"
@@ -18,23 +17,23 @@ for txt_file in extracted_dir.glob("*.txt"):
     print(f"\n📄 {txt_file.name}")
     print(f"   Size: {size:,} bytes ({size/1024:.1f} KB)")
     print(f"   Modified: {txt_file.stat().st_mtime}")
-    
+
     # Read first 300 chars to check if gibberish
     try:
-        with open(txt_file, 'r', encoding='utf-8') as f:
+        with open(txt_file, "r", encoding="utf-8") as f:
             sample = f.read(300)
-        
+
         # Quick gibberish check
         words = sample.split()[:20]
         english_like = sum(w.isalpha() and len(w) > 2 for w in words)
-        
+
         print(f"   First 300 chars: {sample[:100]}...")
         print(f"   English-like words in first 20: {english_like}/20")
-        
+
         if english_like < 10:
-            print(f"   ⚠️  LOOKS LIKE GIBBERISH")
+            print("   ⚠️  LOOKS LIKE GIBBERISH")
         else:
-            print(f"   ✓ Looks readable")
+            print("   ✓ Looks readable")
     except Exception as e:
         print(f"   ❌ Error reading: {e}")
 
@@ -54,7 +53,8 @@ else:
 print("\n" + "=" * 80)
 print("RECOMMENDATION")
 print("=" * 80)
-print("""
+print(
+    """
 To properly process Systematic Theology through the pipeline:
 
 1. Run Phase 1 first (validation & classification):
@@ -69,4 +69,5 @@ To properly process Systematic Theology through the pipeline:
 
 The existing extracted_text/Systematic Theology.txt was created outside the pipeline
 and should be regenerated properly to ensure quality and tracking.
-""")
+"""
+)

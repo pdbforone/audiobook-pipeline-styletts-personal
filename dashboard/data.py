@@ -44,7 +44,9 @@ def compute_dashboard_metrics(events: List[Dict[str, Any]]) -> Dict[str, Any]:
             rtf = metrics.get("avg_rt_factor")
             if isinstance(rtf, (int, float)):
                 rtf_points.append((timestamp, float(rtf)))
-            engine = metrics.get("selected_engine") or metrics.get("requested_engine")
+            engine = metrics.get("selected_engine") or metrics.get(
+                "requested_engine"
+            )
             if engine:
                 engine_counts[str(engine)] += 1
         if event.get("event") == "phase_failure":
@@ -66,7 +68,9 @@ def compute_dashboard_metrics(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     return metrics
 
 
-def load_chunk_history(overrides_path: Path = OVERRIDES_PATH) -> List[Dict[str, Any]]:
+def load_chunk_history(
+    overrides_path: Path = OVERRIDES_PATH,
+) -> List[Dict[str, Any]]:
     history: List[Dict[str, Any]] = []
     if not overrides_path.exists():
         return history
@@ -109,7 +113,9 @@ def load_chunk_history(overrides_path: Path = OVERRIDES_PATH) -> List[Dict[str, 
                 "timestamp": runtime_state.get("timestamp"),
                 "label": "last_run",
                 "delta_percent": (
-                    current.get("delta_percent", 0.0) if isinstance(current, dict) else 0.0
+                    current.get("delta_percent", 0.0)
+                    if isinstance(current, dict)
+                    else 0.0
                 ),
             }
         )

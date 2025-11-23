@@ -42,7 +42,9 @@ def load_config(config_path: str) -> EnhancementConfig:
             config_data = yaml.safe_load(f) or {}
         return EnhancementConfig(**config_data)
     except yaml.YAMLError as e:
-        logger.warning(f"YAML syntax error in {abs_config}: {e}; using defaults")
+        logger.warning(
+            f"YAML syntax error in {abs_config}: {e}; using defaults"
+        )
         return EnhancementConfig()
     except FileNotFoundError:
         logger.warning(f"Config not found at {abs_config}; using defaults")
@@ -79,29 +81,29 @@ def normalize_volume(
     audio: np.ndarray, sr: int, headroom: float = 0.1
 ) -> tuple[np.ndarray, float, float]:
     """Normalize volume using pydub to even out audio levels.
-    
+
     Args:
         audio: Input audio as numpy array (mono, float32, range [-1, 1])
         sr: Sample rate
         headroom: Headroom to prevent clipping (0.0-1.0)
-    
+
     Returns:
         Tuple of (normalized_audio, pre_rms, post_rms)
     """
     try:
         # Compute pre-normalization RMS
         pre_rms = float(np.sqrt(np.mean(audio**2)))
-        
+
         # Skip if audio is silent or too short
         if len(audio) == 0 or pre_rms < 1e-6:
             logger.warning(
                 "Audio is silent or empty, skipping volume normalization"
             )
             return audio, pre_rms, pre_rms
-        
+
         # Convert numpy float32 [-1, 1] to int16 for pydub
         audio_int16 = (audio * 32767).astype(np.int16)
-        
+
         # Create AudioSegment from raw audio data
         audio_segment = AudioSegment(
             audio_int16.tobytes(),
@@ -109,25 +111,28 @@ def normalize_volume(
             sample_width=2,  # 16-bit = 2 bytes
             channels=1,  # Mono
         )
-        
+
         # Normalize with headroom
         normalized_segment = audio_segment.normalize(headroom=headroom)
-        
+
         # Convert back to numpy float32 [-1, 1]
-        normalized_array = np.array(
-            normalized_segment.get_array_of_samples(), dtype=np.float32
-        ) / 32768.0
-        
+        normalized_array = (
+            np.array(
+                normalized_segment.get_array_of_samples(), dtype=np.float32
+            )
+            / 32768.0
+        )
+
         # Compute post-normalization RMS
         post_rms = float(np.sqrt(np.mean(normalized_array**2)))
-        
+
         logger.debug(
             f"Volume normalization: Pre-RMS={pre_rms:.4f}, "
             f"Post-RMS={post_rms:.4f}, Delta={post_rms - pre_rms:.4f}"
         )
-        
+
         return normalized_array, pre_rms, post_rms
-        
+
     except Exception as e:
         logger.warning(
             f"Pydub volume normalization failed: {e}. "
@@ -157,7 +162,9 @@ def reduce_noise(
         )
         return reduced
     except Exception as e:
-        logger.warning(f"Noise reduction failed: {e}, returning original audio")
+        logger.warning(
+            f"Noise reduction failed: {e}, returning original audio"
+        )
         return audio
 
 
@@ -177,7 +184,9 @@ def normalize_lufs(
             normalized = audio * (0.5 / peak) if peak > 0 else audio
             return normalized, loudness
         normalized = pln.normalize.loudness(audio_2d, loudness, target)
-        return normalized.flatten() if audio.ndim == 1 else normalized, loudness
+        return (
+            normalized.flatten() if audio.ndim == 1 else normalized
+        ), loudness
     except Exception as e:
         logger.warning(f"LUFS failed: {e}, applying peak normalization")
         peak = np.max(np.abs(audio))
@@ -199,7 +208,11 @@ def validate_audio_quality(
         signal_bins = freq_bins // 3
         signal_power = np.mean(magnitude[:signal_bins, :] ** 2)
         noise_power = np.mean(magnitude[signal_bins:, :] ** 2)
-        snr = 10 * np.log10(signal_power / noise_power) if noise_power > 0 else 60.0
+        snr = (
+            10 * np.log10(signal_power / noise_power)
+            if noise_power > 0
+            else 60.0
+        )
         is_clipped = False  # [PATCHED] Ignore clipping
         quality_good = True  # [PATCHED] Accept all chunks
         if not quality_good:
@@ -227,37 +240,43 @@ def enhance_chunk(
     metadata: AudioMetadata,
     config: EnhancementConfig,
     temp_dir: str,
-    phrase_cleaner: PhraseCleaner = None
+    phrase_cleaner: PhraseCleaner = None,
 ) -> tuple[AudioMetadata, np.ndarray]:
     """
     Enhance audio chunk with optional phrase cleaning, noise reduction, and normalization.
-    
+
     NEW: Integrates phrase cleaning BEFORE enhancement.
-    
+
     Args:
         metadata: Chunk metadata with wav_path
         config: Enhancement configuration
         temp_dir: Temporary directory for backups
         phrase_cleaner: Optional PhraseCleaner instance
-    
+
     Returns:
         Tuple of (metadata, enhanced_audio_array)
     """
     start_time = time.perf_counter()
     wav_path = Path(metadata.wav_path)
     enhanced = None
-    
+
     try:
         # ===== STEP 1: PHRASE CLEANUP (NEW) =====
         if phrase_cleaner and config.enable_phrase_cleanup:
-            logger.info(f"[CLEANUP] Running phrase cleanup on chunk {metadata.chunk_id}...")
-            cleaned_audio, sr, cleanup_meta = phrase_cleaner.clean_audio(wav_path)
-            
+            logger.info(
+                f"[CLEANUP] Running phrase cleanup on chunk {metadata.chunk_id}..."
+            )
+            cleaned_audio, sr, cleanup_meta = phrase_cleaner.clean_audio(
+                wav_path
+            )
+
             # Update metadata with cleanup results
-            metadata.cleanup_status = cleanup_meta.get('status', 'unknown')
-            metadata.phrases_removed = cleanup_meta.get('phrases_removed', 0)
-            metadata.cleanup_processing_time = cleanup_meta.get('processing_time', 0.0)
-            
+            metadata.cleanup_status = cleanup_meta.get("status", "unknown")
+            metadata.phrases_removed = cleanup_meta.get("phrases_removed", 0)
+            metadata.cleanup_processing_time = cleanup_meta.get(
+                "processing_time", 0.0
+            )
+
             if cleaned_audio is not None:
                 # Phrase was removed - use cleaned audio
                 logger.info(
@@ -269,17 +288,21 @@ def enhance_chunk(
                     config.sample_rate = sr
             else:
                 # No phrase found or error - load original audio
-                if cleanup_meta['status'] == 'error':
+                if cleanup_meta["status"] == "error":
                     logger.warning(
                         f"Phrase cleanup error for chunk {metadata.chunk_id}: "
                         f"{cleanup_meta.get('error', 'Unknown error')}"
                     )
-                audio, sr = librosa.load(wav_path, sr=config.sample_rate, mono=True)
+                audio, sr = librosa.load(
+                    wav_path, sr=config.sample_rate, mono=True
+                )
         else:
             # Phrase cleanup disabled - load audio normally
-            audio, sr = librosa.load(wav_path, sr=config.sample_rate, mono=True)
-            metadata.cleanup_status = 'disabled'
-        
+            audio, sr = librosa.load(
+                wav_path, sr=config.sample_rate, mono=True
+            )
+            metadata.cleanup_status = "disabled"
+
         # ===== STEP 2: VALIDATION =====
         if len(audio) == 0:
             raise ValueError("Empty audio file")
@@ -301,7 +324,9 @@ def enhance_chunk(
             )
 
         # ===== STEP 4: PRE-ENHANCEMENT METRICS =====
-        snr_pre, rms_pre, lufs_pre, _ = validate_audio_quality(audio, sr, config)
+        snr_pre, rms_pre, lufs_pre, _ = validate_audio_quality(
+            audio, sr, config
+        )
         metadata.snr_pre = float(snr_pre)
         metadata.rms_pre = float(rms_pre)
         metadata.lufs_pre = float(lufs_pre)
@@ -319,18 +344,26 @@ def enhance_chunk(
                     audio,
                     sr,
                     config.chunk_size_seconds,
-                    lambda sub: reduce_noise(sub, sr, config.noise_reduction_factor),
+                    lambda sub: reduce_noise(
+                        sub, sr, config.noise_reduction_factor
+                    ),
                 )
             else:
-                enhanced = reduce_noise(audio, sr, config.noise_reduction_factor)
+                enhanced = reduce_noise(
+                    audio, sr, config.noise_reduction_factor
+                )
 
             # Normalization
-            enhanced, lufs_post = normalize_lufs(enhanced, sr, config.lufs_target)
-            
+            enhanced, lufs_post = normalize_lufs(
+                enhanced, sr, config.lufs_target
+            )
+
             # Safety: Hard limit to prevent clipping
             peak = np.max(np.abs(enhanced))
             if peak > 0.95:
-                logger.warning(f"Clipping detected (peak={peak:.3f}), applying limiter")
+                logger.warning(
+                    f"Clipping detected (peak={peak:.3f}), applying limiter"
+                )
                 enhanced = enhanced * (0.95 / peak)
 
             # Post metrics
@@ -338,7 +371,7 @@ def enhance_chunk(
                 enhanced, sr, config
             )
             quality_good = True  # [PATCHED] Force acceptance of all chunks
-            
+
             if quality_good or not config.quality_validation_enabled:
                 metadata.snr_post = float(snr_post)
                 metadata.rms_post = float(rms_post)
@@ -346,26 +379,32 @@ def enhance_chunk(
                 metadata.status = "complete"
                 metadata.duration = time.perf_counter() - start_time
                 return metadata, enhanced
-            
+
             if attempt < config.retries:
                 logger.warning(
                     f"Quality failed for {wav_path}, retry {attempt + 1}/{config.retries}"
                 )
             else:
                 # Fallback: skip noise reduction, just normalize
-                logger.warning(f"All retries failed, using fallback (no noise reduction)")
-                enhanced, lufs_post = normalize_lufs(audio, sr, config.lufs_target)
-                
+                logger.warning(
+                    "All retries failed, using fallback (no noise reduction)"
+                )
+                enhanced, lufs_post = normalize_lufs(
+                    audio, sr, config.lufs_target
+                )
+
                 # Safety: Hard limit to prevent clipping
                 peak = np.max(np.abs(enhanced))
                 if peak > 0.95:
-                    logger.warning(f"Clipping detected in fallback (peak={peak:.3f}), applying limiter")
+                    logger.warning(
+                        f"Clipping detected in fallback (peak={peak:.3f}), applying limiter"
+                    )
                     enhanced = enhanced * (0.95 / peak)
-                
+
                 snr_post, rms_post, _, quality_good = validate_audio_quality(
                     enhanced, sr, config
                 )
-                
+
                 # CRITICAL: Accept ALL chunks when quality validation is disabled!
                 if quality_good or not config.quality_validation_enabled:
                     metadata.snr_post = float(snr_post)
@@ -373,18 +412,22 @@ def enhance_chunk(
                     metadata.lufs_post = float(lufs_post)
                     metadata.status = "complete_fallback"
                     metadata.duration = time.perf_counter() - start_time
-                    logger.info(f"Fallback accepted chunk {metadata.chunk_id} (quality_validation={config.quality_validation_enabled})")
+                    logger.info(
+                        f"Fallback accepted chunk {metadata.chunk_id} (quality_validation={config.quality_validation_enabled})"
+                    )
                     return metadata, enhanced
                 else:
                     # [PATCHED] Accept chunk even if quality is questionable
-                    logger.warning(f"Chunk {metadata.chunk_id} has questionable quality but accepting anyway")
+                    logger.warning(
+                        f"Chunk {metadata.chunk_id} has questionable quality but accepting anyway"
+                    )
                     metadata.snr_post = float(snr_post)
                     metadata.rms_post = float(rms_post)
                     metadata.lufs_post = float(lufs_post)
                     metadata.status = "complete_forced"
                     metadata.duration = time.perf_counter() - start_time
                     return metadata, enhanced
-                    
+
     except Exception as e:
         metadata.status = "failed"
         metadata.error_message = str(e)
@@ -440,73 +483,89 @@ def create_playlist(output_dir: str, mp3_file: str):
 def extract_chunk_number_from_filename(filepath: str) -> int:
     """Extract chunk number from filename like 'file_chunk_001.wav' or 'chunk_41.wav'"""
     import re
+
     filename = Path(filepath).name
     # Try pattern: _chunk_NNN
-    match = re.search(r'_chunk_(\d+)', filename)
+    match = re.search(r"_chunk_(\d+)", filename)
     if match:
         return int(match.group(1))
     # Try pattern: chunk_NNN
-    match = re.search(r'chunk_(\d+)', filename)
+    match = re.search(r"chunk_(\d+)", filename)
     if match:
         return int(match.group(1))
     # Fallback: find any number
-    match = re.search(r'(\d+)', filename)
+    match = re.search(r"(\d+)", filename)
     if match:
         return int(match.group(1))
     logger.warning(f"Could not extract chunk number from: {filename}")
     return 0
 
 
-def get_audio_chunks_from_json(config: EnhancementConfig) -> list[AudioMetadata]:
+def get_audio_chunks_from_json(
+    config: EnhancementConfig,
+) -> list[AudioMetadata]:
     chunks = []
     try:
         logger.info(f"Loading pipeline.json from: {config.pipeline_json}")
         with open(config.pipeline_json, "r") as f:
             pipeline = json.load(f)
         phase4_files = pipeline.get("phase4", {}).get("files", {})
-        
+
         logger.info(f"Phase 4 files in JSON: {list(phase4_files.keys())}")
-        
+
         for file_id, data in phase4_files.items():
             chunk_audio_paths = data.get("chunk_audio_paths", [])
-            
-            logger.info(f"File ID '{file_id}': {len(chunk_audio_paths)} audio paths")
-            
+
+            logger.info(
+                f"File ID '{file_id}': {len(chunk_audio_paths)} audio paths"
+            )
+
             if not chunk_audio_paths:
-                logger.warning(f"No chunk_audio_paths found for file_id: {file_id}")
+                logger.warning(
+                    f"No chunk_audio_paths found for file_id: {file_id}"
+                )
                 continue
-            
+
             status = data.get("status", "pending")
             logger.info(f"File ID '{file_id}' status: {status}")
-            
+
             if status not in ["success", "complete", "partial"]:
-                logger.warning(f"Skipping file_id {file_id} with status: {status}")
+                logger.warning(
+                    f"Skipping file_id {file_id} with status: {status}"
+                )
                 continue
-            
+
             for idx, wav_path in enumerate(chunk_audio_paths):
                 chunk_num = extract_chunk_number_from_filename(wav_path)
-                logger.info(f"Processing chunk (filename={chunk_num}, array_idx={idx}): {wav_path}")
-                
+                logger.info(
+                    f"Processing chunk (filename={chunk_num}, array_idx={idx}): {wav_path}"
+                )
+
                 if Path(wav_path).is_absolute():
                     abs_wav = Path(wav_path)
                 else:
                     abs_wav = Path(config.input_dir) / Path(wav_path).name
-                
+
                 logger.info(f"Looking for audio at: {abs_wav}")
-                
+
                 if abs_wav.exists():
                     chunks.append(
-                        AudioMetadata(chunk_id=chunk_num, wav_path=str(abs_wav))
+                        AudioMetadata(
+                            chunk_id=chunk_num, wav_path=str(abs_wav)
+                        )
                     )
                     logger.info(f"[OK] Added chunk {chunk_num}")
                 else:
                     logger.warning(f"Audio file not found: {abs_wav}")
-        
-        logger.info(f"Found {len(chunks)} completed audio chunks from pipeline.json")
+
+        logger.info(
+            f"Found {len(chunks)} completed audio chunks from pipeline.json"
+        )
         return sorted(chunks, key=lambda x: x.chunk_id)
     except Exception as e:
         logger.error(f"JSON query failed: {e}")
         import traceback
+
         traceback.print_exc()
         return []
 
@@ -531,7 +590,9 @@ def main():
     parser.add_argument(
         "--config", type=str, default="config.yaml", help="YAML config path"
     )
-    parser.add_argument("--chunk_id", type=int, help="Process specific chunk only")
+    parser.add_argument(
+        "--chunk_id", type=int, help="Process specific chunk only"
+    )
     parser.add_argument(
         "--skip_concatenation",
         action="store_true",
@@ -544,7 +605,9 @@ def main():
         setup_logging(config)
 
         logger.info("=" * 60)
-        logger.info("Phase 5: Audio Enhancement with Integrated Phrase Cleanup")
+        logger.info(
+            "Phase 5: Audio Enhancement with Integrated Phrase Cleanup"
+        )
         logger.info("=" * 60)
 
         os.makedirs(config.output_dir, exist_ok=True)
@@ -559,7 +622,7 @@ def main():
                 enabled=True,
                 target_phrases=config.cleanup_target_phrases,
                 model_size=config.cleanup_whisper_model,
-                save_transcripts=config.cleanup_save_transcripts
+                save_transcripts=config.cleanup_save_transcripts,
             )
             phrase_cleaner = PhraseCleaner(cleaner_config)
             logger.info(
@@ -579,13 +642,17 @@ def main():
         try:
             # ===== LOAD CHUNKS =====
             if args.chunk_id is not None:
-                chunk_path = Path(config.input_dir) / f"chunk_{args.chunk_id}.wav"
+                chunk_path = (
+                    Path(config.input_dir) / f"chunk_{args.chunk_id}.wav"
+                )
                 if not chunk_path.exists():
                     logger.error(f"Chunk file not found: {chunk_path}")
                     return 1
                 logger.info(f"Processing single chunk: {chunk_path}")
                 chunks = [
-                    AudioMetadata(chunk_id=args.chunk_id, wav_path=str(chunk_path))
+                    AudioMetadata(
+                        chunk_id=args.chunk_id, wav_path=str(chunk_path)
+                    )
                 ]
             else:
                 chunks = get_audio_chunks_from_json(config)
@@ -600,10 +667,14 @@ def main():
                     pipeline = json.load(f)
                 phase5_existing = pipeline.get("phase5", {}).get("chunks", [])
                 existing_ids = {
-                    c["chunk_id"] for c in phase5_existing if c["status"] == "complete"
+                    c["chunk_id"]
+                    for c in phase5_existing
+                    if c["status"] == "complete"
                 }
                 chunks = [c for c in chunks if c.chunk_id not in existing_ids]
-                logger.info(f"Resume enabled: {len(chunks)} chunks remain unprocessed")
+                logger.info(
+                    f"Resume enabled: {len(chunks)} chunks remain unprocessed"
+                )
 
             # ===== PROCESSING =====
             overall_start = time.perf_counter()
@@ -612,7 +683,9 @@ def main():
 
             logger.info(f"Processing {len(chunks)} audio chunks...")
 
-            with ThreadPoolExecutor(max_workers=config.max_workers) as executor:
+            with ThreadPoolExecutor(
+                max_workers=config.max_workers
+            ) as executor:
                 # Submit all chunks with phrase_cleaner
                 futures = {
                     executor.submit(
@@ -620,7 +693,7 @@ def main():
                     ): chunk
                     for chunk in chunks
                 }
-                
+
                 for future in as_completed(futures):
                     try:
                         metadata, enhanced_audio = future.result(
@@ -632,24 +705,27 @@ def main():
                         metadata.error_message = "Processing timeout"
                         enhanced_audio = np.array([], dtype=np.float32)
                         logger.error(f"Timeout for chunk {metadata.chunk_id}")
-                    
+
                     processed_metadata.append(metadata)
-                    
+
                     # Log cleanup results if applicable
                     if metadata.cleanup_status:
-                        if metadata.cleanup_status == 'cleaned':
+                        if metadata.cleanup_status == "cleaned":
                             logger.info(
                                 f"[CLEANUP] Chunk {metadata.chunk_id}: "
                                 f"Removed {metadata.phrases_removed} phrase(s) "
                                 f"in {metadata.cleanup_processing_time:.1f}s"
                             )
-                        elif metadata.cleanup_status == 'error':
+                        elif metadata.cleanup_status == "error":
                             logger.warning(
                                 f"[WARNING] Chunk {metadata.chunk_id}: Cleanup error, "
                                 f"continuing with original audio"
                             )
-                    
-                    if metadata.status.startswith("complete") and len(enhanced_audio) > 0:
+
+                    if (
+                        metadata.status.startswith("complete")
+                        and len(enhanced_audio) > 0
+                    ):
                         enhanced_path = (
                             Path(config.output_dir)
                             / f"enhanced_{metadata.chunk_id:04d}.wav"
@@ -662,7 +738,9 @@ def main():
                             subtype="PCM_24",
                         )
                         metadata.enhanced_path = str(enhanced_path)
-                        enhanced_chunks_dict[metadata.chunk_id] = enhanced_audio
+                        enhanced_chunks_dict[metadata.chunk_id] = (
+                            enhanced_audio
+                        )
                         logger.info(
                             f"[OK] Saved enhanced chunk {metadata.chunk_id}: {enhanced_path}"
                         )
@@ -670,11 +748,17 @@ def main():
             # ===== CONCATENATION =====
             if enhanced_chunks_dict and not args.skip_concatenation:
                 sorted_chunk_ids = sorted(enhanced_chunks_dict.keys())
-                enhanced_chunks = [enhanced_chunks_dict[cid] for cid in sorted_chunk_ids]
-                
-                logger.info(f"Creating final audiobook from {len(enhanced_chunks)} chunks...")
+                enhanced_chunks = [
+                    enhanced_chunks_dict[cid] for cid in sorted_chunk_ids
+                ]
+
+                logger.info(
+                    f"Creating final audiobook from {len(enhanced_chunks)} chunks..."
+                )
                 combined_audio = concatenate_with_crossfades(
-                    enhanced_chunks, config.sample_rate, config.crossfade_duration
+                    enhanced_chunks,
+                    config.sample_rate,
+                    config.crossfade_duration,
                 )
                 mp3_path = Path(config.output_dir) / "audiobook.mp3"
                 audio_int16 = (combined_audio * 32767).astype(np.int16)
@@ -704,7 +788,9 @@ def main():
 
             # ===== METRICS AND SUMMARY =====
             successful = sum(
-                1 for m in processed_metadata if m.status.startswith("complete")
+                1
+                for m in processed_metadata
+                if m.status.startswith("complete")
             )
             failed = len(processed_metadata) - successful
             total_duration = time.perf_counter() - overall_start
@@ -716,7 +802,7 @@ def main():
                 if m.snr_post and m.snr_pre
             ]
             avg_snr_improv = np.mean(snr_improvs) if snr_improvs else 0.0
-            
+
             # Volume normalization metrics
             vol_norm_deltas = [
                 m.rms_volume_norm_post - m.rms_volume_norm_pre
@@ -731,18 +817,16 @@ def main():
                 for m in processed_metadata
                 if m.rms_volume_norm_post is not None
             )
-            
+
             # Cleanup metrics (NEW)
             phrases_cleaned_total = sum(
                 m.phrases_removed or 0 for m in processed_metadata
             )
             chunks_with_phrases = sum(
-                1 for m in processed_metadata
-                if m.cleanup_status == 'cleaned'
+                1 for m in processed_metadata if m.cleanup_status == "cleaned"
             )
             cleanup_errors = sum(
-                1 for m in processed_metadata
-                if m.cleanup_status == 'error'
+                1 for m in processed_metadata if m.cleanup_status == "error"
             )
 
             phase5_data = {
@@ -760,10 +844,14 @@ def main():
                     "cleanup_errors": cleanup_errors,
                 },
                 "artifacts": [
-                    m.enhanced_path for m in processed_metadata if m.enhanced_path
+                    m.enhanced_path
+                    for m in processed_metadata
+                    if m.enhanced_path
                 ],
                 "errors": [
-                    m.error_message for m in processed_metadata if m.error_message
+                    m.error_message
+                    for m in processed_metadata
+                    if m.error_message
                 ],
                 "timestamps": {
                     "start": overall_start,
@@ -777,12 +865,18 @@ def main():
             logger.info("=" * 60)
             logger.info("PROCESSING SUMMARY")
             logger.info("=" * 60)
-            logger.info(f"[OK] Enhancement complete: {successful} successful, {failed} failed")
+            logger.info(
+                f"[OK] Enhancement complete: {successful} successful, {failed} failed"
+            )
             logger.info(f"[OK] Total processing time: {total_duration:.2f}s")
             if config.enable_phrase_cleanup:
-                logger.info(f"[CLEANUP] Phrase cleanup: {phrases_cleaned_total} phrases removed from {chunks_with_phrases} chunks")
+                logger.info(
+                    f"[CLEANUP] Phrase cleanup: {phrases_cleaned_total} phrases removed from {chunks_with_phrases} chunks"
+                )
                 if cleanup_errors > 0:
-                    logger.warning(f"[WARNING] Cleanup errors: {cleanup_errors} chunks had cleanup failures")
+                    logger.warning(
+                        f"[WARNING] Cleanup errors: {cleanup_errors} chunks had cleanup failures"
+                    )
             logger.info("=" * 60)
 
             return 0 if successful > 0 else 1
@@ -800,6 +894,7 @@ def main():
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

@@ -58,7 +58,14 @@ _STATUS_FALLBACKS = {
     "in_progress": "running",
 }
 
-_PHASE_WRAPPER_KEYS = {"status", "timestamps", "artifacts", "metrics", "errors", "files"}
+_PHASE_WRAPPER_KEYS = {
+    "status",
+    "timestamps",
+    "artifacts",
+    "metrics",
+    "errors",
+    "files",
+}
 _FILE_LIKE_KEYS = {
     "file_path",
     "hash",
@@ -80,9 +87,29 @@ _FILE_LIKE_KEYS = {
     "timestamps",
 }
 _CHUNK_KEY_RE = re.compile(r"^chunk[_-]?\d+$", re.IGNORECASE)
-_PHASES_EXPECTING_FILES = {"phase1", "phase2", "phase3", "phase4", "phase5", "phase5_5"}
-_PHASE_REQUIRED_FIELDS = ("status", "timestamps", "artifacts", "metrics", "errors")
-_BATCH_REQUIRED_FIELDS = ("run_id", "status", "timestamps", "metrics", "errors", "files")
+_PHASES_EXPECTING_FILES = {
+    "phase1",
+    "phase2",
+    "phase3",
+    "phase4",
+    "phase5",
+    "phase5_5",
+}
+_PHASE_REQUIRED_FIELDS = (
+    "status",
+    "timestamps",
+    "artifacts",
+    "metrics",
+    "errors",
+)
+_BATCH_REQUIRED_FIELDS = (
+    "run_id",
+    "status",
+    "timestamps",
+    "metrics",
+    "errors",
+    "files",
+)
 _PHASE_PAYLOAD_EXCLUSIONS = set(_PHASE_WRAPPER_KEYS) | {"files"}
 
 
@@ -137,7 +164,8 @@ def _lift_file_first_layout(data: Dict[str, Any]) -> None:
     file_first_candidates = {
         key: value
         for key, value in list(data.items())
-        if isinstance(value, dict) and any(phase in value for phase in PHASE_KEYS)
+        if isinstance(value, dict)
+        and any(phase in value for phase in PHASE_KEYS)
     }
     if not file_first_candidates:
         return
@@ -153,12 +181,17 @@ def _lift_file_first_layout(data: Dict[str, Any]) -> None:
 
 
 def _normalize_phase_block(
-    phase_key: str, block: Dict[str, Any], *, primary_file_id: Optional[str] = None
+    phase_key: str,
+    block: Dict[str, Any],
+    *,
+    primary_file_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     normalized = deepcopy(block) if isinstance(block, dict) else {}
     normalized["status"] = _coerce_status(normalized.get("status"))
     normalized["timestamps"] = _ensure_dict(normalized.get("timestamps"))
-    normalized["artifacts"] = _ensure_artifacts_container(normalized.get("artifacts"))
+    normalized["artifacts"] = _ensure_artifacts_container(
+        normalized.get("artifacts")
+    )
     normalized["metrics"] = _ensure_dict(normalized.get("metrics"))
     normalized["errors"] = _ensure_list(normalized.get("errors"))
 
@@ -171,7 +204,9 @@ def _normalize_phase_block(
     for candidate_key, candidate_value in list(normalized.items()):
         if candidate_key in _PHASE_WRAPPER_KEYS or candidate_key == "files":
             continue
-        if isinstance(candidate_value, dict) and _looks_like_file_entry(candidate_value):
+        if isinstance(candidate_value, dict) and _looks_like_file_entry(
+            candidate_value
+        ):
             files[candidate_key] = candidate_value
 
     for file_id, entry in files.items():
@@ -185,19 +220,27 @@ def _normalize_phase_block(
             if key not in _PHASE_PAYLOAD_EXCLUSIONS
         }
         if payload:
-            inferred_id = primary_file_id or payload.get("file_id") or "default"
-            normalized_files[inferred_id] = _normalize_phase_entry(phase_key, payload)
+            inferred_id = (
+                primary_file_id or payload.get("file_id") or "default"
+            )
+            normalized_files[inferred_id] = _normalize_phase_entry(
+                phase_key, payload
+            )
 
     if normalized_files or phase_key in _PHASES_EXPECTING_FILES:
         normalized["files"] = normalized_files
     return normalized
 
 
-def _normalize_phase_entry(phase_key: str, entry: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_phase_entry(
+    phase_key: str, entry: Dict[str, Any]
+) -> Dict[str, Any]:
     normalized = deepcopy(entry) if isinstance(entry, dict) else {}
     normalized["status"] = _coerce_status(normalized.get("status"))
     normalized["timestamps"] = _ensure_dict(normalized.get("timestamps"))
-    normalized["artifacts"] = _ensure_artifacts_container(normalized.get("artifacts"))
+    normalized["artifacts"] = _ensure_artifacts_container(
+        normalized.get("artifacts")
+    )
     normalized["metrics"] = _ensure_dict(normalized.get("metrics"))
     normalized["errors"] = _ensure_list(normalized.get("errors"))
     normalized["chunks"] = _ensure_chunk_collection(normalized)
@@ -210,11 +253,17 @@ def _ensure_chunk_collection(entry: Dict[str, Any]) -> List[Dict[str, Any]]:
     existing_chunks = entry.get("chunks")
     if isinstance(existing_chunks, list):
         chunks.extend(
-            [deepcopy(chunk) for chunk in existing_chunks if isinstance(chunk, dict)]
+            [
+                deepcopy(chunk)
+                for chunk in existing_chunks
+                if isinstance(chunk, dict)
+            ]
         )
 
     chunk_keys = [
-        key for key in list(entry.keys()) if _CHUNK_KEY_RE.match(key) and isinstance(entry[key], dict)
+        key
+        for key in list(entry.keys())
+        if _CHUNK_KEY_RE.match(key) and isinstance(entry[key], dict)
     ]
     for key in sorted(chunk_keys, key=_chunk_key_sort):
         chunk = deepcopy(entry.pop(key))
@@ -241,16 +290,22 @@ def _normalize_batch_runs(data: Dict[str, Any]) -> None:
     if isinstance(existing_runs, list):
         for idx, run in enumerate(existing_runs):
             if isinstance(run, dict):
-                runs.append(_normalize_batch_run(run, default_id=f"batch_{idx + 1}"))
+                runs.append(
+                    _normalize_batch_run(run, default_id=f"batch_{idx + 1}")
+                )
 
     legacy_batch = data.pop("batch", None)
     if isinstance(legacy_batch, dict):
-        runs.append(_convert_legacy_batch(legacy_batch, hint=f"batch_{len(runs) + 1}"))
+        runs.append(
+            _convert_legacy_batch(legacy_batch, hint=f"batch_{len(runs) + 1}")
+        )
 
     data["batch_runs"] = runs
 
 
-def _normalize_batch_run(run: Dict[str, Any], *, default_id: str) -> Dict[str, Any]:
+def _normalize_batch_run(
+    run: Dict[str, Any], *, default_id: str
+) -> Dict[str, Any]:
     normalized = deepcopy(run)
     normalized["run_id"] = str(normalized.get("run_id") or default_id)
     normalized["status"] = _coerce_status(normalized.get("status"))
@@ -261,7 +316,9 @@ def _normalize_batch_run(run: Dict[str, Any], *, default_id: str) -> Dict[str, A
             normalized["timestamps"] = _summary_timestamps(summary)
     normalized["metrics"] = _ensure_dict(normalized.get("metrics"))
     normalized["errors"] = _ensure_list(normalized.get("errors"))
-    normalized["artifacts"] = _ensure_artifacts_container(normalized.get("artifacts"))
+    normalized["artifacts"] = _ensure_artifacts_container(
+        normalized.get("artifacts")
+    )
 
     files = normalized.get("files")
     if not isinstance(files, dict):
@@ -274,16 +331,22 @@ def _normalize_batch_run(run: Dict[str, Any], *, default_id: str) -> Dict[str, A
     return normalized
 
 
-def _convert_legacy_batch(batch: Dict[str, Any], *, hint: str) -> Dict[str, Any]:
+def _convert_legacy_batch(
+    batch: Dict[str, Any], *, hint: str
+) -> Dict[str, Any]:
     summary = batch.get("summary")
     summary_dict = summary if isinstance(summary, dict) else {}
     run = {
         "run_id": str(summary_dict.get("run_id") or hint),
-        "status": _coerce_status(batch.get("status") or summary_dict.get("status")),
+        "status": _coerce_status(
+            batch.get("status") or summary_dict.get("status")
+        ),
         "timestamps": _summary_timestamps(summary_dict),
         "metrics": _legacy_summary_metrics(summary_dict),
         "errors": _ensure_list(summary_dict.get("errors")),
-        "artifacts": _ensure_artifacts_container(summary_dict.get("artifacts")),
+        "artifacts": _ensure_artifacts_container(
+            summary_dict.get("artifacts")
+        ),
         "files": {},
     }
     files = batch.get("files")
@@ -303,7 +366,15 @@ def _summary_timestamps(summary: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _legacy_summary_metrics(summary: Dict[str, Any]) -> Dict[str, Any]:
-    omit = {"run_id", "status", "started_at", "completed_at", "duration_sec", "errors", "artifacts"}
+    omit = {
+        "run_id",
+        "status",
+        "started_at",
+        "completed_at",
+        "duration_sec",
+        "errors",
+        "artifacts",
+    }
     metrics = {
         key: deepcopy(value)
         for key, value in summary.items()
@@ -325,7 +396,8 @@ def _normalize_batch_file_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
             "duration": normalized.get("duration_sec"),
         }
     normalized["artifacts"] = _ensure_artifacts_container(
-        normalized.get("artifacts") or {"source_path": normalized.get("source_path")}
+        normalized.get("artifacts")
+        or {"source_path": normalized.get("source_path")}
     )
     metrics = _ensure_dict(normalized.get("metrics"))
     if normalized.get("duration_sec") is not None:
@@ -374,14 +446,20 @@ def _looks_like_file_entry(entry: Dict[str, Any]) -> bool:
     return any(key in entry for key in _FILE_LIKE_KEYS)
 
 
-def validate_pipeline_schema(data: Dict[str, Any], *, required_phases: Optional[Iterable[str]] = None) -> None:
+def validate_pipeline_schema(
+    data: Dict[str, Any], *, required_phases: Optional[Iterable[str]] = None
+) -> None:
     """Lightweight schema validation used before writes."""
     if not isinstance(data, dict):
         raise ValueError("pipeline.json root must be an object.")
 
     errors: List[str] = []
     for meta_key in ("pipeline_version", "created_at", "last_updated"):
-        if meta_key in data and data[meta_key] is not None and not isinstance(data[meta_key], str):
+        if (
+            meta_key in data
+            and data[meta_key] is not None
+            and not isinstance(data[meta_key], str)
+        ):
             errors.append(f"{meta_key} must be a string when present")
 
     for phase_key in PHASE_KEYS:
@@ -407,7 +485,9 @@ def validate_pipeline_schema(data: Dict[str, Any], *, required_phases: Optional[
         raise ValueError("; ".join(errors))
 
 
-def _validate_phase_block(phase_key: str, block: Any, errors: List[str]) -> None:
+def _validate_phase_block(
+    phase_key: str, block: Any, errors: List[str]
+) -> None:
     if not isinstance(block, dict):
         errors.append(f"{phase_key} must be an object")
         return
@@ -445,7 +525,9 @@ def _validate_phase_block(phase_key: str, block: Any, errors: List[str]) -> None
                 _validate_phase_file_entry(phase_key, file_id, entry, errors)
 
 
-def _validate_phase_file_entry(phase_key: str, file_id: str, entry: Any, errors: List[str]) -> None:
+def _validate_phase_file_entry(
+    phase_key: str, file_id: str, entry: Any, errors: List[str]
+) -> None:
     if not isinstance(entry, dict):
         errors.append(f"{phase_key}.files['{file_id}'] must be an object")
         return
@@ -455,27 +537,39 @@ def _validate_phase_file_entry(phase_key: str, file_id: str, entry: Any, errors:
 
     status = entry.get("status")
     if status is not None and status not in VALID_PHASE_STATUSES:
-        errors.append(f"{phase_key}.files['{file_id}'].status has invalid value '{status}'")
+        errors.append(
+            f"{phase_key}.files['{file_id}'].status has invalid value '{status}'"
+        )
 
     timestamps = entry.get("timestamps")
     if timestamps is not None and not isinstance(timestamps, dict):
-        errors.append(f"{phase_key}.files['{file_id}'].timestamps must be an object")
+        errors.append(
+            f"{phase_key}.files['{file_id}'].timestamps must be an object"
+        )
 
     artifacts = entry.get("artifacts")
     if artifacts is not None and not isinstance(artifacts, (dict, list)):
-        errors.append(f"{phase_key}.files['{file_id}'].artifacts must be an object or array")
+        errors.append(
+            f"{phase_key}.files['{file_id}'].artifacts must be an object or array"
+        )
 
     metrics = entry.get("metrics")
     if metrics is not None and not isinstance(metrics, dict):
-        errors.append(f"{phase_key}.files['{file_id}'].metrics must be an object")
+        errors.append(
+            f"{phase_key}.files['{file_id}'].metrics must be an object"
+        )
 
     errors_field = entry.get("errors")
     if errors_field is not None and not isinstance(errors_field, list):
-        errors.append(f"{phase_key}.files['{file_id}'].errors must be an array")
+        errors.append(
+            f"{phase_key}.files['{file_id}'].errors must be an array"
+        )
 
     chunks = entry.get("chunks")
     if chunks is not None and not isinstance(chunks, list):
-        errors.append(f"{phase_key}.files['{file_id}'].chunks must be an array when present")
+        errors.append(
+            f"{phase_key}.files['{file_id}'].chunks must be an array when present"
+        )
 
 
 def _validate_batch_run(index: int, run: Any, errors: List[str]) -> None:
@@ -488,7 +582,9 @@ def _validate_batch_run(index: int, run: Any, errors: List[str]) -> None:
 
     status = run.get("status")
     if status is not None and status not in VALID_PHASE_STATUSES:
-        errors.append(f"batch_runs[{index}].status has invalid value '{status}'")
+        errors.append(
+            f"batch_runs[{index}].status has invalid value '{status}'"
+        )
 
     timestamps = run.get("timestamps")
     if timestamps is not None and not isinstance(timestamps, dict):
@@ -504,7 +600,9 @@ def _validate_batch_run(index: int, run: Any, errors: List[str]) -> None:
 
     artifacts = run.get("artifacts")
     if artifacts is not None and not isinstance(artifacts, (dict, list)):
-        errors.append(f"batch_runs[{index}].artifacts must be an object or array")
+        errors.append(
+            f"batch_runs[{index}].artifacts must be an object or array"
+        )
 
     files = run.get("files")
     if files is None:
@@ -514,7 +612,9 @@ def _validate_batch_run(index: int, run: Any, errors: List[str]) -> None:
         return
     for file_id, entry in files.items():
         if not isinstance(entry, dict):
-            errors.append(f"batch_runs[{index}].files['{file_id}'] must be an object")
+            errors.append(
+                f"batch_runs[{index}].files['{file_id}'] must be an object"
+            )
             continue
         for field in _PHASE_REQUIRED_FIELDS:
             if field not in entry:

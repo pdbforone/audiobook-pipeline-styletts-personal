@@ -22,7 +22,10 @@ class PipelineWorker:
 
     async def start(
         self,
-        runner: Callable[[threading.Event, Callable[[float, Optional[str]], None]], Awaitable[Any]],
+        runner: Callable[
+            [threading.Event, Callable[[float, Optional[str]], None]],
+            Awaitable[Any],
+        ],
     ) -> Any:
         async with self._lock:
             if self.is_running:
@@ -36,7 +39,10 @@ class PipelineWorker:
 
     async def _wrap_run(
         self,
-        runner: Callable[[threading.Event, Callable[[float, Optional[str]], None]], Awaitable[Any]],
+        runner: Callable[
+            [threading.Event, Callable[[float, Optional[str]], None]],
+            Awaitable[Any],
+        ],
     ) -> Any:
         try:
             return await runner(self._cancel_event, self._update_progress)
@@ -63,7 +69,9 @@ class PipelineWorker:
             "last_message": self._last_message,
         }
 
-    def _update_progress(self, value: float, message: Optional[str] = None) -> None:
+    def _update_progress(
+        self, value: float, message: Optional[str] = None
+    ) -> None:
         self._progress = value
         if message:
             self._last_message = message

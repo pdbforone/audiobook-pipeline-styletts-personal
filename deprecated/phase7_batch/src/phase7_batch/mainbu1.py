@@ -6,7 +6,6 @@ from pathlib import Path
 import subprocess
 import threading
 import sys
-import os
 import tomllib  # Stdlib for TOML
 from typing import List, Optional, Dict, Any
 from packaging import version
@@ -27,7 +26,9 @@ def get_project_root() -> Path:
         if (current / "pipeline.json").exists():
             return current
         current = current.parent
-    raise ValueError("Project root not found; ensure pipeline.json exists at root.")
+    raise ValueError(
+        "Project root not found; ensure pipeline.json exists at root."
+    )
 
 
 class BatchConfig:
@@ -84,7 +85,10 @@ class BatchMetadata:
     def add_phase_metric(
         self, phase: int, duration: float, error: Optional[str] = None
     ):
-        self.phase_metrics[f"phase{phase}"] = {"duration": duration, "error": error}
+        self.phase_metrics[f"phase{phase}"] = {
+            "duration": duration,
+            "error": error,
+        }
 
     def dict(self):
         return vars(self)
@@ -111,7 +115,11 @@ class BatchSummary:
         self.status = (
             "success"
             if failed_files == 0 and partial_files == 0
-            else "partial" if successful_files > 0 or partial_files > 0 else "failed"
+            else (
+                "partial"
+                if successful_files > 0 or partial_files > 0
+                else "failed"
+            )
         )
         self.errors = errors
         self.timestamps = timestamps
@@ -252,7 +260,9 @@ def _run_subprocess(
         metadata.errors.append(err_msg)
         logger.error(err_msg)
     except subprocess.CalledProcessError as e:
-        err_msg = f"Phase {phase} failed (code {e.returncode}): {e.stderr.strip()}"
+        err_msg = (
+            f"Phase {phase} failed (code {e.returncode}): {e.stderr.strip()}"
+        )
         metadata.error_message = err_msg
         metadata.errors.append(err_msg)
         logger.error(err_msg)
@@ -304,7 +314,9 @@ def run_phase_for_file(
                 with open(config.pipeline_json, "r") as f:
                     pipeline = json.load(f)
                 phase2_data = (
-                    pipeline.get("phase2", {}).get("files", {}).get(file_id, {})
+                    pipeline.get("phase2", {})
+                    .get("files", {})
+                    .get(file_id, {})
                 )
                 # Only add strict if Phase 2 explicitly failed (not just missing)
                 if phase2_data and phase2_data.get("status") == "failed":
@@ -338,12 +350,17 @@ def run_phase_for_file(
             return False
 
         if not chunk_paths:
-            metadata.error_message = f"No chunks found for Phase 4 (file_id: {file_id})"
+            metadata.error_message = (
+                f"No chunks found for Phase 4 (file_id: {file_id})"
+            )
             return False
 
         # Process each chunk
         for idx, chunk_path in enumerate(chunk_paths):
-            chunk_args = args + [f"--chunk_id={idx}", f"--text_path={chunk_path}"]
+            chunk_args = args + [
+                f"--chunk_id={idx}",
+                f"--text_path={chunk_path}",
+            ]
             if not _run_subprocess(
                 venv_python, main_script, chunk_args, config, metadata, phase
             ):
@@ -374,7 +391,9 @@ def run_phase_for_file(
                 .get("chunk_audio_paths", [])
             )
         except Exception as e:
-            metadata.error_message = f"Failed to load audio paths for Phase 5: {e}"
+            metadata.error_message = (
+                f"Failed to load audio paths for Phase 5: {e}"
+            )
             return False
 
         if not audio_paths:
@@ -390,7 +409,9 @@ def run_phase_for_file(
         metadata.error_message = f"Unsupported phase {phase}"
         return False
     # Run for phases 1, 2, 5 (single execution per file)
-    success = _run_subprocess(venv_python, main_script, args, config, metadata, phase)
+    success = _run_subprocess(
+        venv_python, main_script, args, config, metadata, phase
+    )
     phase_duration = time.perf_counter() - phase_start
     metadata.add_phase_metric(phase, phase_duration)
 
@@ -400,7 +421,9 @@ def run_phase_for_file(
     return success
 
 
-def verify_phase_environments(phases: List[int], project_root: Path) -> Dict[int, bool]:
+def verify_phase_environments(
+    phases: List[int], project_root: Path
+) -> Dict[int, bool]:
     results = {}
     for phase in phases:
         try:
@@ -415,7 +438,10 @@ def verify_phase_environments(phases: List[int], project_root: Path) -> Dict[int
                 logger.warning(f"Phase {phase}: No valid Python venv")
                 continue
             version_result = subprocess.run(
-                [venv_python, "--version"], capture_output=True, text=True, timeout=30
+                [venv_python, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             if version_result.returncode != 0:
                 results[phase] = False
@@ -488,8 +514,12 @@ async def process_file(
         try:
             with open(config.pipeline_json, "r") as f:
                 pipeline = json.load(f)
-            existing_data = pipeline.get("batch", {}).get("files", {}).get(file_id, {})
-            metadata.phases_completed = existing_data.get("phases_completed", [])
+            existing_data = (
+                pipeline.get("batch", {}).get("files", {}).get(file_id, {})
+            )
+            metadata.phases_completed = existing_data.get(
+                "phases_completed", []
+            )
         except Exception as e:
             logger.warning(f"Resume load failed for {file_id}: {e}")
 
@@ -497,9 +527,13 @@ async def process_file(
         if phase in metadata.phases_completed:
             logger.info(f"Skipping completed Phase {phase} for {file_id}")
             continue
-        success = run_phase_for_file(phase, file_path, file_id, config, metadata)
+        success = run_phase_for_file(
+            phase, file_path, file_id, config, metadata
+        )
         if not success:
-            logger.error(f"Phase {phase} failed for {file_id}; continuing to next")
+            logger.error(
+                f"Phase {phase} failed for {file_id}; continuing to next"
+            )
 
     metadata.mark_completed()
     return metadata
@@ -509,7 +543,9 @@ def load_config(config_path: str, project_root: Path) -> BatchConfig:
     try:
         config_file = Path(config_path).resolve()
         if not config_file.exists():
-            logger.warning(f"Config file {config_path} not found, using defaults")
+            logger.warning(
+                f"Config file {config_path} not found, using defaults"
+            )
             return BatchConfig()
         with open(config_file, "r") as f:
             data = yaml.safe_load(f) or {}
@@ -525,7 +561,9 @@ def load_config(config_path: str, project_root: Path) -> BatchConfig:
 
 
 def update_pipeline_json(
-    config: BatchConfig, summary: BatchSummary, metadata_list: List[BatchMetadata]
+    config: BatchConfig,
+    summary: BatchSummary,
+    metadata_list: List[BatchMetadata],
 ):
     try:
         with open(config.pipeline_json, "r") as f:
@@ -539,7 +577,7 @@ def update_pipeline_json(
         pipeline["batch"]["files"][m.file_id] = m.dict()
     with open(config.pipeline_json, "w") as f:
         json.dump(pipeline, f, indent=4)
-    logger.info(f"Updated pipeline.json with batch summary and metadata")
+    logger.info("Updated pipeline.json with batch summary and metadata")
 
 
 def cleanup_old_artifacts(pipeline_json: str, days: int = 7):
@@ -567,7 +605,9 @@ def cleanup_old_artifacts(pipeline_json: str, days: int = 7):
         logger.warning(f"Cleanup failed: {e}")
 
 
-def render_rich_summary(summary: BatchSummary, metadata_list: List[BatchMetadata]):
+def render_rich_summary(
+    summary: BatchSummary, metadata_list: List[BatchMetadata]
+):
     console = Console()
     table = Table(title="Batch Summary")
     table.add_column("Metric", style="cyan")
@@ -579,7 +619,8 @@ def render_rich_summary(summary: BatchSummary, metadata_list: List[BatchMetadata
     table.add_row("Failed", str(summary.failed_files))
     table.add_row("Duration", f"{summary.total_duration:.2f}s")
     table.add_row(
-        "Avg CPU", f"{summary.avg_cpu_usage:.1f}%" if summary.avg_cpu_usage else "N/A"
+        "Avg CPU",
+        f"{summary.avg_cpu_usage:.1f}%" if summary.avg_cpu_usage else "N/A",
     )
     table.add_row("Status", summary.status)
 
@@ -601,7 +642,9 @@ async def main_async():
     parser = argparse.ArgumentParser(
         description="Batch Processing for Audiobook Pipeline"
     )
-    parser.add_argument("--config", default="config.yaml", help="Path to config YAML")
+    parser.add_argument(
+        "--config", default="config.yaml", help="Path to config YAML"
+    )
     args = parser.parse_args()
 
     config = load_config(args.config, project_root)
@@ -619,7 +662,9 @@ async def main_async():
         return 0
 
     stop_event = threading.Event()
-    monitor_thread = threading.Thread(target=monitor_cpu, args=(config, stop_event))
+    monitor_thread = threading.Thread(
+        target=monitor_cpu, args=(config, stop_event)
+    )
     monitor_thread.start()
 
     overall_start = time.perf_counter()
@@ -629,7 +674,9 @@ async def main_async():
     async with trio.open_nursery() as nursery:
         pbar = tqdm(total=len(input_files), desc="Processing files")
         for file_path in input_files:
-            metadata = await process_file(file_path, config, nursery, project_root)
+            metadata = await process_file(
+                file_path, config, nursery, project_root
+            )
             metadata_list.append(metadata)
             pbar.update(1)
 
@@ -643,7 +690,9 @@ async def main_async():
     avg_cpu = sum(cpu_readings) / len(cpu_readings) if cpu_readings else None
     summary = BatchSummary(
         total_files=len(metadata_list),
-        successful_files=sum(1 for m in metadata_list if m.status == "success"),
+        successful_files=sum(
+            1 for m in metadata_list if m.status == "success"
+        ),
         partial_files=sum(1 for m in metadata_list if m.status == "partial"),
         failed_files=sum(1 for m in metadata_list if m.status == "failed"),
         total_duration=total_duration,
@@ -665,7 +714,11 @@ async def main_async():
     stop_event.set()
     monitor_thread.join()
 
-    return 0 if summary.status == "success" else 2 if summary.status == "partial" else 1
+    return (
+        0
+        if summary.status == "success"
+        else 2 if summary.status == "partial" else 1
+    )
 
 
 def main():

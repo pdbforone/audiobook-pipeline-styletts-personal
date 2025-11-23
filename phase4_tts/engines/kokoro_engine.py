@@ -54,12 +54,20 @@ class KokoroEngine(TTSEngine):
             # Model files are in phase4_tts/models/kokoro/
             model_dir = Path(__file__).parent.parent / "models" / "kokoro"
             env_model_path = os.getenv("KOKORO_MODEL_PATH")
-            model_path = Path(env_model_path).expanduser() if env_model_path else model_dir / "kokoro-v1.0.onnx"
+            model_path = (
+                Path(env_model_path).expanduser()
+                if env_model_path
+                else model_dir / "kokoro-v1.0.onnx"
+            )
             # Kokoro releases ship a binary voice pack (voices-v1.0.bin). Keep JSON support if present.
             env_voices_path = os.getenv("KOKORO_VOICES_PATH")
             voices_bin = model_dir / "voices-v1.0.bin"
             voices_json = model_dir / "voices.json"
-            voices_path = Path(env_voices_path).expanduser() if env_voices_path else (voices_json if voices_json.exists() else voices_bin)
+            voices_path = (
+                Path(env_voices_path).expanduser()
+                if env_voices_path
+                else (voices_json if voices_json.exists() else voices_bin)
+            )
 
             if not model_path.exists() or not voices_path.exists():
                 raise FileNotFoundError(
@@ -74,9 +82,15 @@ class KokoroEngine(TTSEngine):
 
             logger.info("Kokoro-82M model loaded successfully")
             if env_model_path:
-                logger.info("Using custom Kokoro model path from KOKORO_MODEL_PATH: %s", model_path)
+                logger.info(
+                    "Using custom Kokoro model path from KOKORO_MODEL_PATH: %s",
+                    model_path,
+                )
             if env_voices_path:
-                logger.info("Using custom Kokoro voices from KOKORO_VOICES_PATH: %s", voices_path)
+                logger.info(
+                    "Using custom Kokoro voices from KOKORO_VOICES_PATH: %s",
+                    voices_path,
+                )
 
         except ImportError as e:
             raise ImportError(
@@ -86,11 +100,7 @@ class KokoroEngine(TTSEngine):
             )
 
     def synthesize(
-        self,
-        text: str,
-        reference_audio: Path,
-        language: str = "en",
-        **kwargs
+        self, text: str, reference_audio: Path, language: str = "en", **kwargs
     ) -> np.ndarray:
         """
         Synthesize speech using Kokoro ONNX
@@ -125,15 +135,14 @@ class KokoroEngine(TTSEngine):
             # Generate audio using create() method
             # Returns (samples, sample_rate) tuple
             audio, sample_rate = self.model.create(
-                text,
-                voice=voice,
-                speed=speed,
-                lang=kokoro_lang
+                text, voice=voice, speed=speed, lang=kokoro_lang
             )
 
             # Ensure correct sample rate
             if sample_rate != self.sample_rate_val:
-                logger.warning(f"Sample rate mismatch: got {sample_rate}, expected {self.sample_rate_val}")
+                logger.warning(
+                    f"Sample rate mismatch: got {sample_rate}, expected {self.sample_rate_val}"
+                )
                 self.sample_rate_val = sample_rate
 
             # Ensure float32 and mono
@@ -161,6 +170,6 @@ class KokoroEngine(TTSEngine):
         return [
             "af_bella",  # Female, warm
             "af_sarah",  # Female, clear
-            "am_adam",   # Male, deep
-            "am_michael" # Male, neutral
+            "am_adam",  # Male, deep
+            "am_michael",  # Male, neutral
         ]

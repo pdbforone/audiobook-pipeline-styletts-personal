@@ -30,7 +30,9 @@ def load_policy_engine(config_path: Optional[str] = None) -> PolicyEngine:
     config = _load_policy_config(config_file)
     logging_enabled = bool(config.get("logging", True))
     learning_mode = str(config.get("learning_mode", "observe"))
-    return PolicyEngine(logging_enabled=logging_enabled, learning_mode=learning_mode)
+    return PolicyEngine(
+        logging_enabled=logging_enabled, learning_mode=learning_mode
+    )
 
 
 @task(name="run-single-pipeline")
@@ -97,7 +99,9 @@ def tts_pipeline_batch_flow(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Prefect orchestration entrypoint")
+    parser = argparse.ArgumentParser(
+        description="Prefect orchestration entrypoint"
+    )
     parser.add_argument("pipeline", help="Path to the input book file")
     parser.add_argument(
         "--no-policy",

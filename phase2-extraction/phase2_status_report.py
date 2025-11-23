@@ -16,12 +16,12 @@ print("=" * 80)
 # Check pipeline.json
 pipeline_file = PROJECT_ROOT / "pipeline.json"
 if pipeline_file.exists():
-    with open(pipeline_file, 'r') as f:
+    with open(pipeline_file, "r") as f:
         pipeline = json.load(f)
     phase2 = pipeline.get("phase2", {})
     files_processed = phase2.get("files", {})
-    
-    print(f"\n📋 Pipeline Status:")
+
+    print("\n📋 Pipeline Status:")
     print(f"   Files in pipeline.json: {len(files_processed)}")
     for file_id, data in files_processed.items():
         status = data.get("status", "unknown")
@@ -85,19 +85,22 @@ sys_theo_pdf = PROJECT_ROOT / "input" / "Systematic Theology.pdf"
 if sys_theo_pdf.exists():
     print(f"\n✓ PDF found: {sys_theo_pdf.name}")
     print(f"  Size: {sys_theo_pdf.stat().st_size / 1024 / 1024:.1f} MB")
-    
+
     # Check if it's in pipeline
-    if "Systematic_Theology" in files_processed or "Systematic Theology" in files_processed:
-        print(f"  ✓ IN PIPELINE (Phase 2 complete)")
+    if (
+        "Systematic_Theology" in files_processed
+        or "Systematic Theology" in files_processed
+    ):
+        print("  ✓ IN PIPELINE (Phase 2 complete)")
     else:
-        print(f"  ⚠️  NOT IN PIPELINE (needs Phase 2 processing)")
-    
+        print("  ⚠️  NOT IN PIPELINE (needs Phase 2 processing)")
+
     # Check if test extractions exist
     if found_tests:
         print(f"  ✓ Test extractions exist: {len(found_tests)}")
-        print(f"    → These are standalone tests, not in the pipeline")
+        print("    → These are standalone tests, not in the pipeline")
 else:
-    print(f"\n❌ PDF not found!")
+    print("\n❌ PDF not found!")
 
 # RECOMMENDATIONS
 print(f"\n{'=' * 80}")
@@ -109,25 +112,27 @@ if found_tests:
     print("   python verify_extraction_quality.py")
     print("")
     print("   This will show you the quality of your test extractions.")
-    
+
     print("\n2️⃣ IF QUALITY IS GOOD, INTEGRATE INTO PIPELINE:")
     print("   Option A: Copy best extraction to extracted_text folder")
     print("   Option B: Update extraction.py to use multi_pass_extractor.py")
     print("   Option C: Run Phase 2 through Phase 6 orchestrator")
-    
+
     print("\n3️⃣ PROCEED TO PHASE 3 (CHUNKING):")
     print("   cd ../phase3-chunking")
-    print("   poetry run python -m phase3_chunking.cli --file_id Systematic_Theology")
+    print(
+        "   poetry run python -m phase3_chunking.cli --file_id Systematic_Theology"
+    )
 
 else:
     print("\n1️⃣ RUN TEST EXTRACTION:")
     print("   python test_all_extraction_methods.py")
     print("")
     print("   This will test Multi-Pass and Consensus extraction methods.")
-    
+
     print("\n2️⃣ VERIFY QUALITY:")
     print("   python verify_extraction_quality.py")
-    
+
     print("\n3️⃣ IF GOOD, INTEGRATE INTO PIPELINE")
 
 # Known Issues
@@ -139,13 +144,18 @@ issues_found = []
 
 # Check for language detection problems
 for file_id, data in files_processed.items():
-    if data.get("language") == "unknown" or data.get("lang_confidence", 0) < 0.5:
+    if (
+        data.get("language") == "unknown"
+        or data.get("lang_confidence", 0) < 0.5
+    ):
         issues_found.append(f"Language detection failed for {file_id}")
 
 # Check for low yield
 for file_id, data in files_processed.items():
     if data.get("yield_pct", 0) < 50:
-        issues_found.append(f"Low text yield ({data['yield_pct']:.1f}%) for {file_id}")
+        issues_found.append(
+            f"Low text yield ({data['yield_pct']:.1f}%) for {file_id}"
+        )
 
 if issues_found:
     print("")

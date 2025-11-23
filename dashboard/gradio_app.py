@@ -115,10 +115,15 @@ def _engine_data():
             fallback_samples += 1
         cpu_value = event.get("cpu_percent")
         mem_value = event.get("memory_percent")
-        if isinstance(cpu_value, (int, float)) and isinstance(mem_value, (int, float)):
+        if isinstance(cpu_value, (int, float)) and isinstance(
+            mem_value, (int, float)
+        ):
             cpu.append(float(cpu_value))
             mem.append(float(mem_value))
-    rows = [[engine, counts[engine]] for engine in sorted(counts, key=counts.get, reverse=True)]
+    rows = [
+        [engine, counts[engine]]
+        for engine in sorted(counts, key=counts.get, reverse=True)
+    ]
     fallback_avg = ""
     if fallback_samples:
         fallback_avg = f"Average fallback rate: {round((fallback_total / fallback_samples) * 100, 2)}%"
@@ -175,7 +180,10 @@ def _chart_image(name):
     path = CHART_DIR / name
     if path.exists():
         return str(path), ""
-    return None, f"{name} not found. Run `python -m dashboard.report` to generate charts."
+    return (
+        None,
+        f"{name} not found. Run `python -m dashboard.report` to generate charts.",
+    )
 
 
 def _phase_choices():
@@ -209,8 +217,12 @@ def refresh_chunk_tab():
     summary = _chunk_error_stats()
     chunk_img, chunk_msg = _chart_image("chunk_history.png")
     failure_img, failure_msg = _chart_image("failures.png")
-    return summary, chunk_img, (chunk_msg or "Chunk history chart loaded."), failure_img, (
-        failure_msg or "Failure chart loaded."
+    return (
+        summary,
+        chunk_img,
+        (chunk_msg or "Chunk history chart loaded."),
+        failure_img,
+        (failure_msg or "Failure chart loaded."),
     )
 
 
@@ -253,7 +265,14 @@ with gr.Blocks() as demo:
     with gr.Tab("Phase Metrics"):
         phase_button = gr.Button("Refresh Phase Metrics")
         phase_table = gr.Dataframe(
-            headers=["Phase", "Avg Duration (s)", "Runs", "Success", "Failures", "Retries"],
+            headers=[
+                "Phase",
+                "Avg Duration (s)",
+                "Runs",
+                "Success",
+                "Failures",
+                "Retries",
+            ],
             datatype=["str", "number", "number", "number", "number", "number"],
             interactive=False,
         )
@@ -282,11 +301,23 @@ with gr.Blocks() as demo:
         system_message = gr.Markdown()
         engine_button.click(
             refresh_engine_tab,
-            outputs=[engine_table, fallback_text, cpu_plot, system_image, system_message],
+            outputs=[
+                engine_table,
+                fallback_text,
+                cpu_plot,
+                system_image,
+                system_message,
+            ],
         )
         demo.load(
             refresh_engine_tab,
-            outputs=[engine_table, fallback_text, cpu_plot, system_image, system_message],
+            outputs=[
+                engine_table,
+                fallback_text,
+                cpu_plot,
+                system_image,
+                system_message,
+            ],
         )
 
     with gr.Tab("Chunk & Error History"):
@@ -298,16 +329,30 @@ with gr.Blocks() as demo:
         failure_msg = gr.Markdown()
         chunk_button.click(
             refresh_chunk_tab,
-            outputs=[chunk_summary, chunk_image, chunk_msg, failure_image, failure_msg],
+            outputs=[
+                chunk_summary,
+                chunk_image,
+                chunk_msg,
+                failure_image,
+                failure_msg,
+            ],
         )
         demo.load(
             refresh_chunk_tab,
-            outputs=[chunk_summary, chunk_image, chunk_msg, failure_image, failure_msg],
+            outputs=[
+                chunk_summary,
+                chunk_image,
+                chunk_msg,
+                failure_image,
+                failure_msg,
+            ],
         )
 
     with gr.Tab("Overrides"):
         override_button = gr.Button("Refresh Overrides")
-        override_text = gr.Textbox(label="Current tuning_overrides.json", lines=20)
+        override_text = gr.Textbox(
+            label="Current tuning_overrides.json", lines=20
+        )
         override_button.click(refresh_overrides, outputs=override_text)
         demo.load(refresh_overrides, outputs=override_text)
 
@@ -322,7 +367,11 @@ with gr.Blocks() as demo:
             limit_box = gr.Number(value=20, label="Max entries")
         logs_button = gr.Button("Fetch Logs")
         logs_output = gr.Textbox(label="Log Output", lines=20)
-        logs_button.click(refresh_logs, inputs=[phase_dropdown, query_box, limit_box], outputs=logs_output)
+        logs_button.click(
+            refresh_logs,
+            inputs=[phase_dropdown, query_box, limit_box],
+            outputs=logs_output,
+        )
 
 
 def main():

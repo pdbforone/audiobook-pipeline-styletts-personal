@@ -36,7 +36,9 @@ def validate_audio_file(path: Path) -> None:
     audio = MutagenFile(path)
     length = getattr(audio.info, "length", 0) if audio else 0
     if not audio or length <= 0:
-        raise ValueError(f"Audio validation failed for {path}: unreadable or zero length.")
+        raise ValueError(
+            f"Audio validation failed for {path}: unreadable or zero length."
+        )
 
 
 def atomic_replace(target: Path, temp_source: Path) -> None:

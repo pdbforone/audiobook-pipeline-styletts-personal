@@ -16,7 +16,7 @@ from policy_engine.advisor import PolicyAdvisor
 from policy_engine.policy_engine import TuningOverridesStore
 
 if TYPE_CHECKING:  # pragma: no cover - imported only for type checking
-    from pipeline_common.state_manager import PipelineState
+    pass
 
 
 POLICY_ENGINE_VERSION = "3.0"
@@ -90,18 +90,26 @@ class PolicyEngine:
         except Exception:  # pragma: no cover - defensive
             return {}
 
-    def prepare_run_overrides(self, *, file_id: Optional[str] = None) -> Dict[str, Any]:
+    def prepare_run_overrides(
+        self, *, file_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Load tuning overrides and cache the active set for this run."""
         stats = self._advisor.snapshot()
-        self._active_overrides = self._override_store.build_run_overrides(stats)
+        self._active_overrides = self._override_store.build_run_overrides(
+            stats
+        )
         if file_id:
-            self._active_overrides.setdefault("metadata", {})["file_id"] = file_id
+            self._active_overrides.setdefault("metadata", {})[
+                "file_id"
+            ] = file_id
         return self._active_overrides
 
     def get_active_overrides(self) -> Dict[str, Any]:
         return self._active_overrides or {}
 
-    def complete_run(self, *, success: bool, metadata: Optional[Dict[str, Any]] = None) -> None:
+    def complete_run(
+        self, *, success: bool, metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
         stats = self._advisor.snapshot()
         self._override_store.apply_self_driving(stats)
         self._override_store.record_run_outcome(
@@ -130,7 +138,10 @@ class PolicyEngine:
             return
 
         enriched = dict(payload)
-        enriched.setdefault("timestamp", datetime.utcnow().isoformat(timespec="milliseconds") + "Z")
+        enriched.setdefault(
+            "timestamp",
+            datetime.utcnow().isoformat(timespec="milliseconds") + "Z",
+        )
         enriched.setdefault("learning_mode", self.learning_mode)
         enriched.setdefault("policy_version", POLICY_ENGINE_VERSION)
         enriched.setdefault("run_id", self._run_id)
@@ -144,7 +155,12 @@ class PolicyEngine:
             handle = self._ensure_log_handle_locked()
             if not handle:
                 return
-            handle.write(json.dumps(enriched, default=self._json_default, ensure_ascii=False) + "\n")
+            handle.write(
+                json.dumps(
+                    enriched, default=self._json_default, ensure_ascii=False
+                )
+                + "\n"
+            )
             handle.flush()
 
     def _ensure_log_handle_locked(self) -> Optional[Any]:
@@ -173,7 +189,11 @@ class PolicyEngine:
 
     def _system_stats(self) -> Dict[str, Any]:
         if not psutil:
-            return {"system_load": None, "cpu_percent": None, "memory_percent": None}
+            return {
+                "system_load": None,
+                "cpu_percent": None,
+                "memory_percent": None,
+            }
 
         load: Optional[Any]
         try:

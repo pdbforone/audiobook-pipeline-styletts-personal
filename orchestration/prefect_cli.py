@@ -12,7 +12,10 @@ try:
     )
 except Exception as exc:  # pragma: no cover - CLI guard
     print(f"Error importing Prefect flows: {exc}", file=sys.stderr)
-    print("Ensure Prefect and orchestration.prefect_flows are installed.", file=sys.stderr)
+    print(
+        "Ensure Prefect and orchestration.prefect_flows are installed.",
+        file=sys.stderr,
+    )
     sys.exit(2)
 
 
@@ -63,7 +66,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    run_cmd = sub.add_parser("run", help="Run a single pipeline.json/book file")
+    run_cmd = sub.add_parser(
+        "run", help="Run a single pipeline.json/book file"
+    )
     run_cmd.add_argument(
         "--pipeline",
         required=True,
@@ -76,7 +81,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_cmd.set_defaults(func=cmd_run)
 
-    batch_cmd = sub.add_parser("batch", help="Run multiple pipelines sequentially")
+    batch_cmd = sub.add_parser(
+        "batch", help="Run multiple pipelines sequentially"
+    )
     batch_cmd.add_argument(
         "--pipelines",
         nargs="+",

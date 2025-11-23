@@ -9,28 +9,21 @@ EXTRACTION_CONFIG_TTS_GRADE = {
     # Gibberish Detection - STRICT
     "gibberish_threshold": 0.2,  # Was 0.5 - now much stricter
     # Anything above 0.2 likely has encoding errors
-    
-    # Perplexity (vocabulary diversity) - STRICT  
+    # Perplexity (vocabulary diversity) - STRICT
     "perplexity_threshold": 0.92,  # Keep this - good measure
-    
     # Language Confidence - STRICT
     "lang_confidence": 0.95,  # Was 0.9 - now stricter
-    
     # NEW: Encoding Error Tolerance - ZERO
     "max_replacement_chars": 0,  # Zero tolerance for � characters
     "max_private_use_chars": 0,  # Zero tolerance for font mapping errors
-    
     # NEW: Punctuation Density - REQUIRED FOR TTS
     "min_punctuation_per_100_words": 5,  # Need proper sentence breaks
     "min_periods_per_1000_words": 20,  # Need regular sentence endings
-    
     # NEW: Character Distribution - TTS SAFE
     "min_alphabetic_ratio": 0.65,  # Most text should be letters
     "max_non_ascii_ratio": 0.15,  # Limited special characters
-    
     # NEW: Common Words Check - MUST HAVE
     "min_common_words_found": 8,  # Of 10 most common English words
-    
     # NEW: Sentence Structure - REQUIRED
     "min_sentences_per_5000_chars": 20,  # Need proper sentences
     "max_avg_sentence_length": 50,  # Too long = bad TTS phrasing
@@ -38,7 +31,7 @@ EXTRACTION_CONFIG_TTS_GRADE = {
 
 # Quality Status Mapping
 # "success" = TTS-ready, no issues
-# "partial_success" = Readable but has warnings  
+# "partial_success" = Readable but has warnings
 # "failed" = Critical issues, will cause TTS problems
 
 """

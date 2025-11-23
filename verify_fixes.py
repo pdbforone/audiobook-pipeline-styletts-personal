@@ -3,10 +3,10 @@
 Verification script for foundation fixes.
 Tests that changes maintain phase isolation and backward compatibility.
 """
-import json
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
+
 
 def test_phase5_output_structure():
     """Verify Phase 5 writes output_file to pipeline.json"""
@@ -14,7 +14,8 @@ def test_phase5_output_structure():
     print("  - Writes 'output_file' key to pipeline.json")
     print("  - Maintains isolation (Poetry environment)")
     print("  - Backward compatible (still writes artifacts list)")
-    
+
+
 def test_orchestrator_fallback():
     """Verify orchestrator has proper fallback logic"""
     print("\n✓ Phase 6 Orchestrator")
@@ -22,20 +23,23 @@ def test_orchestrator_fallback():
     print("  - Falls back to phase5['files'][file_id] (legacy)")
     print("  - Falls back to hardcoded path (last resort)")
     print("  - Phase 2 text extraction path remains unchanged")
-    
+
+
 def test_cli_documentation():
     """Verify README has correct flags"""
     print("\n✓ CLI Documentation")
     print("  - Correct flag: --pipeline-json (was --pipeline)")
     print("  - Documented: --voice, --max-retries, --no-resume, --phases")
     print("  - Examples updated with correct syntax")
-    
+
+
 def test_phase4_dependencies():
     """Verify Phase 4 has requests in requirements.txt"""
     print("\n✓ Phase 4 Dependencies")
     print("  - Added: requests>=2.31.0")
     print("  - Present: charset-normalizer==3.4.3")
     print("  - Maintains isolation (Conda environment)")
+
 
 def test_phase_isolation():
     """Verify phase isolation is maintained"""
@@ -48,7 +52,7 @@ def test_phase_isolation():
         "Phase 6": ("phase6_orchestrator", "Poetry"),
         "Phase 7": ("phase7_batch", "Poetry"),
     }
-    
+
     print("\n✓ Phase Isolation Maintained")
     for phase_name, (phase_dir, env_type) in phases.items():
         phase_path = PROJECT_ROOT / phase_dir
@@ -56,6 +60,7 @@ def test_phase_isolation():
             print(f"  - {phase_name}: {env_type} environment ✓")
         else:
             print(f"  - {phase_name}: Directory not found ⚠️")
+
 
 def test_backward_compatibility():
     """Test that changes are backward compatible"""
@@ -65,19 +70,20 @@ def test_backward_compatibility():
     print("  - No breaking changes to pipeline.json schema")
     print("  - Existing audiobooks can still be processed")
 
+
 if __name__ == "__main__":
     print("=" * 60)
     print("Foundation Fixes - Verification Report")
     print("=" * 60)
     print()
-    
+
     test_phase5_output_structure()
     test_orchestrator_fallback()
     test_cli_documentation()
     test_phase4_dependencies()
     test_phase_isolation()
     test_backward_compatibility()
-    
+
     print("\n" + "=" * 60)
     print("Summary: All fixes maintain phase isolation ✓")
     print("=" * 60)

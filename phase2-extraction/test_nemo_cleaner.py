@@ -12,9 +12,9 @@ sys.path.insert(0, str(src_path))
 
 from phase2_extraction.cleaner import TTSTextCleaner
 
-print("="*70)
+print("=" * 70)
 print("TESTING TEXT CLEANER FOR TTS")
-print("="*70)
+print("=" * 70)
 
 # Sample text from Gift of the Magi
 raw = """T h e G i f t o f t h e M a g i
@@ -86,20 +86,20 @@ else:
 
 # Save output
 output_file = Path("test_output_nemo.txt")
-output_file.write_text(cleaned, encoding='utf-8')
+output_file.write_text(cleaned, encoding="utf-8")
 
 print(f"\n💾 Saved to: {output_file.absolute()}")
 
 # Test with file API
-print("\n" + "="*70)
+print("\n" + "=" * 70)
 print("TESTING FILE API")
-print("="*70)
+print("=" * 70)
 
 input_file = Path("test_input_temp.txt")
 output_file_2 = Path("test_output_file_api.txt")
 
 # Write test input
-input_file.write_text(raw, encoding='utf-8')
+input_file.write_text(raw, encoding="utf-8")
 
 # Clean using file API
 metrics = cleaner.clean_text_file(input_file, output_file_2)
@@ -111,16 +111,16 @@ for key, value in metrics.items():
     else:
         print(f"  {key}: {value}")
 
-print(f"\n✓ Test complete! Check these files:")
+print("\n✓ Test complete! Check these files:")
 print(f"  - {output_file}")
 print(f"  - {output_file_2}")
 
 # Cleanup temp file
 input_file.unlink()
 
-print("\n" + "="*70)
+print("\n" + "=" * 70)
 print("💡 NEXT STEPS:")
-print("="*70)
+print("=" * 70)
 print()
 if "⚠" in cleaned or metrics.get("normalizer") != "NeMo":
     print("⚠ NeMo Text Processing is NOT installed.")
@@ -138,4 +138,4 @@ else:
     print("Next: Integrate into extraction.py")
 
 print()
-print("="*70)
+print("=" * 70)

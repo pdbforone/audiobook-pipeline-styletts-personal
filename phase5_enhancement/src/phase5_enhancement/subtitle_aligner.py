@@ -19,13 +19,15 @@ def detect_drift(segments: List[Dict], audio_duration: float) -> float:
     if not segments:
         return 0.0
 
-    last_timestamp = segments[-1]['end']
+    last_timestamp = segments[-1]["end"]
     drift = audio_duration - last_timestamp
 
     return drift
 
 
-def align_timestamps(segments: List[Dict], audio_duration: float) -> List[Dict]:
+def align_timestamps(
+    segments: List[Dict], audio_duration: float
+) -> List[Dict]:
     """
     Stretch or compress timestamps to match actual audio duration.
 
@@ -34,7 +36,7 @@ def align_timestamps(segments: List[Dict], audio_duration: float) -> List[Dict]:
     if not segments:
         return segments
 
-    last_timestamp = segments[-1]['end']
+    last_timestamp = segments[-1]["end"]
     if last_timestamp == 0:
         logger.warning("Last timestamp is 0, cannot align")
         return segments
@@ -45,8 +47,8 @@ def align_timestamps(segments: List[Dict], audio_duration: float) -> List[Dict]:
     aligned_segments = []
     for seg in segments:
         aligned_seg = seg.copy()
-        aligned_seg['start'] = seg['start'] * scale_factor
-        aligned_seg['end'] = seg['end'] * scale_factor
+        aligned_seg["start"] = seg["start"] * scale_factor
+        aligned_seg["end"] = seg["end"] * scale_factor
         aligned_segments.append(aligned_seg)
 
     return aligned_segments
@@ -60,12 +62,14 @@ def validate_alignment(segments: List[Dict]) -> bool:
         True if valid, False if overlaps or gaps detected
     """
     for i in range(len(segments) - 1):
-        current_end = segments[i]['end']
-        next_start = segments[i + 1]['start']
+        current_end = segments[i]["end"]
+        next_start = segments[i + 1]["start"]
 
         if current_end > next_start:
-            logger.error(f"Overlap detected: segment {i} ends at {current_end:.2f}s "
-                        f"but segment {i+1} starts at {next_start:.2f}s")
+            logger.error(
+                f"Overlap detected: segment {i} ends at {current_end:.2f}s "
+                f"but segment {i+1} starts at {next_start:.2f}s"
+            )
             return False
 
     return True

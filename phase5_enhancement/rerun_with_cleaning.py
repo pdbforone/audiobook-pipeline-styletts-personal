@@ -12,31 +12,32 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from phase5_enhancement.main import main as phase5_main
 import argparse
 
+
 def run_phase5_on_meditations():
     """Run Phase 5 with meditations_chunks as input."""
-    
+
     # Override config with our settings
     args = argparse.Namespace(
-        config='config.yaml',
-        input_dir='meditations_chunks',  # ← Our chunks directory
-        output_dir='processed',  # ← Output directory
+        config="config.yaml",
+        input_dir="meditations_chunks",  # ← Our chunks directory
+        output_dir="processed",  # ← Output directory
         pipeline_json=None,  # We'll handle this separately
         enable_phrase_cleanup=True,  # ← Enable cleaning!
-        resume=False
+        resume=False,
     )
-    
+
     print("=" * 70)
     print("RE-RUNNING PHASE 5 ON MEDITATIONS CHUNKS")
     print("=" * 70)
-    print(f"Input:  meditations_chunks/")
-    print(f"Output: processed/")
-    print(f"Phrase cleanup: ENABLED ✓")
+    print("Input:  meditations_chunks/")
+    print("Output: processed/")
+    print("Phrase cleanup: ENABLED ✓")
     print("=" * 70)
     print()
-    
+
     # Run Phase 5
     phase5_main(args)
-    
+
     print()
     print("=" * 70)
     print("✅ DONE!")

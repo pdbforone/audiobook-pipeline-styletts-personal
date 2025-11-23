@@ -5,7 +5,6 @@ Mature, production-tested TTS with excellent voice cloning
 
 import logging
 import numpy as np
-import torch
 from pathlib import Path
 from typing import Optional, List
 
@@ -30,7 +29,9 @@ class XTTSEngine(TTSEngine):
         self.sample_rate_val = 24000
         # Local default reference to satisfy XTTS builds that require speaker_wav
         self.default_reference = (
-            Path(__file__).parent.parent / "voice_references" / "george_mckayland_trimmed.wav"
+            Path(__file__).parent.parent
+            / "voice_references"
+            / "george_mckayland_trimmed.wav"
         )
 
     @property
@@ -46,8 +47,22 @@ class XTTSEngine(TTSEngine):
 
     def get_supported_languages(self) -> List[str]:
         return [
-            "en", "es", "fr", "de", "it", "pt", "pl", "tr",
-            "ru", "nl", "cs", "ar", "zh-cn", "ja", "hu", "ko"
+            "en",
+            "es",
+            "fr",
+            "de",
+            "it",
+            "pt",
+            "pl",
+            "tr",
+            "ru",
+            "nl",
+            "cs",
+            "ar",
+            "zh-cn",
+            "ja",
+            "hu",
+            "ko",
         ]
 
     def load_model(self) -> None:
@@ -61,7 +76,7 @@ class XTTSEngine(TTSEngine):
             self.model = TTS(
                 model_name="tts_models/multilingual/multi-dataset/xtts_v2",
                 progress_bar=False,
-                gpu=(self.device == "cuda")
+                gpu=(self.device == "cuda"),
             )
 
             logger.info("XTTS v2 model loaded successfully")
@@ -78,7 +93,7 @@ class XTTSEngine(TTSEngine):
         text: str,
         reference_audio: Optional[Path] = None,
         language: str = "en",
-        **kwargs
+        **kwargs,
     ) -> np.ndarray:
         """
         Synthesize speech using XTTS v2
@@ -103,13 +118,19 @@ class XTTSEngine(TTSEngine):
         # Extract parameters
         speed = kwargs.get("speed", 1.0)
         temperature = kwargs.get("temperature", 0.7)
-        speaker = kwargs.get("speaker", "Claribel Dervla")  # Default XTTS voice
+        speaker = kwargs.get(
+            "speaker", "Claribel Dervla"
+        )  # Default XTTS voice
         # Some XTTS builds report single-speaker even though we pass a speaker name.
         # Avoid passing the speaker flag if the model does not support it to prevent ValueError.
         speaker_supported = getattr(self.model, "is_multi_speaker", True)
         active_speaker = speaker if speaker_supported else None
         fallback_reference = None
-        if not speaker_supported and not reference_audio and self.default_reference.exists():
+        if (
+            not speaker_supported
+            and not reference_audio
+            and self.default_reference.exists()
+        ):
             fallback_reference = self.default_reference
 
         # Validate language
@@ -123,18 +144,22 @@ class XTTSEngine(TTSEngine):
             # Voice cloning vs default voice
             ref_to_use = reference_audio or fallback_reference
             if ref_to_use and ref_to_use.exists():
-                logger.info(f"Using voice cloning with reference: {ref_to_use}")
+                logger.info(
+                    f"Using voice cloning with reference: {ref_to_use}"
+                )
                 # Generate audio using XTTS with voice cloning
                 wav = self.model.tts(
                     text=text,
                     speaker_wav=str(ref_to_use),
                     language=language,
                     speed=speed,
-                    temperature=temperature
+                    temperature=temperature,
                 )
             else:
                 if reference_audio:
-                    logger.warning(f"Reference audio not found: {reference_audio}, using default voice")
+                    logger.warning(
+                        f"Reference audio not found: {reference_audio}, using default voice"
+                    )
                 elif active_speaker:
                     logger.info(f"Using default XTTS voice: {active_speaker}")
                 else:

@@ -3,20 +3,25 @@ Unit tests for Phase 5.5 subtitle generation.
 """
 
 import pytest
-from pathlib import Path
-import json
 
-from src.phase5_enhancement.subtitle_aligner import detect_drift, align_timestamps
-from src.phase5_enhancement.subtitle_validator import calculate_wer, format_srt, format_vtt
+from src.phase5_enhancement.subtitle_aligner import (
+    detect_drift,
+    align_timestamps,
+)
+from src.phase5_enhancement.subtitle_validator import (
+    calculate_wer,
+    format_srt,
+    format_vtt,
+)
 
 
 @pytest.fixture
 def sample_segments():
     """Sample subtitle segments for testing."""
     return [
-        {'start': 0.0, 'end': 5.0, 'text': 'First segment of text.'},
-        {'start': 5.5, 'end': 10.0, 'text': 'Second segment continues.'},
-        {'start': 10.5, 'end': 15.0, 'text': 'Final segment here.'}
+        {"start": 0.0, "end": 5.0, "text": "First segment of text."},
+        {"start": 5.5, "end": 10.0, "text": "Second segment continues."},
+        {"start": 10.5, "end": 15.0, "text": "Final segment here."},
     ]
 
 
@@ -47,9 +52,9 @@ def test_align_timestamps(sample_segments):
     aligned = align_timestamps(sample_segments, audio_duration)
 
     # All timestamps should be scaled by 2x
-    assert aligned[0]['end'] == 10.0  # Was 5.0
-    assert aligned[1]['end'] == 20.0  # Was 10.0
-    assert aligned[2]['end'] == 30.0  # Was 15.0
+    assert aligned[0]["end"] == 10.0  # Was 5.0
+    assert aligned[1]["end"] == 20.0  # Was 10.0
+    assert aligned[2]["end"] == 30.0  # Was 15.0
 
 
 def test_calculate_wer_perfect():

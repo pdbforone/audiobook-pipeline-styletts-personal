@@ -44,7 +44,9 @@ class VoiceManager:
 
     def _atomic_write(self, data: Dict[str, Any]) -> None:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8", dir=self.config_path.parent) as tmp:
+        with tempfile.NamedTemporaryFile(
+            "w", delete=False, encoding="utf-8", dir=self.config_path.parent
+        ) as tmp:
             json.dump(data, tmp, indent=2, ensure_ascii=False)
             tmp.write("\n")
             tmp_path = Path(tmp.name)
@@ -53,7 +55,10 @@ class VoiceManager:
     def _load(self) -> Dict[str, VoiceMetadata]:
         config = self._load_config()
         voices = config.get("voice_references", {}) or {}
-        return {vid: VoiceMetadata.from_dict(vid, meta) for vid, meta in voices.items()}
+        return {
+            vid: VoiceMetadata.from_dict(vid, meta)
+            for vid, meta in voices.items()
+        }
 
     def _normalize_voice_id(self, raw_id: str) -> str:
         slug = re.sub(r"[^a-z0-9_]+", "_", (raw_id or "").strip().lower())
@@ -119,25 +124,40 @@ class VoiceManager:
         """Add a voice and return a structured response."""
         with self._lock:
             if not voice_name or not voice_file:
-                return {"ok": False, "message": "❌ Please provide a voice ID and audio sample"}
+                return {
+                    "ok": False,
+                    "message": "❌ Please provide a voice ID and audio sample",
+                }
 
             voice_id = self._normalize_voice_id(voice_name)
             if not voice_id:
-                return {"ok": False, "message": "❌ Voice ID must contain letters or numbers"}
+                return {
+                    "ok": False,
+                    "message": "❌ Voice ID must contain letters or numbers",
+                }
 
             source_path = self._resolve_audio_source(voice_file)
             if not source_path or not source_path.exists():
-                return {"ok": False, "message": "❌ Uploaded audio file could not be found on disk"}
+                return {
+                    "ok": False,
+                    "message": "❌ Uploaded audio file could not be found on disk",
+                }
 
             extension = (source_path.suffix or "").lower() or ".wav"
             if extension not in ALLOWED_AUDIO_EXTENSIONS:
                 allowed = ", ".join(sorted(ALLOWED_AUDIO_EXTENSIONS))
-                return {"ok": False, "message": f"❌ Unsupported audio type '{extension}'. Please upload one of: {allowed}"}
+                return {
+                    "ok": False,
+                    "message": f"❌ Unsupported audio type '{extension}'. Please upload one of: {allowed}",
+                }
 
             config = self._load_config()
             voice_refs = config.setdefault("voice_references", {})
             if voice_id in voice_refs:
-                return {"ok": False, "message": f"❌ Voice ID '{voice_id}' already exists"}
+                return {
+                    "ok": False,
+                    "message": f"❌ Voice ID '{voice_id}' already exists",
+                }
 
             self.custom_voice_dir.mkdir(parents=True, exist_ok=True)
             destination = self.custom_voice_dir / f"{voice_id}{extension}"
@@ -146,13 +166,28 @@ class VoiceManager:
                 shutil.copy2(source_path, destination)
             except Exception as exc:
                 logger.exception("Failed to copy new voice sample")
-                return {"ok": False, "message": f"❌ Failed to store audio sample: {exc}"}
+                return {
+                    "ok": False,
+                    "message": f"❌ Failed to store audio sample: {exc}",
+                }
 
-            tags = [tag.strip() for tag in (genre_tags or "").split(",") if tag.strip()]
-            narrator = (narrator_name or "").strip() or voice_id.replace("_", " ").title()
-            description = f"Custom voice for {', '.join(tags)}" if tags else "Custom voice added via UI"
+            tags = [
+                tag.strip()
+                for tag in (genre_tags or "").split(",")
+                if tag.strip()
+            ]
+            narrator = (narrator_name or "").strip() or voice_id.replace(
+                "_", " "
+            ).title()
+            description = (
+                f"Custom voice for {', '.join(tags)}"
+                if tags
+                else "Custom voice added via UI"
+            )
             notes = f"Added via UI on {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"
-            local_path = destination.relative_to(self.custom_voice_dir.parent.parent).as_posix()
+            local_path = destination.relative_to(
+                self.custom_voice_dir.parent.parent
+            ).as_posix()
 
             voice_refs[voice_id] = {
                 "local_path": local_path,
@@ -167,10 +202,16 @@ class VoiceManager:
                 self._atomic_write(config)
             except Exception as exc:
                 logger.exception("Failed to update voice configuration")
-                return {"ok": False, "message": f"❌ Could not save voice configuration: {exc}"}
+                return {
+                    "ok": False,
+                    "message": f"❌ Could not save voice configuration: {exc}",
+                }
 
             self._voices = self._load()
-            refreshed_meta = self._voices.get(voice_id, VoiceMetadata.from_dict(voice_id, voice_refs[voice_id]))
+            refreshed_meta = self._voices.get(
+                voice_id,
+                VoiceMetadata.from_dict(voice_id, voice_refs[voice_id]),
+            )
             return {
                 "ok": True,
                 "voice_id": voice_id,

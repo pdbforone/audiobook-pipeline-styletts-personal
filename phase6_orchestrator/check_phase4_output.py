@@ -15,9 +15,9 @@ if not pipeline_path.exists():
 with open(pipeline_path) as f:
     pipeline = json.load(f)
 
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("PHASE 4 OUTPUT CHECK")
-print("="*60)
+print("=" * 60)
 
 phase4 = pipeline.get("phase4", {})
 files = phase4.get("files", {})
@@ -29,18 +29,18 @@ if not files:
 else:
     print(f"\nFound {len(files)} file(s) in Phase 4:")
     print()
-    
+
     for file_id, data in files.items():
         chunk_audio_paths = data.get("chunk_audio_paths", [])
         status = data.get("status", "unknown")
-        
+
         print(f"File ID: '{file_id}'")
         print(f"  Status: {status}")
         print(f"  Audio chunks: {len(chunk_audio_paths)}")
-        
+
         if chunk_audio_paths:
             print(f"  First audio path: {chunk_audio_paths[0]}")
-            
+
             # Check if file exists
             first_path = Path(chunk_audio_paths[0])
             if first_path.is_absolute():
@@ -54,7 +54,8 @@ else:
                 possible_locations = [
                     Path("../phase4_tts") / chunk_audio_paths[0],
                     Path("..") / chunk_audio_paths[0],
-                    Path("../phase4_tts/audio_chunks") / Path(chunk_audio_paths[0]).name
+                    Path("../phase4_tts/audio_chunks")
+                    / Path(chunk_audio_paths[0]).name,
                 ]
                 for loc in possible_locations:
                     if loc.exists():
@@ -62,7 +63,9 @@ else:
                         break
         print()
 
-print("="*60)
-print("\nPhase 5 looks for files in the 'input_dir' setting from its config.yaml")
+print("=" * 60)
+print(
+    "\nPhase 5 looks for files in the 'input_dir' setting from its config.yaml"
+)
 print("Check phase5_enhancement/src/phase5_enhancement/config.yaml")
-print("="*60 + "\n")
+print("=" * 60 + "\n")

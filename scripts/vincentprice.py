@@ -7,15 +7,25 @@ VOICES_DIR = PROJECT_ROOT / "Voices"
 FILES = {
     VOICES_DIR
     / "Agnes_Moorehead"
-    / "Suspense%20490127%20325%20The%20Thing%20in%20the%20Window%20(128-44)%2028267%2029m28s.mp3": 2 * 60 + 39,
-    VOICES_DIR / "Vincent_Price" / "500317_Escape_Three_Skeleton_Key.mp3": 1 * 60 + 5,
+    / "Suspense%20490127%20325%20The%20Thing%20in%20the%20Window%20(128-44)%2028267%2029m28s.mp3": 2
+    * 60
+    + 39,
+    VOICES_DIR
+    / "Vincent_Price"
+    / "500317_Escape_Three_Skeleton_Key.mp3": 1
+    * 60
+    + 5,
     VOICES_DIR / "Vincent_Price" / "Escape_470530_Blood_Bath.mp3": 1 * 60 + 59,
     VOICES_DIR
     / "Vincent_Price"
-    / "Suspense%20471128%20273%20The%20Pit%20and%20the%20Pendulum%20(64-44)%2014324%2029m52s.mp3": 20 * 60 + 34,
+    / "Suspense%20471128%20273%20The%20Pit%20and%20the%20Pendulum%20(64-44)%2014324%2029m52s.mp3": 20
+    * 60
+    + 34,
     VOICES_DIR
     / "Mercedes_McCambridge"
-    / "Suspense%20481209%20318%20The%20Sisters%20(128-44)%2028551%2029m46s.mp3": 14 * 60 + 16,
+    / "Suspense%20481209%20318%20The%20Sisters%20(128-44)%2028551%2029m46s.mp3": 14
+    * 60
+    + 16,
 }
 
 TRIM_DURATION = 30 * 1000  # 30 seconds in ms

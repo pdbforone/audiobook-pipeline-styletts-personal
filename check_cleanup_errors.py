@@ -1,4 +1,3 @@
-import json
 import sys
 from pathlib import Path
 
@@ -10,10 +9,14 @@ if not log_file.exists():
     sys.exit(1)
 
 # Read last 500 lines to find error messages
-with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
     lines = f.readlines()
-    
-error_lines = [line for line in lines[-1000:] if 'ERROR' in line or 'Error' in line or 'failed' in line]
+
+error_lines = [
+    line
+    for line in lines[-1000:]
+    if "ERROR" in line or "Error" in line or "failed" in line
+]
 
 print("=" * 60)
 print("Audio Cleanup Error Summary")

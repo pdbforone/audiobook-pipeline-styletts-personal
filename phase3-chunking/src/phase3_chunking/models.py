@@ -4,8 +4,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class ChunkRecord(BaseModel):
     """Record of chunking results for a text file."""
+
     text_path: str
     chunk_paths: List[str]
     coherence_scores: List[float]
@@ -14,20 +16,30 @@ class ChunkRecord(BaseModel):
     status: str  # 'success', 'partial', 'failed'
     errors: List[str] = []
     timestamps: Dict[str, float] = {}
-    chunk_metrics: Optional[Dict[str, Any]] = None  # Chunk size/duration metrics
+    chunk_metrics: Optional[Dict[str, Any]] = (
+        None  # Chunk size/duration metrics
+    )
     # Structured per-chunk metadata to keep downstream phases consistent
     chunk_metadata: List[Dict[str, Any]] = Field(default_factory=list)
     source_hash: Optional[str] = None  # Hash of source text to enable reuse
-    
+
     # NEW: Genre-aware fields
-    applied_profile: Optional[str] = None  # Genre profile used (e.g., 'philosophy', 'fiction')
-    genre_confidence: Optional[float] = None  # Confidence score for genre detection (0-1)
-    suggested_voice: Optional[str] = None  # Selected voice ID for TTS (e.g., 'jim_locke')
+    applied_profile: Optional[str] = (
+        None  # Genre profile used (e.g., 'philosophy', 'fiction')
+    )
+    genre_confidence: Optional[float] = (
+        None  # Confidence score for genre detection (0-1)
+    )
+    suggested_voice: Optional[str] = (
+        None  # Selected voice ID for TTS (e.g., 'jim_locke')
+    )
     coherence_threshold: Optional[float] = None
     flesch_threshold: Optional[float] = None
     # Per-chunk voice overrides keyed by chunk_id (e.g., chunk_0001 -> voice_name)
     chunk_voice_overrides: Dict[str, str] = Field(default_factory=dict)
-    structure_mode_used: bool = False  # Indicates structure-aware chunking path
+    structure_mode_used: bool = (
+        False  # Indicates structure-aware chunking path
+    )
     text_hash: Optional[str] = None  # Hash of cleaned text for reuse checks
 
     class Config:
@@ -94,7 +106,10 @@ class ChunkRecord(BaseModel):
         # Check that list lengths are consistent
         num_chunks = len(self.chunk_paths)
 
-        if self.coherence_scores and len(self.coherence_scores) != num_chunks - 1:
+        if (
+            self.coherence_scores
+            and len(self.coherence_scores) != num_chunks - 1
+        ):
             # Coherence is between consecutive chunks, so should be n-1
             if len(self.coherence_scores) != max(0, num_chunks - 1):
                 logger.warning(
@@ -102,7 +117,10 @@ class ChunkRecord(BaseModel):
                     f"got {len(self.coherence_scores)}"
                 )
 
-        if self.readability_scores and len(self.readability_scores) != num_chunks:
+        if (
+            self.readability_scores
+            and len(self.readability_scores) != num_chunks
+        ):
             logger.warning(
                 f"Readability scores mismatch: expected {num_chunks}, "
                 f"got {len(self.readability_scores)}"
@@ -119,9 +137,7 @@ class ChunkRecord(BaseModel):
             max_duration = self.chunk_metrics.get("max_duration", 0)
             limit = self.chunk_metrics.get("max_duration_limit", 25.0)
             if max_duration > limit:
-                error_msg = (
-                    f"Some chunks exceed {limit:.1f}s duration (max: {max_duration:.1f}s)"
-                )
+                error_msg = f"Some chunks exceed {limit:.1f}s duration (max: {max_duration:.1f}s)"
                 if error_msg not in self.errors:
                     self.errors.append(error_msg)
 
@@ -161,7 +177,9 @@ class ChunkRecord(BaseModel):
                 logger.warning(f"Missing timestamp keys: {missing_keys}")
 
             if "start" in self.timestamps and "end" in self.timestamps:
-                calculated_duration = self.timestamps["end"] - self.timestamps["start"]
+                calculated_duration = (
+                    self.timestamps["end"] - self.timestamps["start"]
+                )
                 if "duration" in self.timestamps:
                     reported_duration = self.timestamps["duration"]
                     if abs(calculated_duration - reported_duration) > 0.01:
@@ -199,16 +217,32 @@ class ChunkRecord(BaseModel):
 
         # Add chunk size/duration metrics if available
         if self.chunk_metrics:
-            metrics.update({
-                "avg_char_length": self.chunk_metrics.get("avg_char_length", 0),
-                "avg_word_count": self.chunk_metrics.get("avg_word_count", 0),
-                "avg_chunk_duration": self.chunk_metrics.get("avg_duration", 0),
-                "max_chunk_duration": self.chunk_metrics.get("max_duration", 0),
-                "min_chunk_duration": self.chunk_metrics.get("min_duration", 0),
-                "chunk_char_lengths": self.chunk_metrics.get("chunk_char_lengths", []),
-                "chunk_durations": self.chunk_metrics.get("chunk_durations", []),
-            })
-        
+            metrics.update(
+                {
+                    "avg_char_length": self.chunk_metrics.get(
+                        "avg_char_length", 0
+                    ),
+                    "avg_word_count": self.chunk_metrics.get(
+                        "avg_word_count", 0
+                    ),
+                    "avg_chunk_duration": self.chunk_metrics.get(
+                        "avg_duration", 0
+                    ),
+                    "max_chunk_duration": self.chunk_metrics.get(
+                        "max_duration", 0
+                    ),
+                    "min_chunk_duration": self.chunk_metrics.get(
+                        "min_duration", 0
+                    ),
+                    "chunk_char_lengths": self.chunk_metrics.get(
+                        "chunk_char_lengths", []
+                    ),
+                    "chunk_durations": self.chunk_metrics.get(
+                        "chunk_durations", []
+                    ),
+                }
+            )
+
         # Add genre-aware metrics if available
         if self.applied_profile:
             metrics["applied_profile"] = self.applied_profile
@@ -234,24 +268,32 @@ class ValidationConfig(BaseModel):
     min_chunk_chars: int = 420  # Character-based limit tuned for ~9s minimum
     max_chunk_chars: int = 950  # Character-based limit tuned for ~21s maximum
     max_chunk_duration: float = 20.0  # Duration limit in seconds
-    soft_chunk_chars: int = 780  # Preferred upper bound (~17s) before completion kicks in
+    soft_chunk_chars: int = (
+        780  # Preferred upper bound (~17s) before completion kicks in
+    )
     hard_chunk_chars: int = 950  # Upper bound to finish sentences (~21s)
     emergency_chunk_chars: int = 1250  # Absolute max to avoid TTS corruption
     emergency_chunk_duration: float = 24.0  # Absolute duration ceiling
-    genre_profile: str = "auto"  # Preferred genre profile for voice/metric selection
+    genre_profile: str = (
+        "auto"  # Preferred genre profile for voice/metric selection
+    )
 
     @field_validator("coherence_threshold")
     @classmethod
     def validate_coherence_threshold(cls, v: float) -> float:
         if not (0.0 <= v <= 1.0):
-            raise ValueError(f"coherence_threshold must be between 0 and 1, got {v}")
+            raise ValueError(
+                f"coherence_threshold must be between 0 and 1, got {v}"
+            )
         return v
 
     @field_validator("flesch_threshold")
     @classmethod
     def validate_flesch_threshold(cls, v: float) -> float:
         if not (0.0 <= v <= 100.0):
-            raise ValueError(f"flesch_threshold must be between 0 and 100, got {v}")
+            raise ValueError(
+                f"flesch_threshold must be between 0 and 100, got {v}"
+            )
         return v
 
     @field_validator("min_chunk_words")
@@ -281,13 +323,15 @@ class ValidationConfig(BaseModel):
         if v < 200:
             raise ValueError(f"max_chunk_chars must be at least 200, got {v}")
         return v
-    
+
     @field_validator("soft_chunk_chars")
     @classmethod
     def validate_soft_chars(cls, v: int, info) -> int:
         min_chars = info.data.get("min_chunk_chars", 1000)
         if v < min_chars:
-            raise ValueError(f"soft_chunk_chars ({v}) must be >= min_chunk_chars ({min_chars})")
+            raise ValueError(
+                f"soft_chunk_chars ({v}) must be >= min_chunk_chars ({min_chars})"
+            )
         return v
 
     @field_validator("hard_chunk_chars")
@@ -295,7 +339,9 @@ class ValidationConfig(BaseModel):
     def validate_hard_chars(cls, v: int, info) -> int:
         soft_chars = info.data.get("soft_chunk_chars", 1800)
         if v < soft_chars:
-            raise ValueError(f"hard_chunk_chars ({v}) must be >= soft_chunk_chars ({soft_chars})")
+            raise ValueError(
+                f"hard_chunk_chars ({v}) must be >= soft_chunk_chars ({soft_chars})"
+            )
         return v
 
     @field_validator("emergency_chunk_chars")
@@ -303,7 +349,9 @@ class ValidationConfig(BaseModel):
     def validate_emergency_chars(cls, v: int, info) -> int:
         hard_chars = info.data.get("hard_chunk_chars", 2000)
         if v <= hard_chars:
-            raise ValueError(f"emergency_chunk_chars ({v}) must be > hard_chunk_chars ({hard_chars})")
+            raise ValueError(
+                f"emergency_chunk_chars ({v}) must be > hard_chunk_chars ({hard_chars})"
+            )
         return v
 
     @field_validator("emergency_chunk_duration")
@@ -370,7 +418,9 @@ class Phase3Config(ValidationConfig):
         allowed = {"full", "no_embeddings", "fast_cpu"}
         value = (v or "full").lower()
         if value not in allowed:
-            raise ValueError(f"phase3_profile must be one of {allowed}, got {v}")
+            raise ValueError(
+                f"phase3_profile must be one of {allowed}, got {v}"
+            )
         return value
 
     @field_validator("min_structure_nodes")

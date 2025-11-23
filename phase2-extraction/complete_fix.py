@@ -30,7 +30,9 @@ print("=" * 80)
 
 if not patched_file.exists():
     print(f"❌ Patched file not found: {patched_file}")
-    print("   Please ensure extraction_PATCHED.py is in the phase2-extraction folder")
+    print(
+        "   Please ensure extraction_PATCHED.py is in the phase2-extraction folder"
+    )
     sys.exit(1)
 
 # Backup original
@@ -43,7 +45,7 @@ else:
     print(f"✓ Backup already exists: {backup_file.name}")
 
 # Apply patch
-print(f"Applying patched extraction.py...")
+print("Applying patched extraction.py...")
 shutil.copy2(patched_file, extraction_file)
 print("✓ Patched extraction.py applied (now uses pypdf first)")
 
@@ -56,7 +58,7 @@ check_result = subprocess.run(
     ["poetry", "run", "python", "-c", "import pypdf; print('installed')"],
     cwd=str(phase2_dir),
     capture_output=True,
-    text=True
+    text=True,
 )
 
 if "installed" not in check_result.stdout:
@@ -66,9 +68,9 @@ if "installed" not in check_result.stdout:
         cwd=str(phase2_dir),
         capture_output=True,
         text=True,
-        timeout=120
+        timeout=120,
     )
-    
+
     if install_result.returncode == 0:
         print("✓ pypdf installed successfully")
     else:
@@ -89,8 +91,7 @@ print("This will run Phase 1 → Phase 2 with proper tracking\n")
 
 # Run the processing script
 result = subprocess.run(
-    ["python", "process_systematic_theology.py"],
-    cwd=str(phase2_dir)
+    ["python", "process_systematic_theology.py"], cwd=str(phase2_dir)
 )
 
 if result.returncode != 0:
@@ -100,7 +101,8 @@ if result.returncode != 0:
 print("\n" + "=" * 80)
 print("✓ ALL FIXES APPLIED AND TESTED")
 print("=" * 80)
-print("""
+print(
+    """
 Summary:
   ✓ extraction.py now uses pypdf for better font encoding
   ✓ pypdf dependency installed
@@ -111,4 +113,5 @@ Next steps:
   - Check the extracted text quality in phase2-extraction/extracted_text/
   - If quality is good, proceed to Phase 3 (Chunking)
   - If still gibberish, run test_extraction_methods.py for diagnosis
-""")
+"""
+)

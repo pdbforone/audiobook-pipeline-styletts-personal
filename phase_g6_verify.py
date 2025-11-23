@@ -65,7 +65,10 @@ def reset_overrides() -> None:
     if overrides_path.exists():
         overrides_path.unlink()
     overrides_path.write_text(
-        json.dumps({"chunk_size": {}, "engine_prefs": {}, "voice_stability": {}}, indent=2),
+        json.dumps(
+            {"chunk_size": {}, "engine_prefs": {}, "voice_stability": {}},
+            indent=2,
+        ),
         encoding="utf-8",
     )
 
@@ -97,7 +100,13 @@ def diff_overrides(before: Dict[str, Any], after: Dict[str, Any]) -> str:
     before_lines = json.dumps(before, indent=2, sort_keys=True).splitlines()
     after_lines = json.dumps(after, indent=2, sort_keys=True).splitlines()
     return "\n".join(
-        difflib.unified_diff(before_lines, after_lines, fromfile="before", tofile="after", lineterm="")
+        difflib.unified_diff(
+            before_lines,
+            after_lines,
+            fromfile="before",
+            tofile="after",
+            lineterm="",
+        )
     )
 
 
@@ -129,7 +138,9 @@ def run_orchestrator(book_path: Path, run_id: int) -> Dict[str, Any]:
     if stderr:
         print("STDERR:", stderr)
     if result.returncode != 0:
-        raise RuntimeError(f"Run {run_id} for {book_path.name} failed (exit {result.returncode})")
+        raise RuntimeError(
+            f"Run {run_id} for {book_path.name} failed (exit {result.returncode})"
+        )
     combined_output = "\n".join(part for part in (stdout, stderr) if part)
     advisor_lines = [
         line.strip()
@@ -176,22 +187,30 @@ def perform_integrity_checks(book_stems: Sequence[str]) -> List[str]:
     log_dir = ROOT / ".pipeline" / "policy_logs"
     log_files = list(log_dir.glob("*.log"))
     if not log_files:
-        anomalies.append("No policy log files found under .pipeline/policy_logs")
+        anomalies.append(
+            "No policy log files found under .pipeline/policy_logs"
+        )
 
     overrides = load_overrides()
     extra_keys = set(overrides.keys()) - ALLOWED_OVERRIDE_KEYS
     if extra_keys:
-        anomalies.append(f"Tuning overrides contain unexpected keys: {sorted(extra_keys)}")
+        anomalies.append(
+            f"Tuning overrides contain unexpected keys: {sorted(extra_keys)}"
+        )
 
     phase4_entries = (
-        pipeline_data.get("phase4", {}).get("files", {}) if isinstance(pipeline_data, dict) else {}
+        pipeline_data.get("phase4", {}).get("files", {})
+        if isinstance(pipeline_data, dict)
+        else {}
     )
     for stem in book_stems:
         entry = phase4_entries.get(stem)
         if not isinstance(entry, dict):
             anomalies.append(f"No Phase 4 entry recorded for {stem}")
             continue
-        chunk_paths = entry.get("chunk_audio_paths") or entry.get("artifacts", {}).get("chunk_audio_paths")
+        chunk_paths = entry.get("chunk_audio_paths") or entry.get(
+            "artifacts", {}
+        ).get("chunk_audio_paths")
         if not chunk_paths:
             anomalies.append(f"No chunk_audio_paths stored for {stem}")
             continue
@@ -201,13 +220,19 @@ def perform_integrity_checks(book_stems: Sequence[str]) -> List[str]:
             if not Path(path).expanduser().resolve().exists()
         ]
         if missing:
-            anomalies.append(f"Missing Phase 4 audio files for {stem}: {missing}")
+            anomalies.append(
+                f"Missing Phase 4 audio files for {stem}: {missing}"
+            )
     return anomalies
 
 
 def save_diff(run_index: int, diff_text: str) -> None:
     target = DIFF_DIR / f"diff_run{run_index}.txt"
-    target.write_text(diff_text + ("\n" if diff_text and not diff_text.endswith("\n") else ""), encoding="utf-8")
+    target.write_text(
+        diff_text
+        + ("\n" if diff_text and not diff_text.endswith("\n") else ""),
+        encoding="utf-8",
+    )
 
 
 def play_victory_fanfare() -> None:
@@ -227,7 +252,9 @@ def play_victory_fanfare() -> None:
             winsound.Beep(freq, duration)
         winsound.Beep(1175, 450)
     except Exception:
-        print("Victory fanfare: please imagine the FF7 theme (audio unavailable).")
+        print(
+            "Victory fanfare: please imagine the FF7 theme (audio unavailable)."
+        )
 
 
 def main() -> None:
@@ -253,7 +280,11 @@ def main() -> None:
     anomalies = perform_integrity_checks([stem for _, stem in BOOK_ORDER])
 
     rtf_summary = ", ".join(
-        f"{entry['book']}: {entry['rtf']:.2f}x" if entry.get("rtf") else f"{entry['book']}: n/a"
+        (
+            f"{entry['book']}: {entry['rtf']:.2f}x"
+            if entry.get("rtf")
+            else f"{entry['book']}: n/a"
+        )
         for entry in report
     )
     delta_summary = ", ".join(

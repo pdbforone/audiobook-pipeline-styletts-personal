@@ -25,9 +25,12 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import soundfile as sf
 import yaml
+
 try:
     import psutil
-except ImportError:  # psutil is optional; CPU guard will be disabled if missing
+except (
+    ImportError
+):  # psutil is optional; CPU guard will be disabled if missing
     psutil = None
 try:
     from tqdm import tqdm
@@ -37,44 +40,35 @@ except ImportError:
 MODULE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = MODULE_ROOT.parent.parent
 DEFAULT_CHARS_PER_MINUTE = 1050  # Shared speaking cadence assumption
-from pipeline_common import PipelineState, ensure_phase_and_file, ensure_phase_block
+from pipeline_common import (
+    PipelineState,
+    ensure_phase_and_file,
+    ensure_phase_block,
+)
 from pipeline_common.state_manager import StateTransaction
 from pipeline_common.astromech_notify import play_success_beep, play_alert_beep
-from io_helpers import ensure_absolute_path, validate_audio_file
-
+from io_helpers import validate_audio_file
 
 
 if not hasattr(StateTransaction, "update_phase"):
 
-
-
     def _phase4_update_phase(  # type: ignore[override]
-
         self,
-
         file_id: str,
-
         phase_name: str,
-
         status: str,
-
         timestamps: Optional[Dict[str, Any]] = None,
-
         artifacts: Optional[Dict[str, Any]] = None,
-
         metrics: Optional[Dict[str, Any]] = None,
-
         errors: Optional[List[Any]] = None,
-
         *,
-
         chunks: Optional[List[Dict[str, Any]]] = None,
-
         extra_fields: Optional[Dict[str, Any]] = None,
-
     ) -> Dict[str, Any]:
 
-        phase_block, file_entry = ensure_phase_and_file(self.data, phase_name, file_id)
+        phase_block, file_entry = ensure_phase_and_file(
+            self.data, phase_name, file_id
+        )
 
         envelope = file_entry
 
@@ -96,14 +90,7 @@ if not hasattr(StateTransaction, "update_phase"):
 
         return envelope
 
-
-
     setattr(StateTransaction, "update_phase", _phase4_update_phase)
-
-
-
-
-
 
 
 # Add engines + shared utils to path
@@ -125,7 +112,9 @@ try:  # Import as package when executed via `python -m`
         predict_expected_duration,
         should_run_tier2_validation,
     )
-except ImportError:  # Fallback for CLI execution (`python src/main_multi_engine.py`)
+except (
+    ImportError
+):  # Fallback for CLI execution (`python src/main_multi_engine.py`)
     sys.path.insert(0, str(MODULE_ROOT))
     from utils import (  # type: ignore  # pylint: disable=import-error
         get_selected_voice_from_phase3,
@@ -142,7 +131,9 @@ except ImportError:  # Fallback for CLI execution (`python src/main_multi_engine
     )
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 @dataclass(slots=True)
@@ -193,7 +184,9 @@ def load_voices_config(voices_config_path: Path) -> Dict[str, Any]:
         logger.error("Voice config not found at %s", voices_config_path)
         return {}
     except json.JSONDecodeError as exc:
-        logger.error("Voice config at %s is invalid JSON: %s", voices_config_path, exc)
+        logger.error(
+            "Voice config at %s is invalid JSON: %s", voices_config_path, exc
+        )
         return {}
 
 
@@ -202,11 +195,15 @@ def load_pipeline_json(json_path: Path) -> Dict[str, Any]:
     try:
         return state.read(validate=False)
     except FileNotFoundError:
-        logger.info("Pipeline JSON not found at %s, starting fresh.", json_path)
+        logger.info(
+            "Pipeline JSON not found at %s, starting fresh.", json_path
+        )
         return {}
 
 
-def estimate_audio_seconds(chunks: List[ChunkPayload], chars_per_min: int = DEFAULT_CHARS_PER_MINUTE) -> float:
+def estimate_audio_seconds(
+    chunks: List[ChunkPayload], chars_per_min: int = DEFAULT_CHARS_PER_MINUTE
+) -> float:
     """Estimate total audio length (seconds) from chunk text sizes."""
     if chars_per_min <= 0:
         chars_per_min = DEFAULT_CHARS_PER_MINUTE
@@ -239,7 +236,9 @@ def choose_engine_auto(
     return preferred, "Using preferred engine (throughput acceptable)."
 
 
-def normalize_pipeline_path(raw_path: str, pipeline_json: Optional[Path] = None) -> Path:
+def normalize_pipeline_path(
+    raw_path: str, pipeline_json: Optional[Path] = None
+) -> Path:
     """Resolve chunk paths saved in pipeline.json to an existing absolute path."""
     if not raw_path:
         raise FileNotFoundError("Empty chunk path")
@@ -282,7 +281,12 @@ def serialize_path_for_pipeline(path: Path) -> str:
         return str(resolved)
 
     parts = resolved.parts
-    if len(parts) >= 3 and parts[0] == "/" and parts[1] == "mnt" and len(parts[2]) == 1:
+    if (
+        len(parts) >= 3
+        and parts[0] == "/"
+        and parts[1] == "mnt"
+        and len(parts[2]) == 1
+    ):
         drive = parts[2].upper()
         win_path = PureWindowsPath(f"{drive}:/", *parts[3:])
         return str(win_path)
@@ -309,7 +313,9 @@ def collect_chunks(
     custom_overrides: Optional[Dict[str, str]] = None,
 ) -> Tuple[str, List[ChunkPayload]]:
     """Load chunk paths from phase3 section and sanitize text for synthesis."""
-    resolved_key, phase3_entry = resolve_pipeline_file(pipeline_data, "phase3", file_id)
+    resolved_key, phase3_entry = resolve_pipeline_file(
+        pipeline_data, "phase3", file_id
+    )
 
     chunk_paths = phase3_entry.get("chunk_paths", []) if phase3_entry else []
     voice_overrides_map: Dict[str, str] = {}
@@ -324,7 +330,9 @@ def collect_chunks(
     if not chunk_paths:
         fallback_dir = PROJECT_ROOT / "phase3b_chunks" / file_id
         if fallback_dir.exists():
-            chunk_paths = sorted(str(p) for p in fallback_dir.glob("chunk_*.txt"))
+            chunk_paths = sorted(
+                str(p) for p in fallback_dir.glob("chunk_*.txt")
+            )
             if chunk_paths:
                 logger.warning(
                     "Phase 3 entry missing for '%s'; using filesystem chunks at %s",
@@ -338,7 +346,9 @@ def collect_chunks(
 
     chunk_payloads: List[ChunkPayload] = []
     for index, raw_path in enumerate(chunk_paths):
-        chunk_path = normalize_pipeline_path(raw_path, pipeline_json=pipeline_json)
+        chunk_path = normalize_pipeline_path(
+            raw_path, pipeline_json=pipeline_json
+        )
         if not chunk_path.exists():
             raise FileNotFoundError(f"Chunk file not found: {raw_path}")
 
@@ -363,7 +373,9 @@ def collect_chunks(
                 if not voice_override:
                     voice_override = voice_overrides_map.get(chunk_path.stem)
         chunk_payloads.append(
-            ChunkPayload(chunk_id, sanitized, chunk_path, voice_override, index)
+            ChunkPayload(
+                chunk_id, sanitized, chunk_path, voice_override, index
+            )
         )
 
     if chunk_index is not None:
@@ -374,11 +386,17 @@ def collect_chunks(
         chunk_payloads = [chunk_payloads[chunk_index]]
 
     if not chunk_payloads:
-        raise ValueError(f"All chunk files for '{file_id}' were empty or missing.")
+        raise ValueError(
+            f"All chunk files for '{file_id}' were empty or missing."
+        )
 
     resolved = resolved_key or file_id
     if resolved != file_id:
-        logger.info("Resolved file_id '%s' to '%s' based on phase3 data", file_id, resolved)
+        logger.info(
+            "Resolved file_id '%s' to '%s' based on phase3 data",
+            file_id,
+            resolved,
+        )
 
     return resolved, chunk_payloads
 
@@ -405,18 +423,28 @@ def select_voice(
     default_voice = voices_config.get("default_voice")
 
     # Determine which voice to use
-    selected_voice = voice_override or get_selected_voice_from_phase3(str(pipeline_json), file_id)
+    selected_voice = voice_override or get_selected_voice_from_phase3(
+        str(pipeline_json), file_id
+    )
 
     if not selected_voice:
         # Default to first built-in Kokoro voice or first prepared ref
         if built_in_voices.get("kokoro"):
             selected_voice = next(iter(built_in_voices["kokoro"].keys()))
-            logger.info("No voice selection. Using default built-in: '%s'", selected_voice)
+            logger.info(
+                "No voice selection. Using default built-in: '%s'",
+                selected_voice,
+            )
         elif prepared_refs:
             selected_voice = default_voice or next(iter(prepared_refs.keys()))
-            logger.info("No voice selection. Using default custom: '%s'", selected_voice)
+            logger.info(
+                "No voice selection. Using default custom: '%s'",
+                selected_voice,
+            )
         else:
-            raise RuntimeError("No voices available (neither built-in nor custom)")
+            raise RuntimeError(
+                "No voices available (neither built-in nor custom)"
+            )
 
     # Check if this is a built-in voice (across all engines)
     is_built_in = False
@@ -432,7 +460,11 @@ def select_voice(
 
     if is_built_in:
         # Built-in voice - no reference audio needed
-        logger.info("Using built-in voice '%s' from %s engine", selected_voice, built_in_engine)
+        logger.info(
+            "Using built-in voice '%s' from %s engine",
+            selected_voice,
+            built_in_engine,
+        )
         engine_params = {}
 
         # Set appropriate voice parameter based on engine
@@ -460,7 +492,8 @@ def select_voice(
             fallback_voice = next(iter(built_in_voices["kokoro"].keys()))
             logger.warning(
                 "Custom voice '%s' not found. Falling back to built-in: '%s'",
-                selected_voice, fallback_voice
+                selected_voice,
+                fallback_voice,
             )
             return select_voice(
                 pipeline_json,
@@ -486,9 +519,13 @@ def select_voice(
         )
         selected_voice = fallback_voice
 
-    logger.info("Using custom voice clone '%s' with reference audio", selected_voice)
+    logger.info(
+        "Using custom voice clone '%s' with reference audio", selected_voice
+    )
     reference_path = Path(prepared_refs[selected_voice]).resolve()
-    engine_params = voice_entries.get(selected_voice, {}).get("tts_engine_params", {})
+    engine_params = voice_entries.get(selected_voice, {}).get(
+        "tts_engine_params", {}
+    )
 
     return selected_voice, reference_path, engine_params
 
@@ -592,7 +629,10 @@ def synthesize_chunk_with_engine(
                 voice_used,
             )
     existing_out = output_dir / f"{chunk.chunk_id}.wav"
-    est_dur_sec = max(1.0, predict_expected_duration(chunk.text, chars_per_minute=effective_cpm))
+    est_dur_sec = max(
+        1.0,
+        predict_expected_duration(chunk.text, chars_per_minute=effective_cpm),
+    )
 
     # Resume support: skip already-rendered chunks
     if skip_existing and existing_out.exists():
@@ -635,13 +675,22 @@ def synthesize_chunk_with_engine(
         try:
             engine_obj = engine_manager.get_engine(target_engine)
         except Exception as exc:  # pylint: disable=broad-except
-            logger.error("Chunk %s failed to load engine '%s' for length check: %s", chunk.chunk_id, target_engine, exc)
+            logger.error(
+                "Chunk %s failed to load engine '%s' for length check: %s",
+                chunk.chunk_id,
+                target_engine,
+                exc,
+            )
             raise
         if hasattr(engine_obj, "get_max_text_length"):
             try:
                 max_len = engine_obj.get_max_text_length()
             except Exception as exc:  # pylint: disable=broad-except
-                logger.warning("Engine '%s' get_max_text_length failed: %s", target_engine, exc)
+                logger.warning(
+                    "Engine '%s' get_max_text_length failed: %s",
+                    target_engine,
+                    exc,
+                )
                 return None
             return max_len
         return None
@@ -689,10 +738,15 @@ def synthesize_chunk_with_engine(
             error="text too long",
             validation_tier=1,
             validation_reason="text_too_long",
-            validation_details={"max_length": max_len, "text_length": len(chunk.text)},
+            validation_details={
+                "max_length": max_len,
+                "text_length": len(chunk.text),
+            },
         )
 
-    def attempt_synthesis(target_engine: str, allow_fb: bool, rtf_threshold: Optional[float]) -> Tuple[np.ndarray, str, int, float, float]:
+    def attempt_synthesis(
+        target_engine: str, allow_fb: bool, rtf_threshold: Optional[float]
+    ) -> Tuple[np.ndarray, str, int, float, float]:
         synth_start = time.time()
         audio_out, selected_engine = engine_manager.synthesize(
             text=chunk.text,
@@ -706,15 +760,28 @@ def synthesize_chunk_with_engine(
             **chunk_kwargs,
         )
         elapsed = time.time() - synth_start
-        standardized, sample_rate, audio_duration, rt_factor = standardize_audio(audio_out, selected_engine, elapsed)
-        return standardized, selected_engine, sample_rate, audio_duration, rt_factor
+        standardized, sample_rate, audio_duration, rt_factor = (
+            standardize_audio(audio_out, selected_engine, elapsed)
+        )
+        return (
+            standardized,
+            selected_engine,
+            sample_rate,
+            audio_duration,
+            rt_factor,
+        )
 
     try:
-        audio, used_engine, sample_rate, audio_duration, rt_factor = attempt_synthesis(
-            effective_engine, allow_fallback, 1.1
+        audio, used_engine, sample_rate, audio_duration, rt_factor = (
+            attempt_synthesis(effective_engine, allow_fallback, 1.1)
         )
     except Exception as exc:  # pylint: disable=broad-except
-        logger.error("Chunk %s failed on engine '%s': %s", chunk.chunk_id, engine_name, exc)
+        logger.error(
+            "Chunk %s failed on engine '%s': %s",
+            chunk.chunk_id,
+            engine_name,
+            exc,
+        )
         return ChunkResult(
             chunk_id=chunk.chunk_id,
             success=False,
@@ -765,9 +832,13 @@ def synthesize_chunk_with_engine(
                     kokoro_limit,
                 )
             else:
-                fallback_audio, fallback_engine, kokoro_sr, kokoro_dur, kokoro_rt = attempt_synthesis(
-                    "kokoro", False, None
-                )
+                (
+                    fallback_audio,
+                    fallback_engine,
+                    kokoro_sr,
+                    kokoro_dur,
+                    kokoro_rt,
+                ) = attempt_synthesis("kokoro", False, None)
 
                 # Replace audio if Kokoro is materially faster or XTTS was effectively stalled.
                 if kokoro_rt < rt_factor or rt_factor == float("inf"):
@@ -793,7 +864,9 @@ def synthesize_chunk_with_engine(
                     )
         except Exception as fallback_exc:  # pylint: disable=broad-except
             logger.warning(
-                "Chunk %s Kokoro latency fallback failed: %s", chunk.chunk_id, fallback_exc
+                "Chunk %s Kokoro latency fallback failed: %s",
+                chunk.chunk_id,
+                fallback_exc,
             )
 
     if rt_factor > slow_rt_threshold:
@@ -809,7 +882,9 @@ def synthesize_chunk_with_engine(
     try:
         validate_audio_file(output_path)
     except Exception as exc:  # noqa: BLE001
-        logger.error("Chunk %s output validation failed: %s", chunk.chunk_id, exc)
+        logger.error(
+            "Chunk %s output validation failed: %s", chunk.chunk_id, exc
+        )
         return ChunkResult(
             chunk_id=chunk.chunk_id,
             success=False,
@@ -835,7 +910,10 @@ def synthesize_chunk_with_engine(
     if validation_enabled and validation_config:
         if validation_config.enable_tier1:
             tier1_result = tier1_validate(
-                chunk.text, str(output_path), validation_config, chars_per_minute=effective_cpm
+                chunk.text,
+                str(output_path),
+                validation_config,
+                chars_per_minute=effective_cpm,
             )
             validation_tier = tier1_result.tier
             validation_reason = tier1_result.reason
@@ -870,9 +948,13 @@ def synthesize_chunk_with_engine(
                             kokoro_limit,
                         )
                     else:
-                        audio, used_engine, sample_rate, audio_duration, rt_factor = attempt_synthesis(
-                            "kokoro", False, None
-                        )
+                        (
+                            audio,
+                            used_engine,
+                            sample_rate,
+                            audio_duration,
+                            rt_factor,
+                        ) = attempt_synthesis("kokoro", False, None)
                         sf.write(output_path, audio, sample_rate)
                         tier1_result = tier1_validate(
                             chunk.text,
@@ -883,7 +965,9 @@ def synthesize_chunk_with_engine(
                         validation_tier = tier1_result.tier
                         validation_reason = tier1_result.reason
                         validation_details = tier1_result.details
-                        collected_validation_details["tier1"] = tier1_result.details
+                        collected_validation_details["tier1"] = (
+                            tier1_result.details
+                        )
                         validation_success = tier1_result.is_valid
                         logger.info(
                             "Chunk %s Tier1 validation after Kokoro retry %s (%s)",
@@ -892,32 +976,54 @@ def synthesize_chunk_with_engine(
                             tier1_result.reason,
                         )
                 except Exception as exc:  # pylint: disable=broad-except
-                    logger.error("Chunk %s validation retry failed: %s", chunk.chunk_id, exc)
+                    logger.error(
+                        "Chunk %s validation retry failed: %s",
+                        chunk.chunk_id,
+                        exc,
+                    )
                     validation_success = False
-                    validation_reason = validation_reason or "validation_retry_failed"
+                    validation_reason = (
+                        validation_reason or "validation_retry_failed"
+                    )
 
-        if validation_config.enable_tier2 and (tier1_result is None or tier1_result.is_valid):
+        if validation_config.enable_tier2 and (
+            tier1_result is None or tier1_result.is_valid
+        ):
             if total_chunks is not None and chunk_index is not None:
-                run_tier2 = should_run_tier2_validation(chunk_index, total_chunks, validation_config)
+                run_tier2 = should_run_tier2_validation(
+                    chunk_index, total_chunks, validation_config
+                )
             else:
                 run_tier2 = True
             if run_tier2:
-                tier2_result = tier2_validate(chunk.text, str(output_path), validation_config)
+                tier2_result = tier2_validate(
+                    chunk.text, str(output_path), validation_config
+                )
                 validation_tier = tier2_result.tier
                 validation_reason = tier2_result.reason
                 validation_details = tier2_result.details
                 collected_validation_details["tier2"] = tier2_result.details
-                validation_success = validation_success and tier2_result.is_valid
+                validation_success = (
+                    validation_success and tier2_result.is_valid
+                )
                 logger.info(
                     "Chunk %s Tier2 validation %s (%s)",
                     chunk.chunk_id,
                     "PASS" if tier2_result.is_valid else "FAIL",
                     tier2_result.reason,
                 )
-    if collected_validation_details and (validation_details is None or validation_details != collected_validation_details):
+    if collected_validation_details and (
+        validation_details is None
+        or validation_details != collected_validation_details
+    ):
         validation_details = collected_validation_details
 
-    logger.info("Chunk %s synthesized via '%s' → %s", chunk.chunk_id, used_engine, output_path)
+    logger.info(
+        "Chunk %s synthesized via '%s' → %s",
+        chunk.chunk_id,
+        used_engine,
+        output_path,
+    )
     return ChunkResult(
         chunk_id=chunk.chunk_id,
         success=validation_success,
@@ -934,6 +1040,7 @@ def synthesize_chunk_with_engine(
         validation_details=validation_details,
         error=None if validation_success else validation_reason,
     )
+
 
 def update_phase4_summary(
     pipeline_path: Path,
@@ -955,17 +1062,27 @@ def update_phase4_summary(
     engines_used = sorted({r.engine_used for r in results if r.engine_used})
     voices_used = sorted({r.voice_used for r in results if r.voice_used})
     rt_factors = [
-        r.rt_factor for r in results if r.success and r.rt_factor is not None and np.isfinite(r.rt_factor)
+        r.rt_factor
+        for r in results
+        if r.success and r.rt_factor is not None and np.isfinite(r.rt_factor)
     ]
     avg_rt_factor = float(np.mean(rt_factors)) if rt_factors else None
     latency_fallback_count = sum(1 for r in results if r.latency_fallback_used)
     fallback_rate = (
-        float(latency_fallback_count) / max(1, completed) if completed else None
+        float(latency_fallback_count) / max(1, completed)
+        if completed
+        else None
     )
     validated_chunks = sum(1 for r in results if r.validation_tier is not None)
-    validation_failures = sum(1 for r in results if not r.success and r.validation_reason)
-    tier1_failures = sum(1 for r in results if r.validation_tier == 1 and not r.success)
-    tier2_failures = sum(1 for r in results if r.validation_tier == 2 and not r.success)
+    validation_failures = sum(
+        1 for r in results if not r.success and r.validation_reason
+    )
+    tier1_failures = sum(
+        1 for r in results if r.validation_tier == 1 and not r.success
+    )
+    tier2_failures = sum(
+        1 for r in results if r.validation_tier == 2 and not r.success
+    )
     rt_p50 = float(np.percentile(rt_factors, 50)) if rt_factors else None
     rt_p90 = float(np.percentile(rt_factors, 90)) if rt_factors else None
     rt_p99 = float(np.percentile(rt_factors, 99)) if rt_factors else None
@@ -977,7 +1094,11 @@ def update_phase4_summary(
         )
     if completed and fallback_rate is not None and fallback_rate > 0.2:
         extra = " High latency fallback usage (>20%)."
-        advisory = (advisory + extra) if advisory else ("High latency fallback usage (>20%). " "Consider Kokoro.")
+        advisory = (
+            (advisory + extra)
+            if advisory
+            else ("High latency fallback usage (>20%). " "Consider Kokoro.")
+        )
 
     chunk_rows: List[Dict[str, Any]] = []
     for result in results:
@@ -988,9 +1109,15 @@ def update_phase4_summary(
                 "est_dur": result.est_dur,
                 "engine": result.engine_used,
                 "rt_factor": result.rt_factor,
-                "audio_path": serialize_path_for_pipeline(result.output_path) if result.output_path else None,
+                "audio_path": (
+                    serialize_path_for_pipeline(result.output_path)
+                    if result.output_path
+                    else None
+                ),
                 "status": "success" if result.success else "failed",
-                "errors": [] if result.success else [result.error or "unknown error"],
+                "errors": (
+                    [] if result.success else [result.error or "unknown error"]
+                ),
                 "latency_fallback_used": result.latency_fallback_used,
                 "validation_tier": result.validation_tier,
                 "validation_reason": result.validation_reason,
@@ -1025,11 +1152,15 @@ def update_phase4_summary(
         artifacts = {
             "audio_dir": serialize_path_for_pipeline(output_dir),
             "chunk_audio_paths": [
-                serialize_path_for_pipeline(r.output_path) for r in results if r.success and r.output_path
+                serialize_path_for_pipeline(r.output_path)
+                for r in results
+                if r.success and r.output_path
             ],
         }
         if summary_path:
-            artifacts["run_summary"] = serialize_path_for_pipeline(summary_path)
+            artifacts["run_summary"] = serialize_path_for_pipeline(
+                summary_path
+            )
         metrics = {
             "total_chunks": total,
             "chunks_completed": completed,
@@ -1066,8 +1197,10 @@ def update_phase4_summary(
             extra_fields=extra_fields,
         )
 
-        file_entry.setdefault("chunk_audio_paths", 
-            file_entry.get("artifacts", {}).get("chunk_audio_paths", []))
+        file_entry.setdefault(
+            "chunk_audio_paths",
+            file_entry.get("artifacts", {}).get("chunk_audio_paths", []),
+        )
 
         # Ensure the phase block records this file entry (robust against
         # partial serializations or other anomalies).
@@ -1079,7 +1212,9 @@ def update_phase4_summary(
             files_section[file_id] = dict(file_entry or {})
         phase_block.setdefault("chunks", [])
         all_files = files_section.values()
-        block_success = all(entry.get("status") == "success" for entry in all_files)
+        block_success = all(
+            entry.get("status") == "success" for entry in all_files
+        )
         phase_block["status"] = "success" if block_success else "partial"
         phase_block.setdefault("errors", [])
         phase_metrics = phase_block.setdefault("metrics", {})
@@ -1087,10 +1222,12 @@ def update_phase4_summary(
             {
                 "files_processed": len(files_section),
                 "chunks_completed": sum(
-                    entry.get("metrics", {}).get("chunks_completed", 0) for entry in all_files
+                    entry.get("metrics", {}).get("chunks_completed", 0)
+                    for entry in all_files
                 ),
                 "chunks_failed": sum(
-                    entry.get("metrics", {}).get("chunks_failed", 0) for entry in all_files
+                    entry.get("metrics", {}).get("chunks_failed", 0)
+                    for entry in all_files
                 ),
             }
         )
@@ -1107,15 +1244,19 @@ def write_run_summary(
 ) -> Path:
     """Persist a lightweight summary.json for quick inspection and return its path."""
     rt_values = [
-        r.rt_factor for r in results if r.success and r.rt_factor is not None and np.isfinite(r.rt_factor)
+        r.rt_factor
+        for r in results
+        if r.success and r.rt_factor is not None and np.isfinite(r.rt_factor)
     ]
     rt_p50 = float(np.percentile(rt_values, 50)) if rt_values else None
     rt_p90 = float(np.percentile(rt_values, 90)) if rt_values else None
     rt_p99 = float(np.percentile(rt_values, 99)) if rt_values else None
-    fallback_rate = sum(1 for r in results if r.latency_fallback_used and r.success) / max(
-        1, sum(1 for r in results if r.success)
+    fallback_rate = sum(
+        1 for r in results if r.latency_fallback_used and r.success
+    ) / max(1, sum(1 for r in results if r.success))
+    validation_failures = sum(
+        1 for r in results if not r.success and r.validation_reason
     )
-    validation_failures = sum(1 for r in results if not r.success and r.validation_reason)
 
     payload = {
         "requested_engine": requested_engine,
@@ -1144,7 +1285,9 @@ ENGINE_IMPORT_MAP: Dict[str, Tuple[str, str]] = {
 }
 
 
-def build_engine_manager(device: str, engines: Optional[List[str]] = None) -> EngineManager:
+def build_engine_manager(
+    device: str, engines: Optional[List[str]] = None
+) -> EngineManager:
     """Build engine manager while skipping engines whose deps are unavailable."""
     manager = EngineManager(device=device)
 
@@ -1155,7 +1298,10 @@ def build_engine_manager(device: str, engines: Optional[List[str]] = None) -> En
     for engine_name in engines:
         module_info = ENGINE_IMPORT_MAP.get(engine_name)
         if not module_info:
-            logger.warning("Unknown engine '%s' requested; skipping registration.", engine_name)
+            logger.warning(
+                "Unknown engine '%s' requested; skipping registration.",
+                engine_name,
+            )
             continue
 
         module_path, class_name = module_info
@@ -1164,7 +1310,9 @@ def build_engine_manager(device: str, engines: Optional[List[str]] = None) -> En
             engine_class = getattr(module, class_name)
         except ModuleNotFoundError as exc:
             logger.warning(
-                "Skipping engine '%s' because dependencies are missing (%s).", engine_name, exc
+                "Skipping engine '%s' because dependencies are missing (%s).",
+                engine_name,
+                exc,
             )
             continue
         except Exception as exc:  # pylint: disable=broad-except
@@ -1183,8 +1331,14 @@ def build_engine_manager(device: str, engines: Optional[List[str]] = None) -> En
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Phase 4: Multi-Engine TTS Synthesis")
-    parser.add_argument("--file_id", required=True, help="File identifier (matches phase3 entry)")
+    parser = argparse.ArgumentParser(
+        description="Phase 4: Multi-Engine TTS Synthesis"
+    )
+    parser.add_argument(
+        "--file_id",
+        required=True,
+        help="File identifier (matches phase3 entry)",
+    )
     parser.add_argument(
         "--engine",
         default=None,
@@ -1201,19 +1355,37 @@ def main(argv: Optional[List[str]] = None) -> int:
         choices=["safe", "balanced", "max_quality"],
         help="Preset: safe (workers=3, prefer Kokoro, guard on), balanced (workers=3, auto-engine), max_quality (workers=2, xtts focus).",
     )
-    parser.add_argument("--json_path", required=True, help="Path to pipeline.json")
-    parser.add_argument("--config", default="config.yaml", help="Phase4 config file")
-    parser.add_argument("--voice", help="Voice ID override (keys from configs/voice_references.json)")
+    parser.add_argument(
+        "--json_path", required=True, help="Path to pipeline.json"
+    )
+    parser.add_argument(
+        "--config", default="config.yaml", help="Phase4 config file"
+    )
+    parser.add_argument(
+        "--voice",
+        help="Voice ID override (keys from configs/voice_references.json)",
+    )
     parser.add_argument("--device", default="cpu", help="Device (cpu/cuda)")
-    parser.add_argument("--workers", type=int, default=None, help="Parallel workers for chunk synthesis")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Parallel workers for chunk synthesis",
+    )
     parser.add_argument(
         "--max-workers",
         dest="workers",
         type=int,
         help="Alias for --workers (max parallel synth jobs).",
     )
-    parser.add_argument("--language", help="Override language (defaults to config value)")
-    parser.add_argument("--chunk_id", type=int, help="Optional chunk index to synthesize (legacy compatibility)")
+    parser.add_argument(
+        "--language", help="Override language (defaults to config value)"
+    )
+    parser.add_argument(
+        "--chunk_id",
+        type=int,
+        help="Optional chunk index to synthesize (legacy compatibility)",
+    )
     parser.add_argument(
         "--disable_fallback",
         action="store_true",
@@ -1301,7 +1473,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     json_path = Path(args.json_path).resolve()
     config_path = MODULE_ROOT.parent / args.config
-    voices_config_path = MODULE_ROOT.parent / "configs" / "voice_references.json"
+    voices_config_path = (
+        MODULE_ROOT.parent / "configs" / "voice_references.json"
+    )
 
     config = load_config(config_path)
     pipeline_data = load_pipeline_json(json_path)
@@ -1309,15 +1483,22 @@ def main(argv: Optional[List[str]] = None) -> int:
     normalize_numbers = bool(config.get("normalize_numbers", True))
     custom_overrides = config.get("custom_pronunciations", {}) or None
     chars_per_minute = int(
-        config.get("tts_chars_per_minute", config.get("chars_per_minute", DEFAULT_CHARS_PER_MINUTE))
+        config.get(
+            "tts_chars_per_minute",
+            config.get("chars_per_minute", DEFAULT_CHARS_PER_MINUTE),
+        )
     )
     if chars_per_minute <= 0:
         chars_per_minute = DEFAULT_CHARS_PER_MINUTE
-    workers = args.workers if args.workers is not None else config.get("workers", 2)
+    workers = (
+        args.workers if args.workers is not None else config.get("workers", 2)
+    )
     workers = max(1, int(workers))
     cpu_safe = bool(args.cpu_safe)
     cpu_guard = bool(args.cpu_guard or cpu_safe)
-    cpu_guard_high = float(args.cpu_guard_high if args.cpu_guard_high is not None else 85.0)
+    cpu_guard_high = float(
+        args.cpu_guard_high if args.cpu_guard_high is not None else 85.0
+    )
     enable_latency_fallback = not args.disable_latency_fallback and bool(
         config.get("enable_latency_fallback", True)
     )
@@ -1330,16 +1511,33 @@ def main(argv: Optional[List[str]] = None) -> int:
         else config.get("slow_rt_threshold", 4.0)
     )
     if cpu_safe:
-        slow_rt_threshold = min(slow_rt_threshold, 3.5)  # Prefer earlier fallback when protecting CPU thermals.
+        slow_rt_threshold = min(
+            slow_rt_threshold, 3.5
+        )  # Prefer earlier fallback when protecting CPU thermals.
     validation_settings = config.get("validation", {}) or {}
     tier1_settings = validation_settings.get("tier1", validation_settings)
     tier2_settings = validation_settings.get("tier2", validation_settings)
-    tier2_enabled_default = bool(tier2_settings.get("enabled", tier2_settings.get("enable_tier2", False)))
-    tier2_enabled_override = any(val is not None for val in (args.tier2_sample, args.tier2_first_n, args.tier2_last_n))
+    tier2_enabled_default = bool(
+        tier2_settings.get(
+            "enabled", tier2_settings.get("enable_tier2", False)
+        )
+    )
+    tier2_enabled_override = any(
+        val is not None
+        for val in (args.tier2_sample, args.tier2_first_n, args.tier2_last_n)
+    )
     validation_config = ValidationConfig(
-        enable_tier1=bool(tier1_settings.get("enabled", tier1_settings.get("enable_tier1", True))),
-        duration_tolerance_sec=float(tier1_settings.get("duration_tolerance_sec", 5.0)),
-        silence_threshold_sec=float(tier1_settings.get("silence_threshold_sec", 2.0)),
+        enable_tier1=bool(
+            tier1_settings.get(
+                "enabled", tier1_settings.get("enable_tier1", True)
+            )
+        ),
+        duration_tolerance_sec=float(
+            tier1_settings.get("duration_tolerance_sec", 5.0)
+        ),
+        silence_threshold_sec=float(
+            tier1_settings.get("silence_threshold_sec", 2.0)
+        ),
         min_amplitude_db=float(tier1_settings.get("min_amplitude_db", -40.0)),
         enable_tier2=tier2_enabled_default or tier2_enabled_override,
         whisper_model=tier2_settings.get("whisper_model", "tiny"),
@@ -1365,7 +1563,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.no_validation:
         validation_config.enable_tier1 = False
         validation_config.enable_tier2 = False
-    validation_enabled = validation_config.enable_tier1 or validation_config.enable_tier2
+    validation_enabled = (
+        validation_config.enable_tier1 or validation_config.enable_tier2
+    )
 
     resolved_file_id, chunks = collect_chunks(
         pipeline_data,
@@ -1378,7 +1578,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     if not chunks:
         logger.error("No chunks discovered for %s", args.file_id)
-        if args.play_notification is not False and not args.silence_notifications:
+        if (
+            args.play_notification is not False
+            and not args.silence_notifications
+        ):
             play_alert_beep(silence_mode=False)
         return 1
 
@@ -1404,7 +1607,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     auto_engine_enabled = auto_engine_enabled or cpu_safe
     if args.prefer_kokoro and engine_requested == "xtts":
         engine_requested = "kokoro"
-        logger.info("Prefer Kokoro flag set: overriding requested engine to kokoro for throughput.")
+        logger.info(
+            "Prefer Kokoro flag set: overriding requested engine to kokoro for throughput."
+        )
     engine_selected = engine_requested
     est_audio_seconds = estimate_audio_seconds(
         chunks, chars_per_min=chars_per_minute
@@ -1417,13 +1622,27 @@ def main(argv: Optional[List[str]] = None) -> int:
             rt_kokoro=float(config.get("rt_kokoro_factor", 1.3)),
             chars_per_min=chars_per_minute,
         )
-        logger.info("Auto-engine decision: %s (requested=%s, selected=%s)", reason, engine_requested, engine_selected)
+        logger.info(
+            "Auto-engine decision: %s (requested=%s, selected=%s)",
+            reason,
+            engine_requested,
+            engine_selected,
+        )
     else:
-        logger.info("Auto-engine disabled. Using requested engine: %s", engine_requested)
+        logger.info(
+            "Auto-engine disabled. Using requested engine: %s",
+            engine_requested,
+        )
     if cpu_safe:
-        logger.info("CPU-safe mode: enforcing conservative throughput (workers capped, latency fallback always on).")
+        logger.info(
+            "CPU-safe mode: enforcing conservative throughput (workers capped, latency fallback always on)."
+        )
     if rt_budget_hours:
-        rt_factor_hint = float(config.get("rt_xtts_factor", 3.2) if engine_selected == "xtts" else config.get("rt_kokoro_factor", 1.3))
+        rt_factor_hint = float(
+            config.get("rt_xtts_factor", 3.2)
+            if engine_selected == "xtts"
+            else config.get("rt_kokoro_factor", 1.3)
+        )
         est_wall = est_audio_seconds * rt_factor_hint
         budget_seconds = rt_budget_hours * 3600.0
         if est_wall > budget_seconds:
@@ -1434,9 +1653,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                 engine_selected,
             )
             if cpu_safe and engine_selected == "xtts":
-                logger.info("CPU-safe + budget: biasing to Kokoro for throughput.")
+                logger.info(
+                    "CPU-safe + budget: biasing to Kokoro for throughput."
+                )
                 engine_selected = "kokoro"
-            best_case_rt = float(min(config.get("rt_xtts_factor", 3.2), config.get("rt_kokoro_factor", 1.3)))
+            best_case_rt = float(
+                min(
+                    config.get("rt_xtts_factor", 3.2),
+                    config.get("rt_kokoro_factor", 1.3),
+                )
+            )
             best_case_wall = est_audio_seconds * best_case_rt
             if best_case_wall > budget_seconds:
                 logger.warning(
@@ -1447,11 +1673,18 @@ def main(argv: Optional[List[str]] = None) -> int:
                 )
 
     if args.play_notification is None:
-        args.play_notification = True  # Default ON unless explicitly disabled elsewhere
+        args.play_notification = (
+            True  # Default ON unless explicitly disabled elsewhere
+        )
     if args.play_notification and not args.silence_notifications:
-        logger.info("Astromech notifications: ON (use --silence_notifications to mute).")
+        logger.info(
+            "Astromech notifications: ON (use --silence_notifications to mute)."
+        )
     if cpu_guard:
-        logger.info("CPU guard: enabled (CPU threshold %.1f%%; RAM guard 85%%; requires psutil).", cpu_guard_high)
+        logger.info(
+            "CPU guard: enabled (CPU threshold %.1f%%; RAM guard 85%%; requires psutil).",
+            cpu_guard_high,
+        )
 
     voices_config = load_voices_config(voices_config_path)
     voice_references = prepare_voice_references(
@@ -1468,7 +1701,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     voice_assets = build_voice_assets(voices_config, voice_references)
 
-    base_output = Path(config.get("audio_chunks_dir", "audio_chunks")).resolve()
+    base_output = Path(
+        config.get("audio_chunks_dir", "audio_chunks")
+    ).resolve()
     output_dir = base_output / resolved_file_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1521,7 +1756,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     total_chunks = len(chunks)
     pending = list(chunks)
     active_futures: Dict[Any, str] = {}
-    progress = tqdm(total=total_chunks, desc="Synth", unit="chunk") if tqdm else None
+    progress = (
+        tqdm(total=total_chunks, desc="Synth", unit="chunk") if tqdm else None
+    )
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         while pending or active_futures:
@@ -1563,7 +1800,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                     progress.update(1)
                 if total_chunks:
                     completed_so_far = len(results)
-                    if completed_so_far == total_chunks or completed_so_far % max(1, total_chunks // 10) == 0:
+                    if (
+                        completed_so_far == total_chunks
+                        or completed_so_far % max(1, total_chunks // 10) == 0
+                    ):
                         logger.info(
                             "Progress: %d/%d (%.1f%%)",
                             completed_so_far,
@@ -1618,18 +1858,24 @@ def main(argv: Optional[List[str]] = None) -> int:
     failed_count = len(results) - success_count
 
     logger.info("-" * 80)
-    logger.info("Completed in %.1fs (%0.1fs/chunk)", duration, duration / max(1, len(results)))
+    logger.info(
+        "Completed in %.1fs (%0.1fs/chunk)",
+        duration,
+        duration / max(1, len(results)),
+    )
     logger.info("Success: %d | Failed: %d", success_count, failed_count)
     rt_values = [
-        r.rt_factor for r in results if r.success and r.rt_factor is not None and np.isfinite(r.rt_factor)
+        r.rt_factor
+        for r in results
+        if r.success and r.rt_factor is not None and np.isfinite(r.rt_factor)
     ]
     if rt_values:
         rt_p50 = float(np.percentile(rt_values, 50))
         rt_p90 = float(np.percentile(rt_values, 90))
         rt_p99 = float(np.percentile(rt_values, 99))
-        fallback_rate = sum(1 for r in results if r.latency_fallback_used and r.success) / max(
-            1, success_count
-        )
+        fallback_rate = sum(
+            1 for r in results if r.latency_fallback_used and r.success
+        ) / max(1, success_count)
         logger.info(
             "RT factors p50=%.2fx p90=%.2fx p99=%.2fx | latency fallback rate=%.1f%%",
             rt_p50,

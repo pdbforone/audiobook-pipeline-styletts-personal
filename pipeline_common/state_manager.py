@@ -38,7 +38,6 @@ else:  # pragma: no cover - platform specific
 
 from .models import PYDANTIC_AVAILABLE, PipelineSchema
 from .schema import (
-    CANONICAL_SCHEMA_VERSION,
     PHASE_KEYS as _SCHEMA_PHASE_KEYS,
     canonicalize_state,
     validate_pipeline_schema,
@@ -215,9 +214,13 @@ class PipelineState:
         self.structural_validation = structural_validation
         self.backup_before_write = backup_before_write
         self.enforce_canonical_schema = enforce_canonical_schema
-        self.required_sections: tuple[str, ...] = tuple(required_sections or DEFAULT_REQUIRED_SECTIONS)
+        self.required_sections: tuple[str, ...] = tuple(
+            required_sections or DEFAULT_REQUIRED_SECTIONS
+        )
 
-        self.backup_manager = StateBackupManager(self.path, max_backups=max_backups)
+        self.backup_manager = StateBackupManager(
+            self.path, max_backups=max_backups
+        )
         self.transaction_log = StateTransactionLog(self.path)
 
         logger.debug("PipelineState initialized for %s", self.path)
@@ -272,7 +275,9 @@ class PipelineState:
     # ------------------------------------------------------------------ #
     def read(self, validate: Optional[bool] = None) -> JsonDict:
         """Read current state from disk with optional validation."""
-        run_validation = self.validate_on_read if validate is None else validate
+        run_validation = (
+            self.validate_on_read if validate is None else validate
+        )
 
         if not self.path.exists():
             self._log_transaction("read", True, {"note": "file_not_found"})
@@ -291,7 +296,9 @@ class PipelineState:
             self._log_transaction("read", True)
             return data
         except json.JSONDecodeError as exc:
-            self._log_transaction("read", False, {"error": "json_decode_error"})
+            self._log_transaction(
+                "read", False, {"error": "json_decode_error"}
+            )
             raise StateReadError(f"Corrupted state file: {exc}") from exc
         except StateValidationError:
             self._log_transaction("read", False, {"error": "validation_error"})
@@ -301,11 +308,15 @@ class PipelineState:
             raise StateReadError(f"Failed to read state file: {exc}") from exc
         except Exception as exc:
             self._log_transaction("read", False, {"error": str(exc)})
-            raise StateReadError(f"Unexpected error reading state: {exc}") from exc
+            raise StateReadError(
+                f"Unexpected error reading state: {exc}"
+            ) from exc
 
     def write(self, data: JsonDict, validate: bool = True) -> None:
         """Write the provided state to disk atomically via a transaction."""
-        with self.transaction(validate=validate, seed_data=data, operation="write"):
+        with self.transaction(
+            validate=validate, seed_data=data, operation="write"
+        ):
             # All work is performed by the transaction context
             pass
 
@@ -324,7 +335,9 @@ class PipelineState:
             seed_data: Optional initial payload to use instead of the on-disk state.
             operation: Operation name recorded in the transaction log.
         """
-        return StateTransaction(self, validate=validate, seed_data=seed_data, operation=operation)
+        return StateTransaction(
+            self, validate=validate, seed_data=seed_data, operation=operation
+        )
 
     def list_backups(self, limit: int = 10) -> List[Path]:
         """Return recent backup files."""
@@ -334,10 +347,14 @@ class PipelineState:
         """Restore state from the given backup file."""
         return self.backup_manager.restore_backup(Path(backup_path))
 
-    def get_transaction_history(self, limit: int = 50) -> List[TransactionRecord]:
+    def get_transaction_history(
+        self, limit: int = 50
+    ) -> List[TransactionRecord]:
         """Return recent transaction records (most recent first)."""
         try:
-            with open(self.transaction_log.log_path, "r", encoding="utf-8") as log_file:
+            with open(
+                self.transaction_log.log_path, "r", encoding="utf-8"
+            ) as log_file:
                 lines = log_file.readlines()
 
             records: List[TransactionRecord] = []
@@ -408,7 +425,11 @@ class PipelineState:
             return deepcopy(chunks)
         if isinstance(chunks, dict):
             # Some pipelines store chunks keyed by id
-            return [deepcopy(chunk) for chunk in chunks.values() if isinstance(chunk, dict)]
+            return [
+                deepcopy(chunk)
+                for chunk in chunks.values()
+                if isinstance(chunk, dict)
+            ]
         return []
 
     def get_chunk_metadata(
@@ -419,7 +440,10 @@ class PipelineState:
         """Return metadata for a specific chunk id if present."""
         phase_chunks = self.get_chunks(phase_name)
         for chunk in phase_chunks:
-            if chunk.get("id") == chunk_id or chunk.get("chunk_id") == chunk_id:
+            if (
+                chunk.get("id") == chunk_id
+                or chunk.get("chunk_id") == chunk_id
+            ):
                 return deepcopy(chunk)
         return None
 
@@ -441,21 +465,41 @@ class PipelineState:
         return normalized
 
     def _log_transaction(
-        self, operation: str, success: bool, details: Optional[TransactionRecord] = None
+        self,
+        operation: str,
+        success: bool,
+        details: Optional[TransactionRecord] = None,
     ) -> None:
         if self.transaction_log:
-            self.transaction_log.log_transaction(operation, success, details=details)
+            self.transaction_log.log_transaction(
+                operation, success, details=details
+            )
 
-    def _validate_basic(self, data: JsonDict, *, enforce_sections: Optional[bool] = None) -> None:
+    def _validate_basic(
+        self, data: JsonDict, *, enforce_sections: Optional[bool] = None
+    ) -> None:
         """Lightweight structural validation that does not require Pydantic."""
         if not isinstance(data, dict):
-            raise StateValidationError("State file must contain a JSON object at the top level.")
+            raise StateValidationError(
+                "State file must contain a JSON object at the top level."
+            )
 
-        enforce_sections = self.structural_validation if enforce_sections is None else enforce_sections
+        enforce_sections = (
+            self.structural_validation
+            if enforce_sections is None
+            else enforce_sections
+        )
 
         if enforce_sections and data:
-            has_required_section = any(section in data for section in self.required_sections)
-            metadata_keys = {"file_id", "pipeline_version", "input_file", "version"}
+            has_required_section = any(
+                section in data for section in self.required_sections
+            )
+            metadata_keys = {
+                "file_id",
+                "pipeline_version",
+                "input_file",
+                "version",
+            }
             has_phase_like_key = any(key.startswith("phase") for key in data)
             if (
                 not has_required_section
@@ -485,25 +529,45 @@ class PipelineState:
                     and data[phase_key] is not None
                     and not isinstance(data[phase_key], dict)
                 ):
-                    raise StateValidationError(f"Phase '{phase_key}' must be an object if present.")
+                    raise StateValidationError(
+                        f"Phase '{phase_key}' must be an object if present."
+                    )
                 phase_data = data.get(phase_key)
                 if isinstance(phase_data, dict):
                     status_value = phase_data.get("status")
-                    if status_value is not None and not isinstance(status_value, str):
-                        raise StateValidationError(f"Phase '{phase_key}' status must be a string.")
-                    if isinstance(status_value, str) and status_value and status_value not in VALID_PHASE_STATUSES:
+                    if status_value is not None and not isinstance(
+                        status_value, str
+                    ):
+                        raise StateValidationError(
+                            f"Phase '{phase_key}' status must be a string."
+                        )
+                    if (
+                        isinstance(status_value, str)
+                        and status_value
+                        and status_value not in VALID_PHASE_STATUSES
+                    ):
                         logger.debug(
-                            "Non-standard status '%s' detected for %s", status_value, phase_key
+                            "Non-standard status '%s' detected for %s",
+                            status_value,
+                            phase_key,
                         )
 
         if "chunks" in data and data["chunks"] is not None:
             if not isinstance(data["chunks"], (list, dict)):
-                raise StateValidationError("Top-level 'chunks' must be a list or object.")
+                raise StateValidationError(
+                    "Top-level 'chunks' must be a list or object."
+                )
 
         # Basic metadata validation
         for key in ("file_id", "pipeline_version", "input_file"):
-            if key in data and data[key] is not None and not isinstance(data[key], str):
-                raise StateValidationError(f"Top-level '{key}' must be a string if present.")
+            if (
+                key in data
+                and data[key] is not None
+                and not isinstance(data[key], str)
+            ):
+                raise StateValidationError(
+                    f"Top-level '{key}' must be a string if present."
+                )
 
     def _validate_schema(self, data: JsonDict) -> None:
         """Optional Pydantic validation."""
@@ -511,17 +575,25 @@ class PipelineState:
         try:
             validate_pipeline_schema(data)
         except ValueError as exc:
-            raise StateValidationError(f"Schema validation failed: {exc}") from exc
+            raise StateValidationError(
+                f"Schema validation failed: {exc}"
+            ) from exc
         if not PYDANTIC_AVAILABLE:
-            logger.debug("Pydantic not available - skipping strict validation.")
+            logger.debug(
+                "Pydantic not available - skipping strict validation."
+            )
             return
 
         try:
             PipelineSchema(**data)
         except Exception as exc:
-            raise StateValidationError(f"Schema validation failed: {exc}") from exc
+            raise StateValidationError(
+                f"Schema validation failed: {exc}"
+            ) from exc
 
-    def _write_atomic(self, data: JsonDict, validate: bool = True, operation: str = "write") -> None:
+    def _write_atomic(
+        self, data: JsonDict, validate: bool = True, operation: str = "write"
+    ) -> None:
         """Perform an atomic write with optional validation and backups."""
         if validate:
             self._ensure_phase_blocks_are_objects(data)
@@ -537,7 +609,10 @@ class PipelineState:
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
         timestamp = int(time.time() * 1000)
-        temp_path = self.path.parent / f"{self.path.name}.{os.getpid()}_{timestamp}.tmp"
+        temp_path = (
+            self.path.parent
+            / f"{self.path.name}.{os.getpid()}_{timestamp}.tmp"
+        )
 
         try:
             with open(temp_path, "w", encoding="utf-8") as handle:
@@ -551,8 +626,12 @@ class PipelineState:
         except Exception as exc:
             if temp_path.exists():
                 temp_path.unlink(missing_ok=True)
-            self._log_transaction(operation, False, {"error": "atomic_write_failed"})
-            raise StateWriteError(f"Failed to persist state to {self.path}: {exc}") from exc
+            self._log_transaction(
+                operation, False, {"error": "atomic_write_failed"}
+            )
+            raise StateWriteError(
+                f"Failed to persist state to {self.path}: {exc}"
+            ) from exc
         finally:
             if self.backup_before_write:
                 self.backup_manager.rotate_backups()
@@ -582,10 +661,14 @@ class StateTransaction:
         self._lock_cm = self.state._file_lock()
         self._lock_cm.__enter__()
         try:
-            self.original_data = self.state.read(validate=self.state.validate_on_read)
+            self.original_data = self.state.read(
+                validate=self.state.validate_on_read
+            )
             if self.seed_data is not None:
                 seed_requires_validation = (
-                    True if self.validate_override is None else self.validate_override
+                    True
+                    if self.validate_override is None
+                    else self.validate_override
                 )
                 if seed_requires_validation:
                     self.state._ensure_phase_blocks_are_objects(self.seed_data)
@@ -612,7 +695,11 @@ class StateTransaction:
                 )
                 return False
 
-            validate_flag = True if self.validate_override is None else self.validate_override
+            validate_flag = (
+                True
+                if self.validate_override is None
+                else self.validate_override
+            )
             commit_label = f"{self.operation}_commit"
             self.state._write_atomic(
                 self.data,
@@ -623,7 +710,10 @@ class StateTransaction:
             self.state._log_transaction(
                 commit_label,
                 True,
-                {"changed_keys": self._get_changed_keys(), "operation": self.operation},
+                {
+                    "changed_keys": self._get_changed_keys(),
+                    "operation": self.operation,
+                },
             )
             return False
         except StateValidationError:
@@ -639,7 +729,9 @@ class StateTransaction:
                 False,
                 {"operation": self.operation, "error": str(exc)},
             )
-            raise StateTransactionError(f"{self.operation} failed to commit") from exc
+            raise StateTransactionError(
+                f"{self.operation} failed to commit"
+            ) from exc
         finally:
             self._release_lock()
 

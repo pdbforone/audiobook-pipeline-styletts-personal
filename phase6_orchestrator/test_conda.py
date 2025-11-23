@@ -1,20 +1,26 @@
 """Test Phase 4 Conda environment setup (manual utility)."""
+
 import subprocess
 import sys
+
 
 def main() -> int:
     print("Testing Phase 4 Conda environment...\n")
 
     # Test 1: Conda installed
     try:
-        r = subprocess.run(["conda", "--version"], capture_output=True, text=True, timeout=10)
+        r = subprocess.run(
+            ["conda", "--version"], capture_output=True, text=True, timeout=10
+        )
         print(f"✓ Conda: {r.stdout.strip()}")
     except Exception:
         print("✗ Conda not found")
         return 1
 
     # Test 2: Environment exists
-    r = subprocess.run(["conda", "env", "list"], capture_output=True, text=True, timeout=10)
+    r = subprocess.run(
+        ["conda", "env", "list"], capture_output=True, text=True, timeout=10
+    )
     if "phase4_tts" in r.stdout:
         print("✓ phase4_tts environment exists")
     else:

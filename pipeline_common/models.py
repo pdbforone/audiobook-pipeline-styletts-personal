@@ -14,9 +14,11 @@ from typing import Any, Dict, List, Optional
 # Gracefully handle missing pydantic
 try:
     from pydantic import BaseModel, Field, field_validator
+
     PYDANTIC_AVAILABLE = True
 except ImportError:
     PYDANTIC_AVAILABLE = False
+
     # Stub classes for when pydantic is not available
     class BaseModel:
         def __init__(self, **kwargs):
@@ -28,11 +30,13 @@ except ImportError:
     def field_validator(*args, **kwargs):
         def decorator(func):
             return func
+
         return decorator
 
 
 class TimestampModel(BaseModel):
     """Common timestamp structure"""
+
     start: Optional[float] = None
     end: Optional[float] = None
     duration: Optional[float] = None
@@ -47,6 +51,7 @@ class PhaseStatus(BaseModel):
 
     Each phase can extend this with phase-specific fields.
     """
+
     status: Optional[str] = Field(
         None,
         pattern="^(pending|running|success|partial|partial_success|failed|error|skipped|unknown)$",
@@ -61,33 +66,39 @@ class PhaseStatus(BaseModel):
 
 class Phase1Schema(PhaseStatus):
     """Phase 1: Validation & Repair"""
+
     files: Optional[Dict[str, Any]] = Field(default_factory=dict)
     hashes: Optional[List[str]] = Field(default_factory=list)
 
 
 class Phase2Schema(PhaseStatus):
     """Phase 2: Text Extraction"""
+
     files: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
 class Phase3Schema(PhaseStatus):
     """Phase 3: Semantic Chunking"""
+
     files: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
 class Phase4Schema(PhaseStatus):
     """Phase 4: TTS Synthesis"""
+
     files: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
 class Phase5Schema(PhaseStatus):
     """Phase 5: Audio Enhancement"""
+
     artifacts: Optional[List[str]] = Field(default_factory=list)
     chunks: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
 
 
 class Phase5_5Schema(PhaseStatus):
     """Phase 5.5: Subtitle Generation"""
+
     timestamp: Optional[float] = None
     duration: Optional[float] = None
     srt_file: Optional[str] = None
@@ -135,7 +146,9 @@ class PipelineSchema(BaseModel):
     class Config:
         extra = "allow"
 
-    @field_validator('phase1', 'phase2', 'phase3', 'phase4', 'phase5', mode='before')
+    @field_validator(
+        "phase1", "phase2", "phase3", "phase4", "phase5", mode="before"
+    )
     @classmethod
     def validate_phase_structure(cls, v):
         """Ensure phase blocks are dictionaries"""
@@ -150,6 +163,7 @@ class MinimalPipelineSchema(BaseModel):
 
     Use this for lenient validation during development or migration.
     """
+
     class Config:
         extra = "allow"
 

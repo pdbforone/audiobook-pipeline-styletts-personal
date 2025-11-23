@@ -27,7 +27,9 @@ def _play_with_winsound(wav_path: Path) -> bool:
     try:
         import winsound
 
-        winsound.PlaySound(str(wav_path), winsound.SND_FILENAME | winsound.SND_NODEFAULT)
+        winsound.PlaySound(
+            str(wav_path), winsound.SND_FILENAME | winsound.SND_NODEFAULT
+        )
         return True
     except Exception as exc:  # pragma: no cover - best-effort only
         logger.debug("winsound playback failed: %s", exc)
@@ -69,7 +71,9 @@ def _play_asset(name: str) -> None:
             print("\a", end="", flush=True)
         except Exception:
             pass
-        logger.warning("Beep not available on this platform; file at %s", wav_path)
+        logger.warning(
+            "Beep not available on this platform; file at %s", wav_path
+        )
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Notification playback failed: %s", exc)
 

@@ -10,7 +10,6 @@ from phase3_chunking.utils import (
 )
 from phase3_chunking.models import ChunkMetadata
 from phase3_chunking.main import process_chunking
-import os
 import tempfile
 import logging
 
@@ -39,7 +38,10 @@ def test_detect_sentences(mock_nlp, sample_text):
 @patch("phase3_chunking.utils.util.cos_sim")
 @patch("phase3_chunking.utils.SentenceTransformer.encode")
 def test_form_semantic_chunks(mock_encode, mock_cos, sample_text):
-    sentences = ["This is a test.", "Another sentence." * 100]  # Simulate >250 words
+    sentences = [
+        "This is a test.",
+        "Another sentence." * 100,
+    ]  # Simulate >250 words
     mock_encode.return_value = [[0.1], [0.9]]
     mock_tensor = MagicMock()
     mock_tensor.__getitem__.return_value.__getitem__.return_value.item.return_value = (
@@ -89,7 +91,9 @@ def test_form_semantic_chunks_fallback(mock_encode, mock_cos, mock_tokenize):
     mock_cos.return_value = mock_tensor
     mock_tokenize.return_value = sentences
     try:
-        chunks, coherence = form_semantic_chunks(sentences, min_words=1, max_words=10)
+        chunks, coherence = form_semantic_chunks(
+            sentences, min_words=1, max_words=10
+        )
         assert len(chunks) > 0
     except Exception as e:
         logging.error(f"Fallback test error: {e}")
@@ -120,11 +124,22 @@ def test_log_chunk_times(caplog):
 @patch("phase3_chunking.main.log_chunk_times")
 @patch("phase3_chunking.main.save_chunks", return_value=["path"])
 @patch("phase3_chunking.main.assess_readability", return_value=[70])
-@patch("phase3_chunking.main.form_semantic_chunks", return_value=(["chunk"], [0.9]))
-@patch("phase3_chunking.main.detect_sentences", return_value=["sent1", "sent2"])
+@patch(
+    "phase3_chunking.main.form_semantic_chunks",
+    return_value=(["chunk"], [0.9]),
+)
+@patch(
+    "phase3_chunking.main.detect_sentences", return_value=["sent1", "sent2"]
+)
 @patch("phase3_chunking.main.clean_text", return_value="cleaned")
 def test_process_chunking(
-    mock_clean, mock_detect, mock_form, mock_assess, mock_save, mock_log, mock_open
+    mock_clean,
+    mock_detect,
+    mock_form,
+    mock_assess,
+    mock_save,
+    mock_log,
+    mock_open,
 ):
     with tempfile.NamedTemporaryFile() as tmp:
         try:

@@ -6,10 +6,11 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from policy_engine import PolicyAdvisor
 from policy_engine.policy_engine import OVERRIDES_PATH
+
 SOURCE_LABEL = "policy_engine_cli"
 
 
@@ -44,18 +45,26 @@ def save_overrides(path: Path, data: Dict[str, Any]) -> None:
         json.dump(data, handle, indent=2, sort_keys=True)
 
 
-def format_diff(existing: Optional[Dict[str, Any]], proposed: Dict[str, Any]) -> str:
+def format_diff(
+    existing: Optional[Dict[str, Any]], proposed: Dict[str, Any]
+) -> str:
     current_lines = (
         json.dumps(existing, indent=2, sort_keys=True).splitlines()
         if existing
         else ["<none>"]
     )
-    proposed_lines = json.dumps(proposed, indent=2, sort_keys=True).splitlines()
+    proposed_lines = json.dumps(
+        proposed, indent=2, sort_keys=True
+    ).splitlines()
     if existing == proposed:
         return "No change (already applied)."
     diff = list(
         difflib.unified_diff(
-            current_lines, proposed_lines, fromfile="current", tofile="proposed", lineterm=""
+            current_lines,
+            proposed_lines,
+            fromfile="current",
+            tofile="proposed",
+            lineterm="",
         )
     )
     if not diff:
@@ -63,7 +72,9 @@ def format_diff(existing: Optional[Dict[str, Any]], proposed: Dict[str, Any]) ->
     return "\n".join(diff)
 
 
-def get_nested(data: Dict[str, Any], path: Sequence[str]) -> Optional[Dict[str, Any]]:
+def get_nested(
+    data: Dict[str, Any], path: Sequence[str]
+) -> Optional[Dict[str, Any]]:
     cursor: Any = data
     for key in path:
         if not isinstance(cursor, dict):
@@ -72,14 +83,18 @@ def get_nested(data: Dict[str, Any], path: Sequence[str]) -> Optional[Dict[str, 
     return cursor if isinstance(cursor, dict) else None
 
 
-def set_nested(data: Dict[str, Any], path: Sequence[str], value: Dict[str, Any]) -> None:
+def set_nested(
+    data: Dict[str, Any], path: Sequence[str], value: Dict[str, Any]
+) -> None:
     cursor = data
     for key in path[:-1]:
         cursor = cursor.setdefault(key, {})
     cursor[path[-1]] = value
 
 
-def build_candidates(advisor: PolicyAdvisor, file_label: str) -> List[Candidate]:
+def build_candidates(
+    advisor: PolicyAdvisor, file_label: str
+) -> List[Candidate]:
     timestamp = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     candidates: List[Candidate] = []
 
@@ -198,11 +213,17 @@ def tune_command(args: argparse.Namespace) -> int:
         existing = get_nested(overrides["overrides"], candidate.path)
         if existing == candidate.value:
             continue
-        if candidate.path[-1] == "voice_variant" and not candidate.value.get("voice_id"):
+        if candidate.path[-1] == "voice_variant" and not candidate.value.get(
+            "voice_id"
+        ):
             if args.yes:
-                print("Skipping voice override because no voice ID was provided.")
+                print(
+                    "Skipping voice override because no voice ID was provided."
+                )
                 continue
-            voice_choice = input("Enter voice ID to apply (leave blank to skip): ").strip()
+            voice_choice = input(
+                "Enter voice ID to apply (leave blank to skip): "
+            ).strip()
             if not voice_choice:
                 print("Skipping voice override.")
                 continue

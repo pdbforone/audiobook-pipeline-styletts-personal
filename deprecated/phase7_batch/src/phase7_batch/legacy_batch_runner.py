@@ -74,7 +74,10 @@ class BatchMetadata:
     def add_phase_metric(
         self, phase: int, duration: float, error: Optional[str] = None
     ):
-        self.phase_metrics[f"phase{phase}"] = {"duration": duration, "error": error}
+        self.phase_metrics[f"phase{phase}"] = {
+            "duration": duration,
+            "error": error,
+        }
 
     def dict(self):
         return vars(self)
@@ -101,7 +104,11 @@ class BatchSummary:
         self.status = (
             "success"
             if failed_files == 0 and partial_files == 0
-            else "partial" if successful_files > 0 or partial_files > 0 else "failed"
+            else (
+                "partial"
+                if successful_files > 0 or partial_files > 0
+                else "failed"
+            )
         )
         self.errors = errors
         self.timestamps = timestamps
@@ -173,7 +180,9 @@ def find_phase_directory(
         if mapped_name:
             exact_dir = project_root / mapped_name
             if exact_dir.exists() and exact_dir.is_dir():
-                logger.debug(f"Found exact match for phase {phase}: {exact_dir}")
+                logger.debug(
+                    f"Found exact match for phase {phase}: {exact_dir}"
+                )
                 return exact_dir
 
         # Broad glob fallback for variations
@@ -188,7 +197,9 @@ def find_phase_directory(
                 )
             return matches[0]
         else:
-            logger.warning(f"Phase {phase}: Directory not found in {project_root}")
+            logger.warning(
+                f"Phase {phase}: Directory not found in {project_root}"
+            )
             return None
     except Exception as e:
         logger.error(f"Directory discovery failed for phase {phase}: {e}")
@@ -321,7 +332,9 @@ def _run_subprocess(
     start = time.perf_counter()
 
     # Set cwd to phase directory - FIXED
-    phase_dir = main_script.parent.parent.parent  # src/phaseX_xxx -> phaseX_xxx
+    phase_dir = (
+        main_script.parent.parent.parent
+    )  # src/phaseX_xxx -> phaseX_xxx
 
     # Prepare environment variables for subprocess
     env = os.environ.copy()
@@ -329,7 +342,9 @@ def _run_subprocess(
     # Set batch mode flag for Phase 4 (prevents parallel processing conflicts)
     if phase == 4:
         env["AUDIOBOOK_BATCH_MODE"] = "1"
-        logger.debug("Set AUDIOBOOK_BATCH_MODE=1 for Phase 4 (serial chunk processing)")
+        logger.debug(
+            "Set AUDIOBOOK_BATCH_MODE=1 for Phase 4 (serial chunk processing)"
+        )
 
     # If we have a conda env name, use conda run
     if env_identifier:
@@ -346,7 +361,9 @@ def _run_subprocess(
         # Direct execution for venv or system python
         cmd = [venv_python, str(main_script)] + args
 
-    logger.debug(f"Executing Phase {phase}: {' '.join(cmd)} from cwd {phase_dir}")
+    logger.debug(
+        f"Executing Phase {phase}: {' '.join(cmd)} from cwd {phase_dir}"
+    )
     try:
         result = subprocess.run(
             cmd,
@@ -416,7 +433,13 @@ def run_phase_for_file(
 
     if phase in [1, 2, 3, 5]:
         if not _run_subprocess(
-            venv_python, env_identifier, main_script, args, config, metadata, phase
+            venv_python,
+            env_identifier,
+            main_script,
+            args,
+            config,
+            metadata,
+            phase,
         ):
             return False
         metadata.phases_completed.append(phase)
@@ -490,7 +513,9 @@ async def process_file(
         try:
             with open(config.pipeline_json, "r") as f:
                 pipeline = json.load(f)
-            existing = pipeline.get("batch", {}).get("files", {}).get(file_id, {})
+            existing = (
+                pipeline.get("batch", {}).get("files", {}).get(file_id, {})
+            )
             metadata.phases_completed = existing.get("phases_completed", [])
         except Exception as e:
             logger.warning(f"Resume load failed: {e}; starting fresh")
@@ -499,7 +524,9 @@ async def process_file(
         if phase in metadata.phases_completed:
             logger.info(f"Skipping completed Phase {phase} for {file_id}")
             continue
-        success = run_phase_for_file(phase, file_path, file_id, config, metadata)
+        success = run_phase_for_file(
+            phase, file_path, file_id, config, metadata
+        )
         if not success:
             metadata.error_message = f"Phase {phase} failed"
             continue
@@ -525,7 +552,9 @@ def update_pipeline_json(
             pipeline["batch"] = {}
 
         pipeline["batch"]["summary"] = summary.dict()
-        pipeline["batch"]["files"] = {m.file_id: m.dict() for m in metadata_list}
+        pipeline["batch"]["files"] = {
+            m.file_id: m.dict() for m in metadata_list
+        }
 
         with open(json_path, "w") as f:
             json.dump(pipeline, f, indent=4)
@@ -553,7 +582,9 @@ def cleanup_old_artifacts(json_path: str):
         logger.warning(f"Cleanup failed: {e}")
 
 
-def render_rich_summary(summary: BatchSummary, metadata_list: List[BatchMetadata]):
+def render_rich_summary(
+    summary: BatchSummary, metadata_list: List[BatchMetadata]
+):
     console = Console()
     table = Table(title="Batch Summary")
     table.add_column("Metric", style="cyan")
@@ -565,7 +596,8 @@ def render_rich_summary(summary: BatchSummary, metadata_list: List[BatchMetadata
     table.add_row("Failed", str(summary.failed_files))
     table.add_row("Duration", f"{summary.total_duration:.2f}s")
     table.add_row(
-        "Avg CPU", f"{summary.avg_cpu_usage:.1f}%" if summary.avg_cpu_usage else "N/A"
+        "Avg CPU",
+        f"{summary.avg_cpu_usage:.1f}%" if summary.avg_cpu_usage else "N/A",
     )
     table.add_row("Status", summary.status)
 
@@ -594,7 +626,10 @@ def verify_phase_environments(phases: List[int]) -> Dict[int, bool]:
                 continue
             # For conda, test with conda run if needed, but simplify to version check
             version_result = subprocess.run(
-                [venv_python, "--version"], capture_output=True, text=True, timeout=30
+                [venv_python, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             if version_result.returncode != 0:
                 results[phase] = False
@@ -615,7 +650,10 @@ def verify_phase_environments(phases: List[int]) -> Dict[int, bool]:
                 current = version.parse(major_minor)
                 if required.startswith("^"):
                     required_ver = version.parse(required[1:])
-                    if current < required_ver or current.major != required_ver.major:
+                    if (
+                        current < required_ver
+                        or current.major != required_ver.major
+                    ):
                         results[phase] = False
                         continue
             results[phase] = True
@@ -629,7 +667,9 @@ def load_config(config_path: str) -> BatchConfig:
     try:
         config_file = Path(config_path)
         if not config_file.exists():
-            logger.warning(f"Config file {config_path} not found, using defaults")
+            logger.warning(
+                f"Config file {config_path} not found, using defaults"
+            )
             return BatchConfig()
         with open(config_path, "r") as f:
             data = yaml.safe_load(f) or {}
@@ -643,7 +683,9 @@ async def main_async():
     parser = argparse.ArgumentParser(
         description="Batch Processing for Audiobook Pipeline"
     )
-    parser.add_argument("--config", default="config.yaml", help="Path to config YAML")
+    parser.add_argument(
+        "--config", default="config.yaml", help="Path to config YAML"
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -662,7 +704,9 @@ async def main_async():
         return 0
 
     stop_event = threading.Event()
-    monitor_thread = threading.Thread(target=monitor_resources, args=(stop_event,))
+    monitor_thread = threading.Thread(
+        target=monitor_resources, args=(stop_event,)
+    )
     monitor_thread.start()
 
     overall_start = time.perf_counter()
@@ -691,7 +735,9 @@ async def main_async():
     avg_cpu = sum(cpu_readings) / len(cpu_readings) if cpu_readings else None
     summary = BatchSummary(
         total_files=len(metadata_list),
-        successful_files=sum(1 for m in metadata_list if m.status == "success"),
+        successful_files=sum(
+            1 for m in metadata_list if m.status == "success"
+        ),
         partial_files=sum(1 for m in metadata_list if m.status == "partial"),
         failed_files=sum(1 for m in metadata_list if m.status == "failed"),
         total_duration=total_duration,
@@ -712,7 +758,11 @@ async def main_async():
     stop_event.set()
     monitor_thread.join()
 
-    return 0 if summary.status == "success" else 2 if summary.status == "partial" else 1
+    return (
+        0
+        if summary.status == "success"
+        else 2 if summary.status == "partial" else 1
+    )
 
 
 def main():

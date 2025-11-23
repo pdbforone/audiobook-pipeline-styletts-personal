@@ -157,7 +157,9 @@ def main(config: ExtractionConfig):
 
     while retries <= config.retry_limit:
         if classification == "text":
-            text = extract_text_pdfplumber(file_path) or extract_text_pymupdf(file_path)
+            text = extract_text_pdfplumber(file_path) or extract_text_pymupdf(
+                file_path
+            )
             tool_used = "pdfplumber or pymupdf"
         else:  # scanned/mixed
             text = extract_text_unstructured(file_path)
@@ -177,7 +179,9 @@ def main(config: ExtractionConfig):
     else:
         gibberish_score = evaluate_gibberish(text)
         if gibberish_score < config.gibberish_threshold:
-            errors.append(f"Gibberish score low: {gibberish_score}; potential retry")
+            errors.append(
+                f"Gibberish score low: {gibberish_score}; potential retry"
+            )
 
         perplexity = evaluate_perplexity(text)
         lang_info = detect_language(text)
@@ -191,13 +195,17 @@ def main(config: ExtractionConfig):
         yield_pct = len(text) / file_size * 100 if file_size else 0.0
         status = "success" if yield_pct > 98 else "partial_success"
 
-        extracted_path = str(Path(config.extracted_dir) / f"{config.file_id}.txt")
+        extracted_path = str(
+            Path(config.extracted_dir) / f"{config.file_id}.txt"
+        )
         with open(extracted_path, "w", encoding="utf-8") as f:
             f.write(text)
 
         end_time = perf_counter()
         duration = end_time - start_time
-        logger.info(f"Extraction complete in {duration:.2f}s. Yield: {yield_pct:.2f}%")
+        logger.info(
+            f"Extraction complete in {duration:.2f}s. Yield: {yield_pct:.2f}%"
+        )
 
         try:
             record = ExtractionRecord(
@@ -210,7 +218,11 @@ def main(config: ExtractionConfig):
                 lang_confidence=lang_info["confidence"],
                 status=status,
                 errors=errors,
-                timestamps={"start": start_time, "end": end_time, "duration": duration},
+                timestamps={
+                    "start": start_time,
+                    "end": end_time,
+                    "duration": duration,
+                },
             )
             merge_to_json(record, config.json_path, config.file_id)
         except ValidationError as e:
@@ -239,7 +251,9 @@ def merge_to_json(record: ExtractionRecord, json_path: str, file_id: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Phase 2: Text Extraction")
-    parser.add_argument("--file_id", required=True, help="File ID from Phase 1")
+    parser.add_argument(
+        "--file_id", required=True, help="File ID from Phase 1"
+    )
     parser.add_argument(
         "--json_path", default="pipeline.json", help="Pipeline JSON path"
     )

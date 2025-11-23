@@ -33,6 +33,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 try:
     import magic
+
     MAGIC_AVAILABLE = True
 except ImportError:
     MAGIC_AVAILABLE = False
@@ -62,7 +63,9 @@ def _install_update_phase_api() -> None:
         chunks: Optional[List[Dict[str, Any]]] = None,
         extra_fields: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        phase_block, file_entry = ensure_phase_and_file(self.data, phase_name, file_id)
+        phase_block, file_entry = ensure_phase_and_file(
+            self.data, phase_name, file_id
+        )
         envelope = file_entry
         if status is not None:
             envelope["status"] = status
@@ -166,9 +169,13 @@ def merge_phase_state(
             phase_block.setdefault("timestamps", {}).update(timestamps)
         if artifacts is not None:
             existing_artifacts = phase_block.get("artifacts")
-            if isinstance(existing_artifacts, dict) and isinstance(artifacts, dict):
+            if isinstance(existing_artifacts, dict) and isinstance(
+                artifacts, dict
+            ):
                 existing_artifacts.update(artifacts)
-            elif isinstance(existing_artifacts, list) and isinstance(artifacts, list):
+            elif isinstance(existing_artifacts, list) and isinstance(
+                artifacts, list
+            ):
                 existing_artifacts.extend(artifacts)
             else:
                 phase_block["artifacts"] = artifacts
@@ -199,21 +206,23 @@ def merge_phase_state(
         return txn.data
 
 
-def with_retry(func: Callable[[], Any], max_attempts: int = 3, delay: float = 1.0) -> Any:
+def with_retry(
+    func: Callable[[], Any], max_attempts: int = 3, delay: float = 1.0
+) -> Any:
     """
     Retry function on transient errors.
-    
+
     Args:
         func: Function to retry (should take no arguments)
         max_attempts: Maximum number of attempts
         delay: Delay between attempts in seconds
-        
+
     Returns:
         Result of successful function call
-        
+
     Raises:
         Last exception if all attempts fail
-        
+
     Reason: Handles transient errors like file locks, network issues,
     temporary permission problems. Exponential backoff gives system
     time to recover.
@@ -225,95 +234,99 @@ def with_retry(func: Callable[[], Any], max_attempts: int = 3, delay: float = 1.
             if attempt == max_attempts - 1:
                 logger.error(f"Failed after {max_attempts} attempts: {e}")
                 raise
-            
-            wait_time = delay * (2 ** attempt)  # Exponential backoff
-            logger.warning(f"Attempt {attempt+1} failed: {e}, retrying in {wait_time}s...")
+
+            wait_time = delay * (2**attempt)  # Exponential backoff
+            logger.warning(
+                f"Attempt {attempt+1} failed: {e}, retrying in {wait_time}s..."
+            )
             time.sleep(wait_time)
 
 
 def detect_format(path: Path) -> str:
     """
     Detect file format using extension and MIME type.
-    
+
     Args:
         path: Path to file
-        
+
     Returns:
         Format string: 'pdf', 'docx', 'epub', 'html', 'txt'
-        
+
     Strategy:
     1. Check file extension
     2. Validate with MIME type if python-magic available
     3. Fall back to extension only if MIME fails
-    
+
     Reason: Combining extension and MIME detection prevents
     misidentification from renamed files or missing extensions.
     """
     ext = path.suffix.lower()
-    
+
     # Try MIME detection if available
     if MAGIC_AVAILABLE:
         try:
             mime = magic.from_file(str(path), mime=True)
             logger.debug(f"MIME type detected: {mime}")
-            
+
             # MIME-based detection (more reliable)
-            if 'pdf' in mime:
-                return 'pdf'
-            elif 'word' in mime or 'officedocument' in mime:
-                return 'docx'
-            elif 'epub' in mime:
-                return 'epub'
-            elif 'html' in mime:
-                return 'html'
-            elif 'text' in mime or 'plain' in mime:
-                return 'txt'
-                
+            if "pdf" in mime:
+                return "pdf"
+            elif "word" in mime or "officedocument" in mime:
+                return "docx"
+            elif "epub" in mime:
+                return "epub"
+            elif "html" in mime:
+                return "html"
+            elif "text" in mime or "plain" in mime:
+                return "txt"
+
         except Exception as e:
-            logger.debug(f"MIME detection failed: {e}, falling back to extension")
-    
+            logger.debug(
+                f"MIME detection failed: {e}, falling back to extension"
+            )
+
     # Extension-based detection (fallback)
-    if ext == '.pdf':
-        return 'pdf'
-    elif ext in ('.docx', '.doc'):
-        return 'docx'
-    elif ext == '.epub':
-        return 'epub'
-    elif ext in ('.html', '.htm'):
-        return 'html'
-    elif ext in ('.txt', '.md', '.text'):
-        return 'txt'
-    
+    if ext == ".pdf":
+        return "pdf"
+    elif ext in (".docx", ".doc"):
+        return "docx"
+    elif ext == ".epub":
+        return "epub"
+    elif ext in (".html", ".htm"):
+        return "html"
+    elif ext in (".txt", ".md", ".text"):
+        return "txt"
+
     # Default to txt with warning
     logger.warning(
         f"Ambiguous format for {path.name} (ext={ext}) - "
         f"defaulting to 'txt'. Consider using a standard extension."
     )
-    return 'txt'
+    return "txt"
 
 
 def calculate_yield(original_size: int, extracted_length: int) -> float:
     """
     Calculate text yield percentage.
-    
+
     Args:
         original_size: Original file size in bytes
         extracted_length: Length of extracted text in characters
-        
+
     Returns:
         Yield as a float between 0.0 and 1.0+
-        
+
     Reason: Yield helps detect extraction problems. Very low yield
     suggests OCR needed or extraction failure. Very high yield may
     indicate duplicate content or extraction artifacts.
     """
     if original_size == 0:
         return 0.0
-    
+
     # Rough approximation: 1 char ≈ 1 byte for text content
     # This is imperfect but useful for detecting major issues
     yield_pct = extracted_length / original_size
-    
+
     if yield_pct < 0.5:
         logger.warning(
             f"Low text yield ({yield_pct:.1%}) - "
@@ -324,7 +337,7 @@ def calculate_yield(original_size: int, extracted_length: int) -> float:
             f"High text yield ({yield_pct:.1%}) - "
             f"extracted text may contain duplicates or artifacts"
         )
-    
+
     return yield_pct
 
 
@@ -349,14 +362,14 @@ def log_error(
 ) -> None:
     """
     Log an error to pipeline.json in standardized format.
-    
+
     Args:
         pipeline_path: Path to pipeline.json
         phase_name: Phase where error occurred
         file_id: File identifier related to the error
         message: Human-readable message
         severity: 'blocking' or 'warning'
-        
+
     Reason: Standardized error format makes debugging easier and
     ensures users get actionable fix instructions.
     """
@@ -367,7 +380,7 @@ def log_error(
         "severity": severity,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
-    
+
     try:
         state = PipelineState(pipeline_path, validate_on_read=False)
         with state.transaction(operation=f"{phase_name}_log_error") as txn:

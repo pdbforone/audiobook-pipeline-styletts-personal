@@ -79,7 +79,9 @@ def validate_extraction_quality(
     - Page count consistency (when available)
     """
     if not text or len(text) < 100:
-        logger.warning(f"{method_name}: insufficient text extracted (<100 chars)")
+        logger.warning(
+            f"{method_name}: insufficient text extracted (<100 chars)"
+        )
         return 0.0
 
     score = 1.0
@@ -88,23 +90,40 @@ def validate_extraction_quality(
     replacement_rate = text.count("\ufffd") / len(text)
     if replacement_rate > 0.01:
         score -= 0.3
-        logger.warning(f"{method_name}: high replacement character rate ({replacement_rate:.2%})")
+        logger.warning(
+            f"{method_name}: high replacement character rate ({replacement_rate:.2%})"
+        )
     elif replacement_rate > 0:
         score -= 0.1
 
     alpha_ratio = sum(1 for c in sample if c.isalpha()) / len(sample)
     if alpha_ratio < 0.65:
         score -= 0.3
-        logger.warning(f"{method_name}: low alphabetic ratio ({alpha_ratio:.1%})")
+        logger.warning(
+            f"{method_name}: low alphabetic ratio ({alpha_ratio:.1%})"
+        )
     elif alpha_ratio < 0.75:
         score -= 0.1
 
     text_lower = sample.lower()
-    common_words = ["the", "and", "of", "to", "a", "in", "is", "that", "for", "it"]
+    common_words = [
+        "the",
+        "and",
+        "of",
+        "to",
+        "a",
+        "in",
+        "is",
+        "that",
+        "for",
+        "it",
+    ]
     found_common = sum(1 for word in common_words if f" {word} " in text_lower)
     if found_common < 6:
         score -= 0.3
-        logger.warning(f"{method_name}: only {found_common}/10 common words found")
+        logger.warning(
+            f"{method_name}: only {found_common}/10 common words found"
+        )
     elif found_common < 8:
         score -= 0.1
 
@@ -113,14 +132,18 @@ def validate_extraction_quality(
     digit_ratio = digits / max(letters, 1)
     if digit_ratio > 0.35:
         score -= 0.2
-        logger.warning(f"{method_name}: high digit/letter ratio ({digit_ratio:.1%})")
+        logger.warning(
+            f"{method_name}: high digit/letter ratio ({digit_ratio:.1%})"
+        )
 
     if expected_pages:
         estimated_pages = text.count("\f") or max(int(len(text) / 1800), 1)
         page_ratio = estimated_pages / expected_pages
         if page_ratio < 0.5 or page_ratio > 2.5:
             score -= 0.2
-            logger.warning(f"{method_name}: page count mismatch est={estimated_pages} vs expected={expected_pages}")
+            logger.warning(
+                f"{method_name}: page count mismatch est={estimated_pages} vs expected={expected_pages}"
+            )
 
     score = max(0.0, score)
     logger.info(f"{method_name} quality score: {score:.2f}")
@@ -195,9 +218,13 @@ def extract_text_multipass(file_path: Path) -> Tuple[str, str, float]:
     for method_name, extract_func in methods:
         text = extract_func(file_path)
         if text.strip():
-            score = validate_extraction_quality(text, method_name, expected_pages)
+            score = validate_extraction_quality(
+                text, method_name, expected_pages
+            )
             results[method_name] = (text, score)
-            logger.info(f"{method_name}: {len(text):,} chars (score={score:.2f})")
+            logger.info(
+                f"{method_name}: {len(text):,} chars (score={score:.2f})"
+            )
         else:
             logger.warning(f"{method_name}: no text extracted")
 
@@ -209,7 +236,9 @@ def extract_text_multipass(file_path: Path) -> Tuple[str, str, float]:
     best_text, best_score = results[best_method]
 
     logger.info("=" * 60)
-    logger.info(f"BEST: {best_method} (score: {best_score:.2f}, {len(best_text):,} chars)")
+    logger.info(
+        f"BEST: {best_method} (score: {best_score:.2f}, {len(best_text):,} chars)"
+    )
     logger.info("=" * 60)
 
     return best_text, best_method, best_score

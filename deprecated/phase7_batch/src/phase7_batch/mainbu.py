@@ -9,7 +9,7 @@ from tqdm import tqdm
 import psutil
 import yaml
 import sys
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict
 import os
 import toml
 import threading
@@ -77,12 +77,20 @@ class BatchSummary:
     def from_metadata_list(cls, metadata_list, total_duration, avg_cpu):
         obj = cls()
         obj.total_files = len(metadata_list)
-        obj.successful_files = sum(1 for m in metadata_list if m.status == "success")
-        obj.partial_files = sum(1 for m in metadata_list if m.status == "partial")
-        obj.failed_files = sum(1 for m in metadata_list if m.status == "failed")
+        obj.successful_files = sum(
+            1 for m in metadata_list if m.status == "success"
+        )
+        obj.partial_files = sum(
+            1 for m in metadata_list if m.status == "partial"
+        )
+        obj.failed_files = sum(
+            1 for m in metadata_list if m.status == "failed"
+        )
         obj.total_duration = total_duration
         obj.avg_cpu_usage = avg_cpu
-        obj.errors = [m.error_message for m in metadata_list if m.error_message]
+        obj.errors = [
+            m.error_message for m in metadata_list if m.error_message
+        ]
         obj.status = (
             "success"
             if obj.failed_files == 0
@@ -104,7 +112,9 @@ def load_config(config_path: str) -> BatchConfig:
     try:
         config_file = Path(config_path)
         if not config_file.exists():
-            logger.warning(f"Config file {config_path} not found, using defaults")
+            logger.warning(
+                f"Config file {config_path} not found, using defaults"
+            )
             return BatchConfig()
         with open(config_path, "r") as f:
             data = yaml.safe_load(f) or {}
@@ -172,7 +182,9 @@ def find_phase_directory(phase: int) -> Optional[Path]:
             logger.info(f"Found phase {phase} directory: {phase_dir}")
             return phase_dir
     available_dirs = [
-        d for d in parent_dir.iterdir() if d.is_dir() and "phase" in d.name.lower()
+        d
+        for d in parent_dir.iterdir()
+        if d.is_dir() and "phase" in d.name.lower()
     ]
     logger.error(
         f"No directory found for phase {phase}. Available phase directories: {[d.name for d in available_dirs]}"
@@ -203,7 +215,9 @@ def find_phase_main(phase_dir: Path, phase: int) -> Optional[Path]:
             for main_file in main_files_to_try:
                 main_path = src_dir / main_file
                 if main_path.exists():
-                    logger.debug(f"Found {main_file} for phase {phase}: {main_path}")
+                    logger.debug(
+                        f"Found {main_file} for phase {phase}: {main_path}"
+                    )
                     return main_path
     for main_file in main_files_to_try:
         main_path = phase_dir / main_file
@@ -224,7 +238,9 @@ def get_venv_python(phase_dir: Path) -> Optional[str]:
         timeout=30,
     )
     if result.returncode != 0:
-        logger.error(f"Failed to get venv path for {phase_dir}: {result.stderr}")
+        logger.error(
+            f"Failed to get venv path for {phase_dir}: {result.stderr}"
+        )
         return None
     env_path = result.stdout.strip()
     if not env_path:
@@ -281,7 +297,10 @@ def build_phase_command(
 
 
 def run_phase_for_file(
-    file_path: str, phases: List[int], config: BatchConfig, metadata: BatchMetadata
+    file_path: str,
+    phases: List[int],
+    config: BatchConfig,
+    metadata: BatchMetadata,
 ) -> BatchMetadata:
     file_id = Path(file_path).stem
     metadata.file_id = file_id
@@ -309,14 +328,20 @@ def run_phase_for_file(
 
                 venv_python = get_venv_python(phase_dir)
                 if not venv_python:
-                    raise RuntimeError(f"No valid venv Python for phase {phase}")
+                    raise RuntimeError(
+                        f"No valid venv Python for phase {phase}"
+                    )
 
                 file_path_str = get_absolute_file_path(file_path, phase_dir)
 
                 if phase > 3:  # Chunk-based phases
-                    chunks = load_chunks_from_json(config.pipeline_json, file_id)
+                    chunks = load_chunks_from_json(
+                        config.pipeline_json, file_id
+                    )
                     if not chunks:
-                        raise ValueError(f"No chunks found for {file_id} after Phase 3")
+                        raise ValueError(
+                            f"No chunks found for {file_id} after Phase 3"
+                        )
                     metadata.chunk_ids = []  # Reset for new phase
                     with ThreadPoolExecutor(
                         max_workers=config.max_workers
@@ -342,7 +367,9 @@ def run_phase_for_file(
                                     metadata.chunk_ids.append(chunk_id)
                             except Exception as e:
                                 logger.error(f"Chunk {chunk_id} failed: {e}")
-                                metadata.error_message = f"Chunk {chunk_id} error: {e}"
+                                metadata.error_message = (
+                                    f"Chunk {chunk_id} error: {e}"
+                                )
                                 break
                     if metadata.error_message:
                         break
@@ -351,7 +378,9 @@ def run_phase_for_file(
                     cmd = build_phase_command(
                         phase, main_path, file_path_str, venv_python, file_id
                     )
-                    logger.debug(f"Executing phase {phase} in directory {phase_dir}")
+                    logger.debug(
+                        f"Executing phase {phase} in directory {phase_dir}"
+                    )
                     logger.debug(f"Command: {' '.join(cmd)}")
                     result = subprocess.run(
                         cmd,
@@ -408,7 +437,9 @@ def run_chunk_phase(
     cmd = build_phase_command(
         phase, main_path, file_path, venv_python, file_id, chunk_id
     )
-    logger.debug(f"Executing chunk {chunk_id} for phase {phase}: {' '.join(cmd)}")
+    logger.debug(
+        f"Executing chunk {chunk_id} for phase {phase}: {' '.join(cmd)}"
+    )
     result = subprocess.run(
         cmd,
         cwd=str(Path(main_path).parent),
@@ -461,18 +492,24 @@ def load_existing_metadata(json_path: str, file_id: str) -> Optional[Dict]:
 
 
 def update_pipeline_json(
-    config: BatchConfig, summary: BatchSummary, metadata_list: List[BatchMetadata]
+    config: BatchConfig,
+    summary: BatchSummary,
+    metadata_list: List[BatchMetadata],
 ):
     pipeline_path = Path(config.pipeline_json)
     try:
         with open(pipeline_path, "r+") as f:
             data = json.load(f)
-            data["phase6"] = {  # Updated to "phase6" for consistency with guidelines
-                "status": summary.status,
-                "files": {m.file_id: m.model_dump() for m in metadata_list},
-                "metrics": vars(summary),  # Dump as dict
-                "timestamps": summary.timestamps,
-            }
+            data["phase6"] = (
+                {  # Updated to "phase6" for consistency with guidelines
+                    "status": summary.status,
+                    "files": {
+                        m.file_id: m.model_dump() for m in metadata_list
+                    },
+                    "metrics": vars(summary),  # Dump as dict
+                    "timestamps": summary.timestamps,
+                }
+            )
             f.seek(0)
             json.dump(data, f, indent=2)
             f.truncate()
@@ -495,7 +532,10 @@ def verify_phase_environments(phases: List[int]) -> Dict[int, bool]:
                 results[phase] = False
                 continue
             version_result = subprocess.run(
-                [venv_python, "--version"], capture_output=True, text=True, timeout=30
+                [venv_python, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             if version_result.returncode != 0:
                 logger.warning(f"Phase {phase}: Failed to get Python version")
@@ -543,7 +583,8 @@ def cleanup_old_artifacts(json_path: str, age_days: int = 7):
                 art_path = Path(art)
                 if (
                     art_path.exists()
-                    and (current_time - art_path.stat().st_mtime) > age_days * 86400
+                    and (current_time - art_path.stat().st_mtime)
+                    > age_days * 86400
                 ):
                     art_path.unlink()
                     artifacts.remove(art)
@@ -683,15 +724,19 @@ def main():
     cpu_readings = []
     processed_metadata = []
     stop_event = threading.Event()
-    monitor_thread = threading.Thread(target=monitor_cpu, args=(config, stop_event))
+    monitor_thread = threading.Thread(
+        target=monitor_cpu, args=(config, stop_event)
+    )
     monitor_thread.start()
 
     with ThreadPoolExecutor(max_workers=config.max_workers) as executor:
         worker_args = [
-            (str(file_path), config.phases_to_run, config) for file_path in input_files
+            (str(file_path), config.phases_to_run, config)
+            for file_path in input_files
         ]
         future_to_file = {
-            executor.submit(process_file_worker, args): args[0] for args in worker_args
+            executor.submit(process_file_worker, args): args[0]
+            for args in worker_args
         }
         with tqdm(total=len(input_files), desc="Processing files") as pbar:
             for future in as_completed(future_to_file):
@@ -700,7 +745,10 @@ def main():
                     metadata = future.result()
                     processed_metadata.append(metadata)
                     pbar.set_postfix(
-                        {"file": Path(file_path).name[:20], "status": metadata.status}
+                        {
+                            "file": Path(file_path).name[:20],
+                            "status": metadata.status,
+                        }
                     )
                 except Exception as e:
                     logger.error(f"Worker failed for {file_path}: {e}")
@@ -750,10 +798,16 @@ def main():
         file_name = Path(metadata.file_id).name
         duration = f"{metadata.duration:.1f}s" if metadata.duration else "N/A"
         phases = ",".join(map(str, metadata.phases_completed)) or "none"
-        print(f"  {file_name:<30} {metadata.status:<10} {duration:<8} phases: {phases}")
+        print(
+            f"  {file_name:<30} {metadata.status:<10} {duration:<8} phases: {phases}"
+        )
 
     logger.info(f"Batch processing completed with status: {summary.status}")
-    return 0 if summary.status == "success" else 2 if summary.status == "partial" else 1
+    return (
+        0
+        if summary.status == "success"
+        else 2 if summary.status == "partial" else 1
+    )
 
 
 if __name__ == "__main__":

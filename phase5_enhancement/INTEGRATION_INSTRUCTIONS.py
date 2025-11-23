@@ -30,7 +30,7 @@ INTEGRATION STEPS:
    metadata.cleanup_status = cleanup_metadata['status']
    metadata.phrases_removed = cleanup_metadata.get('phrases_removed', 0)
    metadata.cleanup_processing_time = cleanup_metadata.get('processing_time', 0.0)
-   
+
    # Load audio (use cleaned version if available)
    if cleaned_audio is not None:
        logger.info(f"Using cleaned audio for chunk {metadata.chunk_id}")

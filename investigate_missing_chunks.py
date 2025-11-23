@@ -1,6 +1,4 @@
-import sys
 from pathlib import Path
-import json
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 phase_audio_cleanup = PROJECT_ROOT / "phase_audio_cleanup"
@@ -33,7 +31,7 @@ meditations_cleaned = phase4_dir / "meditations_cleaned"
 if meditations_cleaned.exists():
     cleaned_files = list(meditations_cleaned.glob("*.wav"))
     srt_files = list(meditations_cleaned.glob("*.srt"))
-    print(f"Cleaned directory contents:")
+    print("Cleaned directory contents:")
     print(f"  - {len(cleaned_files)} .wav files")
     print(f"  - {len(srt_files)} .srt transcript files")
     print()
@@ -45,27 +43,27 @@ if original.exists():
     all_meditations = list(original.glob(meditations_pattern))
     print(f"Original Meditations chunks: {len(all_meditations)} files")
     print()
-    
+
     # Calculate which files are missing
     if meditations_cleaned.exists():
         original_names = {f.name for f in all_meditations}
         cleaned_names = {f.name for f in cleaned_files}
         missing = original_names - cleaned_names
-        
+
         print(f"Missing from cleaned directory: {len(missing)} files")
         print()
-        
+
         if missing:
             print("Sample of missing files (first 20):")
             for i, filename in enumerate(sorted(missing)[:20]):
                 print(f"  {i+1}. {filename}")
-            
+
             if len(missing) > 20:
                 print(f"  ... and {len(missing) - 20} more")
-            
+
             # Save full list
             missing_file = PROJECT_ROOT / "missing_meditations_chunks.txt"
-            with open(missing_file, 'w') as f:
+            with open(missing_file, "w") as f:
                 for filename in sorted(missing):
                     f.write(f"{filename}\n")
             print()
@@ -75,7 +73,11 @@ print()
 print("=" * 80)
 print("Next Steps:")
 print("=" * 80)
-print("1. Check if missing files are sequential chunks (indicating content gaps)")
-print("2. Try to manually process a few missing files to see what the error is")
+print(
+    "1. Check if missing files are sequential chunks (indicating content gaps)"
+)
+print(
+    "2. Try to manually process a few missing files to see what the error is"
+)
 print("3. Check file sizes - are they 0 bytes or corrupted?")
 print()

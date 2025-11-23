@@ -1,4 +1,5 @@
 """Working test script - adds src to path for import."""
+
 import sys
 from pathlib import Path
 
@@ -22,13 +23,13 @@ would be Christmas."""
 
 print("=== ORIGINAL TEXT ===")
 print(raw)
-print("\n" + "="*60 + "\n")
+print("\n" + "=" * 60 + "\n")
 
 cleaned = clean_for_tts(raw)
 
 print("=== CLEANED OUTPUT ===")
 print(cleaned)
-print("\n" + "="*60 + "\n")
+print("\n" + "=" * 60 + "\n")
 
 print("=== STATISTICS ===")
 print(f"Original: {len(raw)} characters")
@@ -37,10 +38,11 @@ print(f"Reduction: {100 * (1 - len(cleaned)/len(raw)):.1f}%")
 
 # Count specific fixes
 import re
-currency_matches = len(re.findall(r'\$\s*\d+\.\d{2}', raw))
+
+currency_matches = len(re.findall(r"\$\s*\d+\.\d{2}", raw))
 print(f"Currency normalizations: {currency_matches}")
 
 # Save to file to inspect
 output_path = Path("test_output.txt")
-output_path.write_text(cleaned, encoding='utf-8')
+output_path.write_text(cleaned, encoding="utf-8")
 print(f"\n✓ Saved to {output_path.absolute()}")

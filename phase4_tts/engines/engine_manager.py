@@ -104,7 +104,7 @@ class EngineManager:
         return_engine: bool = False,
         est_dur_sec: Optional[float] = None,
         rtf_fallback_threshold: Optional[float] = None,
-        **kwargs
+        **kwargs,
     ) -> Union[np.ndarray, Tuple[np.ndarray, str]]:
         """
         Synthesize speech using specified engine with fallback
@@ -134,7 +134,7 @@ class EngineManager:
                 text=text,
                 reference_audio=reference_audio,
                 language=language,
-                **kwargs
+                **kwargs,
             )
             elapsed = time.time() - start_time
             rt_factor = elapsed / est_dur_sec if est_dur_sec else None
@@ -169,10 +169,14 @@ class EngineManager:
                                 text=text,
                                 reference_audio=reference_audio,
                                 language=language,
-                                **kwargs
+                                **kwargs,
                             )
                             fb_elapsed = time.time() - fb_start
-                            fb_rt = fb_elapsed / est_dur_sec if est_dur_sec else None
+                            fb_rt = (
+                                fb_elapsed / est_dur_sec
+                                if est_dur_sec
+                                else None
+                            )
                             if fb_rt is not None:
                                 logger.info(
                                     "Fallback '%s' RTF %.2f vs primary %.2f",
@@ -184,9 +188,17 @@ class EngineManager:
                                 return fb_audio, fb
                             return fb_audio
                         except Exception as fb_exc:  # noqa: BLE001
-                            logger.warning("Fallback '%s' failed after slow RTF on '%s': %s", fb, engine, fb_exc)
+                            logger.warning(
+                                "Fallback '%s' failed after slow RTF on '%s': %s",
+                                fb,
+                                engine,
+                                fb_exc,
+                            )
                     else:
-                        logger.info("No fallback engines configured after slow RTF on '%s'.", engine)
+                        logger.info(
+                            "No fallback engines configured after slow RTF on '%s'.",
+                            engine,
+                        )
             elif rtf_fallback_threshold and rt_factor is not None:
                 logger.info(
                     "Engine '%s' RTF %.2f (threshold %.2f)",
@@ -216,7 +228,7 @@ class EngineManager:
                         text=text,
                         reference_audio=reference_audio,
                         language=language,
-                        **kwargs
+                        **kwargs,
                     )
                     logger.info(f"Fallback successful: {fallback_engine}")
                     if return_engine:
@@ -231,9 +243,9 @@ class EngineManager:
 
         # All engines failed
         raise RuntimeError(
-                f"All engines failed to synthesize. Primary: {engine}, "
-                f"Fallbacks: {fallback_order}"
-            )
+            f"All engines failed to synthesize. Primary: {engine}, "
+            f"Fallbacks: {fallback_order}"
+        )
 
     def _get_fallback_order(self, failed_engine: str) -> List[str]:
         """
@@ -256,7 +268,9 @@ class EngineManager:
         # Prefer stable engines for fallback
         priority_order = ["xtts", "kokoro", "piper"]
         fallback.sort(
-            key=lambda e: priority_order.index(e) if e in priority_order else 999
+            key=lambda e: (
+                priority_order.index(e) if e in priority_order else 999
+            )
         )
 
         return fallback

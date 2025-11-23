@@ -47,7 +47,9 @@ def collect_voices(config: Dict) -> Tuple[List[str], Dict[str, Path]]:
         if ref_path.exists():
             clones[voice_id] = ref_path
         else:
-            logger.warning("Skipping %s (missing reference: %s)", voice_id, ref_path)
+            logger.warning(
+                "Skipping %s (missing reference: %s)", voice_id, ref_path
+            )
 
     return xtts_speakers, clones
 
@@ -87,7 +89,9 @@ def synthesize_with_multi_speaker(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate XTTS demos for all voices")
+    parser = argparse.ArgumentParser(
+        description="Generate XTTS demos for all voices"
+    )
     parser.add_argument(
         "--text-file",
         type=Path,
@@ -116,7 +120,9 @@ def main() -> int:
 
     text = DEFAULT_TEXT
     if args.text_file and args.text_file.exists():
-        text = args.text_file.read_text(encoding="utf-8").strip() or DEFAULT_TEXT
+        text = (
+            args.text_file.read_text(encoding="utf-8").strip() or DEFAULT_TEXT
+        )
 
     config = load_config(CONFIG_PATH)
     xtts_speakers, clones = collect_voices(config)
@@ -152,14 +158,22 @@ def main() -> int:
         )
         for speaker in ms_speakers:
             try:
-                audio = synthesize_with_multi_speaker(ms_model, text, speaker=speaker)
+                audio = synthesize_with_multi_speaker(
+                    ms_model, text, speaker=speaker
+                )
                 out_path = args.out_dir / f"builtin_{speaker}.wav"
-                sf.write(out_path, audio, ms_model.synthesizer.output_sample_rate)
+                sf.write(
+                    out_path, audio, ms_model.synthesizer.output_sample_rate
+                )
                 logger.info("Wrote %s", out_path)
             except Exception as exc:  # pylint: disable=broad-except
                 logger.error("Failed built-in speaker %s: %s", speaker, exc)
     except Exception as exc:  # pylint: disable=broad-except
-        logger.error("Failed to load multi-speaker model %s: %s", args.multi_speaker_model, exc)
+        logger.error(
+            "Failed to load multi-speaker model %s: %s",
+            args.multi_speaker_model,
+            exc,
+        )
 
     # Custom clones (XTTS cloning)
     for voice_id, ref_path in clones.items():

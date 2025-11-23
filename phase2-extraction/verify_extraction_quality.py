@@ -17,22 +17,22 @@ print("=" * 80)
 
 for filename in files_to_check:
     filepath = Path(filename)
-    
+
     if not filepath.exists():
         print(f"\n❌ {filename} - NOT FOUND")
         continue
-    
+
     # Get file size
     size_mb = filepath.stat().st_size / 1024 / 1024
-    
+
     # Read first 500 chars
-    with open(filepath, 'r', encoding='utf-8') as f:
+    with open(filepath, "r", encoding="utf-8") as f:
         preview = f.read(500)
-    
+
     # Count total chars
-    with open(filepath, 'r', encoding='utf-8') as f:
+    with open(filepath, "r", encoding="utf-8") as f:
         total_chars = len(f.read())
-    
+
     print(f"\n{'=' * 80}")
     print(f"📄 {filename}")
     print(f"{'=' * 80}")
@@ -41,18 +41,18 @@ for filename in files_to_check:
     print("-" * 80)
     print(preview)
     print("-" * 80)
-    
+
     # Quality checks
     issues = []
-    if preview.count('�') > 5:
+    if preview.count("�") > 5:
         issues.append("⚠️  Contains replacement characters (�)")
-    if preview.count('\x00') > 0:
+    if preview.count("\x00") > 0:
         issues.append("⚠️  Contains null bytes")
     if len(preview) < 100:
         issues.append("❌ Text too short!")
     if not any(c.isalpha() for c in preview):
         issues.append("❌ No readable text!")
-    
+
     if issues:
         print("\n⚠️  Quality Issues:")
         for issue in issues:

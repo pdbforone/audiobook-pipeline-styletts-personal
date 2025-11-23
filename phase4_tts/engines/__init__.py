@@ -23,11 +23,7 @@ class TTSEngine(ABC):
 
     @abstractmethod
     def synthesize(
-        self,
-        text: str,
-        reference_audio: Path,
-        language: str = "en",
-        **kwargs
+        self, text: str, reference_audio: Path, language: str = "en", **kwargs
     ) -> np.ndarray:
         """
         Synthesize speech from text

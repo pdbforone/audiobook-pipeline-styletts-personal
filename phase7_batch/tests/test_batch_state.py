@@ -1,7 +1,5 @@
-import json
 from pathlib import Path
 
-import pytest
 
 from pipeline_common import PipelineState
 from phase7_batch.main import persist_batch_state
@@ -58,7 +56,9 @@ def _build_metadata(
         error_message=error_message,
         errors=errors or [],
         source_path=f"/tmp/{file_id}.txt",
-        phase6=Phase6Result(exit_code=0, metrics={}, stdout_tail=None, stderr_tail=None),
+        phase6=Phase6Result(
+            exit_code=0, metrics={}, stdout_tail=None, stderr_tail=None
+        ),
         cpu_avg=cpu_avg,
     )
 
@@ -79,7 +79,9 @@ def _assert_envelope(entry: dict) -> None:
 
 def test_persist_batch_success_path(tmp_path: Path) -> None:
     pipeline = tmp_path / "pipeline.json"
-    summary = _build_summary(status="success", total=2, successful=2, failed=0, skipped=0)
+    summary = _build_summary(
+        status="success", total=2, successful=2, failed=0, skipped=0
+    )
     metadata = [
         _build_metadata("file_a", status="success", cpu_avg=12.5),
         _build_metadata("file_b", status="running", cpu_avg=10.0),
@@ -102,9 +104,16 @@ def test_persist_batch_success_path(tmp_path: Path) -> None:
 
 def test_failed_and_skipped_entries_record_errors(tmp_path: Path) -> None:
     pipeline = tmp_path / "pipeline.json"
-    summary = _build_summary(status="partial", total=2, successful=0, failed=1, skipped=1)
+    summary = _build_summary(
+        status="partial", total=2, successful=0, failed=1, skipped=1
+    )
     metadata = [
-        _build_metadata("failed_book", status="failed", error_message="boom", errors=["trace"]),
+        _build_metadata(
+            "failed_book",
+            status="failed",
+            error_message="boom",
+            errors=["trace"],
+        ),
         _build_metadata("skipped_book", status="skipped", was_skipped=True),
     ]
 
@@ -124,7 +133,9 @@ def test_failed_and_skipped_entries_record_errors(tmp_path: Path) -> None:
 
 def test_partial_batch_metrics_present(tmp_path: Path) -> None:
     pipeline = tmp_path / "pipeline.json"
-    summary = _build_summary(status="partial", total=3, successful=1, failed=1, skipped=1)
+    summary = _build_summary(
+        status="partial", total=3, successful=1, failed=1, skipped=1
+    )
     metadata = [
         _build_metadata("ok", status="success"),
         _build_metadata("bad", status="failed", error_message="oops"),
@@ -175,7 +186,9 @@ def test_multiple_runs_append_without_corruption(tmp_path: Path) -> None:
 
 def test_envelope_invariants_hold_for_all_files(tmp_path: Path) -> None:
     pipeline = tmp_path / "pipeline.json"
-    summary = _build_summary(status="partial", total=2, successful=1, failed=1, skipped=0)
+    summary = _build_summary(
+        status="partial", total=2, successful=1, failed=1, skipped=0
+    )
     metadata = [
         _build_metadata("good", status="success"),
         _build_metadata("bad", status="failed", error_message="bad things"),
@@ -183,7 +196,9 @@ def test_envelope_invariants_hold_for_all_files(tmp_path: Path) -> None:
 
     persist_batch_state(pipeline, summary, metadata)
 
-    state = PipelineState(pipeline, validate_on_read=False).read(validate=False)
+    state = PipelineState(pipeline, validate_on_read=False).read(
+        validate=False
+    )
     files = state["batch_runs"][0]["files"]
     for entry in files.values():
         _assert_envelope(entry)

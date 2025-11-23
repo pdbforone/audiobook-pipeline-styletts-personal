@@ -36,7 +36,9 @@ class TTSTextCleaner:
     Uses NVIDIA NeMo Text Normalization when available.
     """
 
-    def __init__(self, language: str = "en", use_context: bool = False) -> None:
+    def __init__(
+        self, language: str = "en", use_context: bool = False
+    ) -> None:
         """
         Initialize the text cleaner.
 
@@ -58,7 +60,9 @@ class TTSTextCleaner:
             )
             logger.info("✓ NeMo Text Normalizer initialized")
         else:
-            logger.warning("NeMo Text Processing not installed. Using regex cleaner.")
+            logger.warning(
+                "NeMo Text Processing not installed. Using regex cleaner."
+            )
 
     def clean_for_tts(self, raw_text: str) -> str:
         """
@@ -85,7 +89,7 @@ class TTSTextCleaner:
         """Fix common PDF encoding artifacts."""
         text = text.replace("â€œ", '"').replace("â€", '"')
         text = text.replace("â€™", "'").replace("â€˜", "'")
-        text = text.replace("â€\"", "—").replace("â€\"", "–")
+        text = text.replace('â€"', "—").replace('â€"', "–")
 
         try:
             from unidecode import unidecode
@@ -104,7 +108,11 @@ class TTSTextCleaner:
             parts = match.group(0).split()
             return " ".join([p for p in parts if len(p) > 1]) or ""
 
-        text = re.sub(r"\b[a-zA-Z]\b(?:\s+\b[a-zA-Z]\b){2,}", collapse_single_letters, text)
+        text = re.sub(
+            r"\b[a-zA-Z]\b(?:\s+\b[a-zA-Z]\b){2,}",
+            collapse_single_letters,
+            text,
+        )
         return text
 
     def _normalize_with_nemo(self, text: str) -> str:
@@ -128,7 +136,9 @@ class TTSTextCleaner:
             return "".join(normalized_sentences)
 
         except Exception as exc:  # pragma: no cover - depends on NeMo runtime
-            logger.warning(f"NeMo normalization failed: {exc}; falling back to basic normalization.")
+            logger.warning(
+                f"NeMo normalization failed: {exc}; falling back to basic normalization."
+            )
             return self._basic_normalization(text)
 
     def _basic_normalization(self, text: str) -> str:
@@ -159,10 +169,16 @@ class TTSTextCleaner:
         text = re.sub(r"([.!?])([A-Z])", r"\1 \2", text)
         # Fix spaced characters (e.g., "T h e G i f t" → "The Gift")
         # Matches 2+ single letters separated by spaces (PDF header/title artifact)
-        text = re.sub(r"\b[a-zA-Z]\b(?:\s+\b[a-zA-Z]\b)+", lambda m: m.group(0).replace(" ", ""), text)
+        text = re.sub(
+            r"\b[a-zA-Z]\b(?:\s+\b[a-zA-Z]\b)+",
+            lambda m: m.group(0).replace(" ", ""),
+            text,
+        )
         return text
 
-    def clean_text_file(self, input_path: Path, output_path: Path) -> Dict[str, float]:
+    def clean_text_file(
+        self, input_path: Path, output_path: Path
+    ) -> Dict[str, float]:
         """
         Clean a text file and return metrics.
 
@@ -182,7 +198,11 @@ class TTSTextCleaner:
             "cleaning_duration": duration,
             "original_chars": len(raw_text),
             "cleaned_chars": len(cleaned_text),
-            "reduction_percent": 100 * (1 - len(cleaned_text) / len(raw_text)) if raw_text else 0.0,
+            "reduction_percent": (
+                100 * (1 - len(cleaned_text) / len(raw_text))
+                if raw_text
+                else 0.0
+            ),
             "normalizer": "NeMo" if self.normalizer else "Fallback",
         }
 

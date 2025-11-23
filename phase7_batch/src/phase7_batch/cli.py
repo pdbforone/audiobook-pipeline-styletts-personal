@@ -25,7 +25,9 @@ def _positive_int(value: str) -> int:
 def _cpu_percent(value: str) -> float:
     fvalue = float(value)
     if not 0 <= fvalue <= 100:
-        raise argparse.ArgumentTypeError("CPU threshold must be between 0 and 100")
+        raise argparse.ArgumentTypeError(
+            "CPU threshold must be between 0 and 100"
+        )
     return fvalue
 
 
@@ -41,26 +43,72 @@ def build_parser() -> argparse.ArgumentParser:
         description="Phase 7 batch driver (Phase 6 orchestrator wrapper)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--config", default="config.yaml", help="Path to config YAML")
-    parser.add_argument("--input-dir", help="Input directory of files to process")
+    parser.add_argument(
+        "--config", default="config.yaml", help="Path to config YAML"
+    )
+    parser.add_argument(
+        "--input-dir", help="Input directory of files to process"
+    )
     parser.add_argument("--pipeline-json", help="Path to pipeline.json")
-    parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
+    parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+    )
     parser.add_argument("--log-file", help="Log file location")
-    parser.add_argument("--max-workers", type=_positive_int, help="Max concurrent files")
-    parser.add_argument("--cpu-threshold", type=_cpu_percent, help="CPU percent before throttling")
-    parser.add_argument("--throttle-delay", type=_non_negative_float, help="Seconds to sleep when throttled")
+    parser.add_argument(
+        "--max-workers", type=_positive_int, help="Max concurrent files"
+    )
+    parser.add_argument(
+        "--cpu-threshold",
+        type=_cpu_percent,
+        help="CPU percent before throttling",
+    )
+    parser.add_argument(
+        "--throttle-delay",
+        type=_non_negative_float,
+        help="Seconds to sleep when throttled",
+    )
     resume_group = parser.add_mutually_exclusive_group()
-    resume_group.add_argument("--resume", dest="resume", action="store_true", help="Enable resume (skip completed)")
-    resume_group.add_argument("--no-resume", dest="resume", action="store_false", help="Disable resume")
-    parser.add_argument("--dry-run", action="store_true", help="List work without invoking Phase 6")
-    parser.add_argument("--batch-size", type=_positive_int, help="Limit number of files processed")
-    parser.add_argument("--phases", nargs="+", type=int, help="Phases to run (passed to Phase 6)")
-    parser.add_argument("--phase-timeout", type=_positive_int, help="Per-phase timeout (forwarded downstream)")
+    resume_group.add_argument(
+        "--resume",
+        dest="resume",
+        action="store_true",
+        help="Enable resume (skip completed)",
+    )
+    resume_group.add_argument(
+        "--no-resume",
+        dest="resume",
+        action="store_false",
+        help="Disable resume",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="List work without invoking Phase 6",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=_positive_int,
+        help="Limit number of files processed",
+    )
+    parser.add_argument(
+        "--phases",
+        nargs="+",
+        type=int,
+        help="Phases to run (passed to Phase 6)",
+    )
+    parser.add_argument(
+        "--phase-timeout",
+        type=_positive_int,
+        help="Per-phase timeout (forwarded downstream)",
+    )
     parser.set_defaults(resume=None)
     return parser
 
 
-def apply_overrides(config: BatchConfig, args: argparse.Namespace) -> BatchConfig:
+def apply_overrides(
+    config: BatchConfig, args: argparse.Namespace
+) -> BatchConfig:
     updates = {}
     if args.input_dir:
         updates["input_dir"] = args.input_dir
@@ -107,4 +155,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

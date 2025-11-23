@@ -44,8 +44,12 @@ def build_command(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Phase 4 quick sanity check.")
-    parser.add_argument("--file-id", default="TEST_SIMPLE", help="Pipeline file identifier.")
-    parser.add_argument("--chunk-id", type=int, default=0, help="Chunk index to synthesize.")
+    parser.add_argument(
+        "--file-id", default="TEST_SIMPLE", help="Pipeline file identifier."
+    )
+    parser.add_argument(
+        "--chunk-id", type=int, default=0, help="Chunk index to synthesize."
+    )
     parser.add_argument(
         "--pipeline-json",
         type=Path,
@@ -87,7 +91,9 @@ def main() -> int:
         print(f"❌ Command failed with exit code {exc.returncode}")
         return exc.returncode
 
-    print("✅ Test command completed. Check audio_chunks/chunk_0.wav for output.")
+    print(
+        "✅ Test command completed. Check audio_chunks/chunk_0.wav for output."
+    )
     return 0
 
 

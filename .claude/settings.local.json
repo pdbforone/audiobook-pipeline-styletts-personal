@@ -15,7 +15,10 @@
       "Bash(timeout 10 du:*)",
       "Bash(find:*)",
       "Bash(git log:*)",
-      "Bash(git submodule:*)"
+      "Bash(git submodule:*)",
+      "Bash(git stash push:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)"
     ],
     "deny": [],
     "ask": []

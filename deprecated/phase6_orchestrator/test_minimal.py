@@ -22,7 +22,7 @@ def main() -> int:
         print(f"❌ Chunk 2 not found: {chunk2_file}")
         return 1
 
-    chunk2_text = chunk2_file.read_text(encoding='utf-8')
+    chunk2_text = chunk2_file.read_text(encoding="utf-8")
     print(f"\nChunk 2 text ({len(chunk2_text)} chars):")
     print(chunk2_text[:150])
 
@@ -37,7 +37,7 @@ def main() -> int:
         "chunk_paths": [str(chunk2_file.absolute())]
     }
 
-    with open(pipeline_json, 'w') as f:
+    with open(pipeline_json, "w") as f:
         json.dump(pipeline, f, indent=4)
 
     print(f"\n✓ Added to pipeline.json as: {test_id}")
@@ -70,7 +70,9 @@ def main() -> int:
         print("✅ SUCCESS - Check audio_chunks/chunk_0.wav")
         print("\nListen to it. Does it sound like clear English?")
         print("\nIf YES: The minimal version works!")
-        print("If NO: There's something fundamentally wrong with the Chatterbox setup")
+        print(
+            "If NO: There's something fundamentally wrong with the Chatterbox setup"
+        )
         return 0
 
     print("❌ FAILED")
