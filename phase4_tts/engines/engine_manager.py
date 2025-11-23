@@ -1,6 +1,11 @@
 """
 TTS Engine Manager
 Coordinates multiple TTS engines and provides unified interface
+
+Enhanced with registry-based capability lookup for:
+- Token-based text limits per engine
+- Intelligent fallback ordering
+- Performance-aware engine selection
 """
 
 import logging
@@ -10,7 +15,24 @@ from pathlib import Path
 import numpy as np
 
 from . import TTSEngine
+
 logger = logging.getLogger(__name__)
+
+# Lazy import of registry to avoid circular imports
+_registry = None
+
+
+def _get_registry():
+    """Lazy-load the engine registry."""
+    global _registry
+    if _registry is None:
+        try:
+            from core.engine_registry import EngineRegistry
+            _registry = EngineRegistry()
+        except ImportError:
+            logger.debug("Engine registry not available, using defaults")
+            _registry = None
+    return _registry
 
 
 class EngineManager:
@@ -214,17 +236,25 @@ class EngineManager:
             )
 
     def _get_fallback_order(self, failed_engine: str) -> List[str]:
-        """Determine fallback order based on failed engine"""
-        # Fallback priority: fast and reliable engines last
-        all_engines = list(self.engines.keys())
+        """
+        Determine fallback order based on failed engine.
 
-        # Remove failed engine
+        Uses registry fallback_order if available, otherwise defaults.
+        """
+        registry = _get_registry()
+
+        if registry:
+            # Get registry-defined fallback chain
+            fallback = registry.get_fallback_chain(failed_engine)
+            # Filter to only registered engines
+            return [e for e in fallback if e in self.engines]
+
+        # Fallback to hardcoded priority
+        all_engines = list(self.engines.keys())
         fallback = [e for e in all_engines if e != failed_engine]
 
-        # Prefer stable engines for fallback (XTTS primary -> Kokoro backup)
-        priority_order = ["xtts", "kokoro"]
-
-        # Sort by priority
+        # Prefer stable engines for fallback
+        priority_order = ["xtts", "kokoro", "piper"]
         fallback.sort(
             key=lambda e: priority_order.index(e) if e in priority_order else 999
         )
@@ -263,3 +293,150 @@ class EngineManager:
         """Unload all engines"""
         self.loaded_engines.clear()
         logger.info("All engines unloaded")
+
+    # -------------------------------------------------------------------------
+    # Registry-based capability methods
+    # -------------------------------------------------------------------------
+
+    def get_max_chars(self, engine_name: Optional[str] = None) -> int:
+        """
+        Get maximum character limit for an engine from registry.
+
+        Args:
+            engine_name: Engine name, or None for default engine
+
+        Returns:
+            Maximum characters per synthesis call
+        """
+        engine_name = engine_name or self.default_engine
+        registry = _get_registry()
+
+        if registry:
+            return registry.get_max_chars(engine_name)
+
+        # Fallback defaults if registry unavailable
+        defaults = {"xtts": 1400, "kokoro": 1800, "piper": 3500}
+        return defaults.get(engine_name, 1200)
+
+    def get_soft_max_chars(self, engine_name: Optional[str] = None) -> int:
+        """
+        Get soft (optimal) character limit for an engine.
+
+        Text exceeding this should be split for best quality.
+        """
+        engine_name = engine_name or self.default_engine
+        registry = _get_registry()
+
+        if registry:
+            return registry.get_soft_max_chars(engine_name)
+
+        defaults = {"xtts": 1000, "kokoro": 1200, "piper": 2000}
+        return defaults.get(engine_name, 800)
+
+    def should_split_text(self, text: str, engine_name: Optional[str] = None) -> bool:
+        """
+        Check if text should be split for optimal quality.
+
+        Args:
+            text: Text to check
+            engine_name: Engine name
+
+        Returns:
+            True if text exceeds soft limit and should be split
+        """
+        return len(text) > self.get_soft_max_chars(engine_name)
+
+    def must_split_text(self, text: str, engine_name: Optional[str] = None) -> bool:
+        """
+        Check if text MUST be split (exceeds hard limit).
+
+        Args:
+            text: Text to check
+            engine_name: Engine name
+
+        Returns:
+            True if text exceeds hard limit and MUST be split
+        """
+        return len(text) > self.get_max_chars(engine_name)
+
+    def get_engine_capabilities(self, engine_name: Optional[str] = None) -> Dict:
+        """
+        Get full capabilities for an engine from registry.
+
+        Returns dict with:
+        - limits: {max_chars, soft_max_chars, max_tokens, ...}
+        - performance: {typical_rtf_cpu, memory_mb, ...}
+        - quality: {mos_estimate, prosody, ...}
+        """
+        engine_name = engine_name or self.default_engine
+        registry = _get_registry()
+
+        if registry:
+            caps = registry.get(engine_name)
+            if caps:
+                return {
+                    "name": caps.display_name,
+                    "limits": {
+                        "max_chars": caps.limits.max_chars,
+                        "soft_max_chars": caps.limits.soft_max_chars,
+                        "max_tokens": caps.limits.max_tokens,
+                        "min_chars": caps.limits.min_chars,
+                    },
+                    "performance": {
+                        "typical_rtf_cpu": caps.performance.typical_rtf_cpu,
+                        "memory_mb": caps.performance.memory_mb,
+                    },
+                    "quality": {
+                        "mos_estimate": caps.quality.mos_estimate,
+                        "prosody": caps.quality.prosody,
+                    },
+                    "supports_cloning": caps.supports_cloning,
+                    "supports_emotions": caps.supports_emotions,
+                }
+
+        # Minimal fallback
+        return {
+            "name": engine_name,
+            "limits": {"max_chars": self.get_max_chars(engine_name)},
+        }
+
+    def estimate_rtf(self, engine_name: Optional[str] = None) -> float:
+        """Estimate real-time factor for an engine."""
+        engine_name = engine_name or self.default_engine
+        registry = _get_registry()
+
+        if registry:
+            return registry.estimate_rtf(engine_name)
+
+        defaults = {"xtts": 3.2, "kokoro": 1.3, "piper": 0.3}
+        return defaults.get(engine_name, 3.0)
+
+    def get_fastest_engine(self) -> str:
+        """Get the fastest registered engine."""
+        registry = _get_registry()
+
+        if registry:
+            fastest = registry.get_fastest_cpu_engine()
+            if fastest in self.engines:
+                return fastest
+
+        # Fallback: check registered engines
+        if "piper" in self.engines:
+            return "piper"
+        if "kokoro" in self.engines:
+            return "kokoro"
+        return self.default_engine or "xtts"
+
+    def get_highest_quality_engine(self) -> str:
+        """Get the highest quality registered engine."""
+        registry = _get_registry()
+
+        if registry:
+            best = registry.get_highest_quality_engine()
+            if best in self.engines:
+                return best
+
+        # Fallback
+        if "xtts" in self.engines:
+            return "xtts"
+        return self.default_engine or list(self.engines.keys())[0]
