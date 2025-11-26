@@ -5,7 +5,7 @@
 
 ---
 
-## Implementation Status (Updated: 2025-11-25)
+## Implementation Status (Updated: 2025-11-26)
 
 ### Production Pipeline (Phases 1-6)
 | Phase | Status | Notes |
@@ -31,7 +31,18 @@
 | Ollama | System | Required | ✅ Agents call the `ollama` daemon (default `phi3:mini`) from `agents/llama_base.py` when RAM permits |
 | Per-Phase Timeouts | `phase6_orchestrator/config.yaml` | ✅ | ✅ Loaded into `PhaseTimeouts`/`OrchestratorConfig` and enforced before each phase |
 | pipeline_common | `pipeline_common.py` | ✅ | ✅ Shared constants, `PipelineState`, and `StateTransaction` are used by both the UI and orchestrator |
-| Gradio UI | `ui/app.py` | ✅ | ✅ Launches via `PipelineAPI`, `VoiceManager`, and background workers |
+| Gradio UI | `ui/app.py` | ✅ | ✅ Launches via `PipelineAPI`, `VoiceManager`, and background workers; auto-selects an available port starting at 7860 |
+
+### Validation & Tests
+
+| Scope | Location | Status | Notes |
+|-------|----------|--------|-------|
+| Phase O full-pipeline validation | `tests/integration/test_full_pipeline.py` | ✅ Added | Opt-in (`RUN_PHASE_O_FULL=1`); runs phases 1→6 on `input/baseline_snippet.txt` and asserts state/artifacts |
+| Cross-phase schema alignment | `tests/integration/test_schema_alignment.py` | ✅ Added | Verifies Phase2→Phase3 hashes, Phase3→Phase4 chunk ids, engine_used ∈ {xtts, kokoro}, ordering preserved |
+| Two-run consistency | `tests/integration/test_two_runs.py` | ✅ Added | Ensures overrides reset and no autonomy_runtime/experiments linger after repeated runs |
+| Engine regression smoke | `phase4_tts/tests/test_engine_regression.py` | ✅ Added | XTTS/Kokoro synth stubs, Piper disabled check (skips if heavy deps missing) |
+| Repair integration | `self_repair/tests/test_repair_flow.py` | ✅ Added | Synthetic failure updates `error_registry.json`, no destructive overwrites |
+| Safety invariants | `tests/integration/test_safety_invariants.py` | ✅ Added | Confirms supervised/recommend-only/disabled autonomy leaves no overrides outside `.pipeline` |
 
 ### Memory/Learning Infrastructure
 
