@@ -97,6 +97,10 @@ autonomy:
       - "chunk_size"
       - "engine_preference"
       - "rewrite_policy"
+  self_eval:
+    enable: false
+    enable_planner_feedback: false
+    history_window_runs: 5
 
 self_repair:
   enable_text_rewrite: false
@@ -149,6 +153,18 @@ research:
   enable_feedback_loop: false
   enable_safety_verification: false
   enable_lifecycle: false
+phaseQ_self_eval:
+  enable_meta_evaluator: false
+  enable_reflection_writer: false
+  output_dir: ".pipeline/self_eval"
+phaseQ_self_evaluation:
+  enable: false
+  metrics:
+    - "run_health"
+    - "stability"
+    - "repair_effectiveness"
+    - "autonomy_boundedness"
+  output_dir: ".pipeline/self_evaluation"
 # Introspection (Phase I - opt-in)
 introspection:
   enable_clustering: false

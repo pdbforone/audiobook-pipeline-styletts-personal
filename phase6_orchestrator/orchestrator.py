@@ -4901,8 +4901,106 @@ Next Steps:
                     runner.write_report({"raw": raw, "analysis": analysis, "patterns": patterns})
             except Exception:
                 pass
-    except Exception:
-        pass
+            except Exception:
+                pass
+
+            # Phase Q self-evaluation (opt-in, informational)
+            try:
+                phaseq_cfg = getattr(orchestrator_config, "phaseQ_self_evaluation", None) or getattr(orchestrator_config, "phaseQ_self_eval", None)
+                phaseq_enabled = False
+                output_dir = ".pipeline/self_evaluation"
+                if isinstance(phaseq_cfg, dict):
+                    phaseq_enabled = bool(phaseq_cfg.get("enable"))
+                    output_dir = phaseq_cfg.get("output_dir", output_dir)
+                else:
+                    phaseq_enabled = bool(getattr(phaseq_cfg, "enable", False))
+                    output_dir = getattr(phaseq_cfg, "output_dir", output_dir)
+                if phaseq_enabled:
+                    try:
+                        from phaseQ_self_evaluation import metrics_engine, report_writer
+                        errors_log = Path(output_dir) / "errors.log"
+                        Path(output_dir).mkdir(parents=True, exist_ok=True)
+                        long_horizon_state = {}
+                        metrics = metrics_engine.compute_metrics(RUN_SUMMARY, long_horizon_state)
+                        run_id = policy_engine.run_id if policy_engine else datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                        report_writer.write_report(run_id, metrics, output_dir)
+                    except Exception as exc:
+                        try:
+                            (Path(output_dir) / "errors.log").write_text(str(exc), encoding="utf-8")
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            # Phase Q Steps 5-7: meta-evaluator and reflection (opt-in)
+            try:
+                meta_cfg = getattr(orchestrator_config, "phaseQ_self_eval", None)
+                if isinstance(meta_cfg, dict):
+                    enable_meta = bool(meta_cfg.get("enable_meta_evaluator"))
+                    enable_reflect = bool(meta_cfg.get("enable_reflection_writer"))
+                    out_dir = meta_cfg.get("output_dir", ".pipeline/self_eval")
+                else:
+                    enable_meta = bool(getattr(meta_cfg, "enable_meta_evaluator", False))
+                    enable_reflect = bool(getattr(meta_cfg, "enable_reflection_writer", False))
+                    out_dir = getattr(meta_cfg, "output_dir", ".pipeline/self_eval")
+
+                meta_result = None
+                if enable_meta:
+                    try:
+                        from phaseQ_self_eval import q_meta_evaluator
+                        aggregated_signals = {
+                            "research": analysis,
+                            "forecasting": {},
+                            "stability": {},
+                            "rewards": {},
+                            "planner": {},
+                        }
+                        meta_result = q_meta_evaluator.evaluate_meta(aggregated_signals)
+                    except Exception:
+                        meta_result = None
+
+                if enable_reflect and meta_result is not None:
+                    try:
+                        from phaseQ_self_eval import reflection_writer
+                        reflection_writer.write_reflection(meta_result, Path(out_dir))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # Phase Q reporting (opt-in, read-only)
+            try:
+                autonomy_cfg = getattr(orchestrator_config, "autonomy", None)
+                self_eval_cfg = getattr(autonomy_cfg, "self_eval", None) if autonomy_cfg else None
+                if isinstance(self_eval_cfg, dict):
+                    self_eval_enabled = bool(self_eval_cfg.get("enable"))
+                else:
+                    self_eval_enabled = bool(getattr(self_eval_cfg, "enable", False))
+                if self_eval_enabled:
+                    from autonomy.self_eval_fusion import fuse_signals_for_self_eval
+                    from autonomy.self_eval_kernel import SelfEvalKernel
+
+                    try:
+                        state = PipelineState(pipeline_json, validate_on_read=False)
+                    except Exception:
+                        state = None
+                    run_id = None
+                    try:
+                        run_id = policy_engine.run_id if policy_engine else None
+                    except Exception:
+                        run_id = None
+                    run_id = run_id or file_id
+                    fused_input = fuse_signals_for_self_eval(state, run_id, base_dir=Path(".pipeline"))
+                    kernel = SelfEvalKernel()
+                    self_eval_result = kernel.rate_run(fused_input, run_id=run_id)
+                    payload = kernel.to_json(self_eval_result)
+                    out_dir = Path(".pipeline") / "policy_runtime" / "self_eval"
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                    out_path = out_dir / f"self_eval_{run_id}.json"
+                    out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                    logger.info("Phase Q self-eval: rating=%s verdict=%s", self_eval_result.overall_rating, self_eval_result.verdict)
+            except Exception:
+                pass
 
     return 0
 

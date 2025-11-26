@@ -98,6 +98,7 @@ class AutonomyPlanner:
         recommendations_dir: Optional[Path] = None,
         policy_kernel_enabled: bool = False,
         autonomy_mode: Optional[str] = None,
+        config: Optional[Any] = None,
     ) -> None:
         self.mode = mode
         self.output_path = output_path or Path(".pipeline") / "autonomy_recommendations.json"
@@ -105,6 +106,7 @@ class AutonomyPlanner:
         self.policy_kernel_enabled = policy_kernel_enabled
         self.run_history: Optional[List[Dict[str, Any]]] = None
         self.autonomy_mode = autonomy_mode
+        self.self_eval_cfg = getattr(config, "self_eval", None) if config else None
 
     def propose_steps(self, goals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Return a list of proposed steps for the given goals."""
@@ -333,13 +335,13 @@ class AutonomyPlanner:
             try:
                 from autonomy.policy_kernel import combine_insights
 
-                payload["policy_kernel"] = combine_insights(
-                    evaluator_summary=evaluator,
-                    diagnostics=diagnostics,
-                    memory_summary=memory_insights,
-                    benchmarks=benchmark,
-                    genre_info=payload.get("genre") or {},
-                )
+        payload["policy_kernel"] = combine_insights(
+            evaluator_summary=evaluator,
+            diagnostics=diagnostics,
+            memory_summary=memory_insights,
+            benchmarks=benchmark,
+            genre_info=payload.get("genre") or {},
+        )
             except Exception:
                 if getattr(autonomy_cfg, "policy_kernel_debug", False):
                     payload["policy_kernel"] = {"error": "combine_insights_failed"}
@@ -373,6 +375,15 @@ class AutonomyPlanner:
         # Autonomous-mode recommendation bundle (never auto-applied here)
         if autonomy_mode == "autonomous":
             payload["autonomous_recommendations"] = self.build_autonomous_recommendations(payload)
+
+        # Optional self-eval context (read-only, metadata only)
+        self_eval_cfg = getattr(autonomy_cfg, "self_eval", None) or self.self_eval_cfg or {}
+        enable_feedback = bool(getattr(self_eval_cfg, "enable_planner_feedback", False)) if not isinstance(self_eval_cfg, dict) else bool(self_eval_cfg.get("enable_planner_feedback", False))
+        history_window = int(getattr(self_eval_cfg, "history_window_runs", 5)) if not isinstance(self_eval_cfg, dict) else int(self_eval_cfg.get("history_window_runs", 5) or 5)
+        if enable_feedback:
+            context = self._load_self_eval_context(history_window)
+            if context:
+                payload["self_eval_context"] = context
 
         return payload
 
@@ -462,4 +473,31 @@ class AutonomyPlanner:
             },
             "confidence": insights.get("confidence", 0.5),
             "change_magnitude": "small",
+        }
+
+    def _load_self_eval_context(self, history_window: int = 5) -> Optional[Dict[str, Any]]:
+        base_dir = Path(".pipeline") / "policy_runtime" / "self_eval"
+        if not base_dir.exists():
+            return None
+        candidates = sorted(base_dir.glob("self_eval_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        candidates = candidates[: max(1, history_window)]
+        ratings: List[float] = []
+        verdict_counts = {"ok": 0, "needs_attention": 0, "critical": 0}
+        for p in candidates:
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                rating = data.get("overall_rating")
+                verdict = data.get("verdict")
+                if isinstance(rating, (int, float)):
+                    ratings.append(float(rating))
+                if verdict in verdict_counts:
+                    verdict_counts[verdict] += 1
+            except Exception:
+                continue
+        if not ratings and not any(verdict_counts.values()):
+            return None
+        avg_rating = sum(ratings) / len(ratings) if ratings else 0.0
+        return {
+            "average_overall_rating": avg_rating,
+            "recent_verdicts": verdict_counts,
         }
