@@ -9,6 +9,7 @@ from typing import Any, Dict
 
 from .evidence_ingestion import collect_evidence
 from .patterns import extract_patterns
+from .research_reporter import ResearchReporter
 
 
 class ResearchRunner:
@@ -45,4 +46,17 @@ class ResearchRunner:
         run_dir = self._ensure_run_dir()
         report_path = run_dir / "report.json"
         report_path.write_text(json.dumps(analysis, indent=2), encoding="utf-8")
+        try:
+            ResearchReporter().write_report(
+                {
+                    "id": f"research_{self.run_timestamp or ''}".strip("_"),
+                    "timestamp": self.run_timestamp or datetime.utcnow().strftime("%Y%m%d_%H%M%S"),
+                    "summary": "Research lifecycle report",
+                    "signals": analysis.get("signals", {}) if isinstance(analysis, dict) else {},
+                    "details": analysis,
+                }
+            )
+        except Exception:
+            # Reporter is best-effort; never block lifecycle.
+            pass
         return str(report_path)

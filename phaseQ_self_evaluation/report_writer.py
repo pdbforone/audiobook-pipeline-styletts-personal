@@ -38,10 +38,13 @@ def write_report(run_id: str, metrics: Dict[str, Any], output_dir: str) -> str:
     ts = datetime.utcnow().isoformat()
     status_block = _status_from_metrics(metrics)
     payload = {
-        "run_id": run_id,
+        "id": f"self_eval_{run_id}",
         "timestamp": ts,
-        "metrics": metrics,
-        "summary": status_block,
+        "summary": "Phase Q self-evaluation metrics",
+        "signals": status_block,
+        "details": {"run_id": run_id, "metrics": metrics},
+        "notes": "Informational metrics (no runtime impact).",
+        "version": "phaseQ",
     }
     path = reports_dir / f"self_eval_{run_id}.json"
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

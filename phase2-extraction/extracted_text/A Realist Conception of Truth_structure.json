@@ -1,0 +1,3215 @@
+[
+  {
+    "level": 29,
+    "title": "A",
+    "char_offset": 0,
+    "char_end": 0,
+    "page": 1
+  },
+  {
+    "level": 2,
+    "title": "A REALIST",
+    "char_offset": 0,
+    "char_end": 2,
+    "page": null
+  },
+  {
+    "level": 28,
+    "title": "REALIST",
+    "char_offset": 2,
+    "char_end": 2,
+    "page": 1
+  },
+  {
+    "level": 48,
+    "title": "R",
+    "char_offset": 2,
+    "char_end": 3,
+    "page": 45
+  },
+  {
+    "level": 79,
+    "title": "E",
+    "char_offset": 3,
+    "char_end": 6,
+    "page": 228
+  },
+  {
+    "level": 95,
+    "title": "I",
+    "char_offset": 6,
+    "char_end": 7,
+    "page": 57
+  },
+  {
+    "level": 34,
+    "title": "S",
+    "char_offset": 7,
+    "char_end": 8,
+    "page": 46
+  },
+  {
+    "level": 53,
+    "title": "T",
+    "char_offset": 8,
+    "char_end": 10,
+    "page": 39
+  },
+  {
+    "level": 13,
+    "title": "CONCEPTION",
+    "char_offset": 10,
+    "char_end": 10,
+    "page": 1
+  },
+  {
+    "level": 75,
+    "title": "C",
+    "char_offset": 10,
+    "char_end": 11,
+    "page": 135
+  },
+  {
+    "level": 72,
+    "title": "O",
+    "char_offset": 11,
+    "char_end": 15,
+    "page": 147
+  },
+  {
+    "level": 95,
+    "title": "P",
+    "char_offset": 15,
+    "char_end": 21,
+    "page": 38
+  },
+  {
+    "level": 15,
+    "title": "OF",
+    "char_offset": 21,
+    "char_end": 21,
+    "page": 1
+  },
+  {
+    "level": 2,
+    "title": "OF TRUTH",
+    "char_offset": 21,
+    "char_end": 24,
+    "page": null
+  },
+  {
+    "level": 11,
+    "title": "TRUTH",
+    "char_offset": 24,
+    "char_end": 28,
+    "page": 1
+  },
+  {
+    "level": 25,
+    "title": "H",
+    "char_offset": 28,
+    "char_end": 30,
+    "page": 254
+  },
+  {
+    "level": 2,
+    "title": "ALSO BY WILLIAM P. ALSTON",
+    "char_offset": 30,
+    "char_end": 35,
+    "page": null
+  },
+  {
+    "level": 107,
+    "title": "B",
+    "char_offset": 35,
+    "char_end": 36,
+    "page": 118
+  },
+  {
+    "level": 25,
+    "title": "Y",
+    "char_offset": 36,
+    "char_end": 38,
+    "page": 82
+  },
+  {
+    "level": 12,
+    "title": "W",
+    "char_offset": 38,
+    "char_end": 44,
+    "page": 52
+  },
+  {
+    "level": 76,
+    "title": "M",
+    "char_offset": 44,
+    "char_end": 46,
+    "page": 147
+  },
+  {
+    "level": 10,
+    "title": "P.",
+    "char_offset": 46,
+    "char_end": 56,
+    "page": 3
+  },
+  {
+    "level": 94,
+    "title": "D",
+    "char_offset": 56,
+    "char_end": 193,
+    "page": 258
+  },
+  {
+    "level": 36,
+    "title": "G",
+    "char_offset": 193,
+    "char_end": 275,
+    "page": 230
+  },
+  {
+    "level": 2,
+    "title": "A REALIST",
+    "char_offset": 275,
+    "char_end": 296,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "OF TRUTH",
+    "char_offset": 296,
+    "char_end": 348,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ITHACA AND LONDON",
+    "char_offset": 348,
+    "char_end": 355,
+    "page": null
+  },
+  {
+    "level": 74,
+    "title": "AND",
+    "char_offset": 355,
+    "char_end": 472,
+    "page": 38
+  },
+  {
+    "level": 95,
+    "title": "book",
+    "char_offset": 472,
+    "char_end": 996,
+    "page": 11
+  },
+  {
+    "level": 2,
+    "title": "1. Truth. 2. Realism. 3. Knowledge, Theory of.",
+    "char_offset": 996,
+    "char_end": 1043,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "BD171.A42 1995",
+    "char_offset": 1043,
+    "char_end": 1067,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "I. Title.",
+    "char_offset": 1067,
+    "char_end": 1255,
+    "page": null
+  },
+  {
+    "level": 108,
+    "title": "Z",
+    "char_offset": 1255,
+    "char_end": 1301,
+    "page": 113
+  },
+  {
+    "level": 21,
+    "title": "CONTENTS",
+    "char_offset": 1301,
+    "char_end": 1400,
+    "page": 7
+  },
+  {
+    "level": 64,
+    "title": "V",
+    "char_offset": 1400,
+    "char_end": 3953,
+    "page": 76
+  },
+  {
+    "level": 81,
+    "title": "Chapter",
+    "char_offset": 3953,
+    "char_end": 4332,
+    "page": 14
+  },
+  {
+    "level": 65,
+    "title": "PREFACE",
+    "char_offset": 4332,
+    "char_end": 7763,
+    "page": 10
+  },
+  {
+    "level": 96,
+    "title": "chapter",
+    "char_offset": 7763,
+    "char_end": 8639,
+    "page": 202
+  },
+  {
+    "level": 2,
+    "title": "WILLIAM P. ALSTON",
+    "char_offset": 8639,
+    "char_end": 8669,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST",
+    "char_offset": 8669,
+    "char_end": 8690,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "OF TRUTH",
+    "char_offset": 8690,
+    "char_end": 8836,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "H.",
+    "char_offset": 8836,
+    "char_end": 9326,
+    "page": 279
+  },
+  {
+    "level": 0,
+    "title": "book implies, what I call the realist conception of truth is at the heart of",
+    "char_offset": 9326,
+    "char_end": 10339,
+    "page": null
+  },
+  {
+    "level": 94,
+    "title": "OP",
+    "char_offset": 10339,
+    "char_end": 10441,
+    "page": 147
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 10441,
+    "char_end": 11554,
+    "page": null
+  },
+  {
+    "level": 73,
+    "title": "REDUCTION",
+    "char_offset": 11554,
+    "char_end": 11776,
+    "page": 81
+  },
+  {
+    "level": 1,
+    "title": "Chapter 3-7 are devoted to criticisms of the realist conceptions of",
+    "char_offset": 11776,
+    "char_end": 12466,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "Chapter 4 takes up Michael Dummett's verificationist alternative to",
+    "char_offset": 12466,
+    "char_end": 14426,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "Chapter 6 deals with Putnam's \"conceptual relativity\", one facet of",
+    "char_offset": 14426,
+    "char_end": 15090,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "Chapter 7 is devoted to a mapping, and critical analysis, of epistemic",
+    "char_offset": 15090,
+    "char_end": 16111,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "INTRODUCTION 3",
+    "char_offset": 16111,
+    "char_end": 16126,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH4",
+    "char_offset": 16126,
+    "char_end": 16304,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "Chapter 8 turns to the second component of alethic realism, that",
+    "char_offset": 16304,
+    "char_end": 17392,
+    "page": null
+  },
+  {
+    "level": 37,
+    "title": "CHAPTER",
+    "char_offset": 17392,
+    "char_end": 17392,
+    "page": 97
+  },
+  {
+    "level": 1,
+    "title": "CHAPTER 1",
+    "char_offset": 17392,
+    "char_end": 17802,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "I. A statement (proposition, belief...) is true if and only if what the",
+    "char_offset": 17802,
+    "char_end": 19083,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 19083,
+    "char_end": 21680,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 21680,
+    "char_end": 22721,
+    "page": null
+  },
+  {
+    "level": 97,
+    "title": "section",
+    "char_offset": 22721,
+    "char_end": 23211,
+    "page": 244
+  },
+  {
+    "level": 0,
+    "title": "book is taken up with criticism of epistemic accounts. Chapters 3-6 ex",
+    "char_offset": 23211,
+    "char_end": 24633,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 24633,
+    "char_end": 27690,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 27690,
+    "char_end": 30252,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH10",
+    "char_offset": 30252,
+    "char_end": 32917,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 32917,
+    "char_end": 35986,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 35986,
+    "char_end": 39004,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 39004,
+    "char_end": 39246,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "L. Austin contended that \"performative\" sentences like 'I promise to",
+    "char_offset": 39246,
+    "char_end": 41732,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 41732,
+    "char_end": 44694,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 44694,
+    "char_end": 47173,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 47173,
+    "char_end": 50018,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 50018,
+    "char_end": 52686,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 52686,
+    "char_end": 52961,
+    "page": null
+  },
+  {
+    "level": 70,
+    "title": "ONTOLOGICALLY",
+    "char_offset": 52961,
+    "char_end": 52975,
+    "page": 30
+  },
+  {
+    "level": 102,
+    "title": "SERIOUS",
+    "char_offset": 52975,
+    "char_end": 52987,
+    "page": 30
+  },
+  {
+    "level": 90,
+    "title": "DEFLATIONARY",
+    "char_offset": 52987,
+    "char_end": 53205,
+    "page": 30
+  },
+  {
+    "level": 60,
+    "title": "ES",
+    "char_offset": 53205,
+    "char_end": 54813,
+    "page": 230
+  },
+  {
+    "level": 2,
+    "title": "10. See Chisholm 1976, 1981.",
+    "char_offset": 54813,
+    "char_end": 54845,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 54845,
+    "char_end": 57627,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "11. See Stalnaker 1984.",
+    "char_offset": 57627,
+    "char_end": 57654,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 57654,
+    "char_end": 59486,
+    "page": null
+  },
+  {
+    "level": 36,
+    "title": "X",
+    "char_offset": 59486,
+    "char_end": 60822,
+    "page": 42
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 60822,
+    "char_end": 63559,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "14. See section xi for discussion of this last point.",
+    "char_offset": 63559,
+    "char_end": 63613,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "15. Cf. Mackie 1973, 21.",
+    "char_offset": 63613,
+    "char_end": 63641,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 63641,
+    "char_end": 65178,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "I. A STATEMENT IS TRUE IF AND ONLY IF WHAT THE STATEMENT SAYS TO",
+    "char_offset": 65178,
+    "char_end": 65183,
+    "page": null
+  },
+  {
+    "level": 62,
+    "title": "STATEMENT",
+    "char_offset": 65183,
+    "char_end": 65196,
+    "page": 38
+  },
+  {
+    "level": 69,
+    "title": "TRUE",
+    "char_offset": 65196,
+    "char_end": 65208,
+    "page": 38
+  },
+  {
+    "level": 58,
+    "title": "ONLY",
+    "char_offset": 65208,
+    "char_end": 65216,
+    "page": 38
+  },
+  {
+    "level": 31,
+    "title": "WHAT",
+    "char_offset": 65216,
+    "char_end": 65221,
+    "page": 38
+  },
+  {
+    "level": 43,
+    "title": "THE",
+    "char_offset": 65221,
+    "char_end": 65243,
+    "page": 38
+  },
+  {
+    "level": 2,
+    "title": "BE THE CASE ACTUALLY IS THE CASE.",
+    "char_offset": 65243,
+    "char_end": 66105,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 66105,
+    "char_end": 66700,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "II. A BELIEF IS TRUE IF AND ONLY IF WHAT THE BELIEF TAKES TO BE THE",
+    "char_offset": 66700,
+    "char_end": 66768,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "CASE ACTUALLY IS THE CASE.",
+    "char_offset": 66768,
+    "char_end": 67227,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "III. A STATEMENT IS TRUE IF AND ONLY IF WHAT A MAKER OF THE STATE",
+    "char_offset": 67227,
+    "char_end": 67274,
+    "page": null
+  },
+  {
+    "level": 45,
+    "title": "MAKER",
+    "char_offset": 67274,
+    "char_end": 67293,
+    "page": 38
+  },
+  {
+    "level": 2,
+    "title": "MENT IS SAYING TO BE THE CASE IN MAKING THAT STATEMENT, AC",
+    "char_offset": 67293,
+    "char_end": 67333,
+    "page": null
+  },
+  {
+    "level": 103,
+    "title": "THAT",
+    "char_offset": 67333,
+    "char_end": 67352,
+    "page": 38
+  },
+  {
+    "level": 2,
+    "title": "TUALLY IS THE CASE. 17",
+    "char_offset": 67352,
+    "char_end": 67375,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "IV. A BELIEF IS TRUE IF AND ONLY IF WHAT ONE WHO HOLDS THAT BE",
+    "char_offset": 67375,
+    "char_end": 67427,
+    "page": null
+  },
+  {
+    "level": 77,
+    "title": "DS",
+    "char_offset": 67427,
+    "char_end": 67500,
+    "page": 222
+  },
+  {
+    "level": 2,
+    "title": "THE CASE.",
+    "char_offset": 67500,
+    "char_end": 67574,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "V. A PROPOSITION IS TRUE IF AND ONLY IF WHAT A MAKER OF A STATE",
+    "char_offset": 67574,
+    "char_end": 67638,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "MENT WITH THAT PROPOSITION AS CONTENT IS SAYING TO BE THE",
+    "char_offset": 67638,
+    "char_end": 67696,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "CASE IN MAKING THAT STATEMENT, ACTUALLY IS THE CASE.",
+    "char_offset": 67696,
+    "char_end": 67749,
+    "page": null
+  },
+  {
+    "level": 51,
+    "title": "VI",
+    "char_offset": 67749,
+    "char_end": 67749,
+    "page": 38
+  },
+  {
+    "level": 1,
+    "title": "VI. A PROPOSITION IS TRUE IF AND ONLY IF WHAT ONE WHO HOLDS A",
+    "char_offset": 67749,
+    "char_end": 67811,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "BELIEF WITH THAT PROPOSITION AS CONTENT TAKES TO BE THE CASE",
+    "char_offset": 67811,
+    "char_end": 67872,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "IN HOLDING THAT BELIEF, ACTUALLY IS THE CASE. 18",
+    "char_offset": 67872,
+    "char_end": 68456,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 68456,
+    "char_end": 71627,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 71627,
+    "char_end": 74522,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 74522,
+    "char_end": 74687,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "VII. A STATEMENT IS TRUE IF AND ONLY IF WHAT THE MAKER OF THE",
+    "char_offset": 74687,
+    "char_end": 74749,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "STATEMENT IS ATTRIBUTING TO WHAT THE STATEMENT IS ABOUT,",
+    "char_offset": 74749,
+    "char_end": 74806,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "IN MAKING THAT STATEMENT, DOES ACTUALLY QUALIFY WHAT THE",
+    "char_offset": 74806,
+    "char_end": 74863,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "STATEMENT IS ABOUT.",
+    "char_offset": 74863,
+    "char_end": 75226,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "VII. For example:",
+    "char_offset": 75226,
+    "char_end": 75244,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "VIII. A PROPOSITION IS TRUE IF AND ONLY IF WHAT THE MAKER OF A",
+    "char_offset": 75244,
+    "char_end": 75307,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "STATEMENT WITH THAT PROPOSITION AS CONTENT IS ATTRIBUT",
+    "char_offset": 75307,
+    "char_end": 75362,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ING TO WHAT THE STATEMENT IS ABOUT, IN MAKING THAT STATE",
+    "char_offset": 75362,
+    "char_end": 75419,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "MENT, DOES ACTUALLY QUALIFY WHAT THE STATEMENT IS ABOUT.",
+    "char_offset": 75419,
+    "char_end": 75476,
+    "page": null
+  },
+  {
+    "level": 60,
+    "title": "IX",
+    "char_offset": 75476,
+    "char_end": 75476,
+    "page": 46
+  },
+  {
+    "level": 1,
+    "title": "IX. A BELIEF IS TRUE IF AND ONLY IF WHAT ONE WHO HOLDS THE BE",
+    "char_offset": 75476,
+    "char_end": 75538,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "LIEF SUPPOSES TO CHARACTERIZE WHAT THE BELIEF IS ABOUT, IN",
+    "char_offset": 75538,
+    "char_end": 75597,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "HOLDING THAT BELIEF, REALLY DOES CHARACTERIZE WHAT THE",
+    "char_offset": 75597,
+    "char_end": 75652,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "BELIEF IS ABOUT.",
+    "char_offset": 75652,
+    "char_end": 76580,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 76580,
+    "char_end": 77045,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "X. The proposition that p is true iff p.",
+    "char_offset": 77045,
+    "char_end": 77365,
+    "page": null
+  },
+  {
+    "level": 95,
+    "title": "XI",
+    "char_offset": 77365,
+    "char_end": 77365,
+    "page": 39
+  },
+  {
+    "level": 1,
+    "title": "XI. The proposition that grass is green is true if and only if grass is",
+    "char_offset": 77365,
+    "char_end": 77444,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "XII. The proposition that Joe is hungry is true if and only if Joe is",
+    "char_offset": 77444,
+    "char_end": 79001,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 79001,
+    "char_end": 79169,
+    "page": null
+  },
+  {
+    "level": 78,
+    "title": "XIII",
+    "char_offset": 79169,
+    "char_end": 79169,
+    "page": 46
+  },
+  {
+    "level": 1,
+    "title": "XIII. (p) The proposition that p is true iff p.",
+    "char_offset": 79169,
+    "char_end": 81795,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 81795,
+    "char_end": 84513,
+    "page": null
+  },
+  {
+    "level": 104,
+    "title": "F.",
+    "char_offset": 84513,
+    "char_end": 84543,
+    "page": 279
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 84543,
+    "char_end": 84573,
+    "page": null
+  },
+  {
+    "level": 87,
+    "title": "XIV",
+    "char_offset": 84573,
+    "char_end": 84573,
+    "page": 44
+  },
+  {
+    "level": 1,
+    "title": "XIV. TO DETERMINE A (NECESSARILY) NECESSARY AND SUFFICIENT CON",
+    "char_offset": 84573,
+    "char_end": 84636,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DITION FOR A GIVEN PROPOSITION, R, USE THE FOLLOWING RECIPE.",
+    "char_offset": 84636,
+    "char_end": 84697,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "FORM A T-STATEMENT BY SUBSTITUTING A SENTENCE THAT EX",
+    "char_offset": 84697,
+    "char_end": 84751,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PRESSES R FOR P IN THE T-SCHEMA. THIS T-STATEMENT WILL BE",
+    "char_offset": 84751,
+    "char_end": 84809,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "CONCEPTUALLY, ANALYTICALLY TRUE, AND WILL THEREFORE GIVE",
+    "char_offset": 84809,
+    "char_end": 84866,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "US A (NECESSARILY) NECESSARY AND SUFFICIENT CONDITION FOR",
+    "char_offset": 84866,
+    "char_end": 84924,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "THE TRUTH OF R.",
+    "char_offset": 84924,
+    "char_end": 85907,
+    "page": null
+  },
+  {
+    "level": 94,
+    "title": "XV",
+    "char_offset": 85907,
+    "char_end": 85907,
+    "page": 42
+  },
+  {
+    "level": 1,
+    "title": "XV. X is true iff p.",
+    "char_offset": 85907,
+    "char_end": 86849,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 86849,
+    "char_end": 88655,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "XV. X (the sentence 'p') is true iff p.",
+    "char_offset": 88655,
+    "char_end": 88699,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "X. The proposition that p is true iff p.",
+    "char_offset": 88699,
+    "char_end": 89707,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 89707,
+    "char_end": 90187,
+    "page": null
+  },
+  {
+    "level": 101,
+    "title": "MINIMAL",
+    "char_offset": 90187,
+    "char_end": 92318,
+    "page": 46
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 92318,
+    "char_end": 95135,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 95135,
+    "char_end": 97873,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 97873,
+    "char_end": 100678,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "36 A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 100678,
+    "char_end": 102865,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "XIV. It will make no difference to the issues discussed, and to my",
+    "char_offset": 102865,
+    "char_end": 103586,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 103586,
+    "char_end": 105936,
+    "page": null
+  },
+  {
+    "level": 75,
+    "title": "H₂O",
+    "char_offset": 105936,
+    "char_end": 106151,
+    "page": 49
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 106151,
+    "char_end": 107792,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "XVI. (p) If the proposition that p is true it is made true by the fact",
+    "char_offset": 107792,
+    "char_end": 107896,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "XVII. (p) The proposition that p is true iff it is a fact that p.",
+    "char_offset": 107896,
+    "char_end": 108602,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 108602,
+    "char_end": 111283,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 111283,
+    "char_end": 114268,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 114268,
+    "char_end": 116783,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "33. See, e.g., M. Williams 1986, 223; C. J. F. Williams 1976.",
+    "char_offset": 116783,
+    "char_end": 116848,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 116848,
+    "char_end": 119623,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 119623,
+    "char_end": 122373,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "35. See Strawson 1964, 68.",
+    "char_offset": 122373,
+    "char_end": 122403,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 122403,
+    "char_end": 125941,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 125941,
+    "char_end": 128750,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 128750,
+    "char_end": 131538,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 131538,
+    "char_end": 134616,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 134616,
+    "char_end": 137186,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 137186,
+    "char_end": 140070,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 140070,
+    "char_end": 143006,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 143006,
+    "char_end": 146168,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 146168,
+    "char_end": 148960,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 148960,
+    "char_end": 151746,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 151746,
+    "char_end": 154635,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 154635,
+    "char_end": 157502,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "47. The locus classicus for this view is Stevenson 1944.",
+    "char_offset": 157502,
+    "char_end": 157564,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 157564,
+    "char_end": 160453,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 160453,
+    "char_end": 163297,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 163297,
+    "char_end": 166252,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 166252,
+    "char_end": 169615,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 169615,
+    "char_end": 172543,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 172543,
+    "char_end": 175280,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "54. See Strawson 1950b.",
+    "char_offset": 175280,
+    "char_end": 175304,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "55. Russell 1919, chap. 16.",
+    "char_offset": 175304,
+    "char_end": 175335,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 175335,
+    "char_end": 178161,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM",
+    "char_offset": 178161,
+    "char_end": 181128,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 181128,
+    "char_end": 183360,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "CHAPTER 2",
+    "char_offset": 183360,
+    "char_end": 185172,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 185172,
+    "char_end": 188068,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM AND METAPHYSICAL REALISM",
+    "char_offset": 188068,
+    "char_end": 190940,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "2. See Alston 1958 for more on this.",
+    "char_offset": 190940,
+    "char_end": 190980,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 190980,
+    "char_end": 193786,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM AND METAPHYSICAL REALISM",
+    "char_offset": 193786,
+    "char_end": 196048,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 196048,
+    "char_end": 198931,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM AND METAPHYSICAL REALISM",
+    "char_offset": 198931,
+    "char_end": 201751,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 201751,
+    "char_end": 204710,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM AND METAPHYSICAL REALISM",
+    "char_offset": 204710,
+    "char_end": 207378,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 207378,
+    "char_end": 207805,
+    "page": null
+  },
+  {
+    "level": 95,
+    "title": "MIND",
+    "char_offset": 207805,
+    "char_end": 210410,
+    "page": 86
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM AND METAPHYSICAL REALISM",
+    "char_offset": 210410,
+    "char_end": 213046,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 213046,
+    "char_end": 215816,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "8. That is not to deny that some people do the latter.",
+    "char_offset": 215816,
+    "char_end": 215874,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM AND METAPHYSICAL REALISM",
+    "char_offset": 215874,
+    "char_end": 218474,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 218474,
+    "char_end": 221380,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM AND METAPHYSICAL REALISM",
+    "char_offset": 221380,
+    "char_end": 224292,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 224292,
+    "char_end": 227219,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM AND METAPHYSICAL REALISM",
+    "char_offset": 227219,
+    "char_end": 230268,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 230268,
+    "char_end": 233062,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "ALETHIC REALISM AND METAPHYSICAL REALISM",
+    "char_offset": 233062,
+    "char_end": 236019,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 236019,
+    "char_end": 238067,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "CHAPTER 3",
+    "char_offset": 238067,
+    "char_end": 239443,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "chapter will be devoted to this criticism. It is most often directed at a",
+    "char_offset": 239443,
+    "char_end": 239830,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 239830,
+    "char_end": 242699,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "AN EPISTEMOLOGICAL OBJECTION TO ALETHIC REALISM",
+    "char_offset": 242699,
+    "char_end": 245152,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 245152,
+    "char_end": 247926,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "AN EPISTEMOLOGICAL OBJECTION TO ALETHIC REALISM 89",
+    "char_offset": 247926,
+    "char_end": 250786,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 250786,
+    "char_end": 253487,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "AN EPISTEMOLOGICAL OBJECTION TO ALETHIC REALISM",
+    "char_offset": 253487,
+    "char_end": 256439,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 256439,
+    "char_end": 258901,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "3. For a good presentation of this point see Van Cleve 1985.",
+    "char_offset": 258901,
+    "char_end": 259208,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "AN EPISTEMOLOGICAL OBJECTION TO ALETHIC REALISM",
+    "char_offset": 259208,
+    "char_end": 261963,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "5. For such views see, e.g., Searle 1983.",
+    "char_offset": 261963,
+    "char_end": 262008,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "94 A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 262008,
+    "char_end": 264947,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "AN EPISTEMOLOGICAL OBJECTION TO ALETHIC REALISM",
+    "char_offset": 264947,
+    "char_end": 267526,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 267526,
+    "char_end": 270298,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "7. See Bradley 1914, chaps. 5, 11; Blanshard 1939, chap. 26.",
+    "char_offset": 270298,
+    "char_end": 270362,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "AN EPISTEMOLOGICAL OBJECTION TO ALETHIC REALISM",
+    "char_offset": 270362,
+    "char_end": 272952,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 272952,
+    "char_end": 275876,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "AN EPISTEMOLOGICAL OBJECTION TO ALETHIC REALISM",
+    "char_offset": 275876,
+    "char_end": 278799,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "100 A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 278799,
+    "char_end": 282043,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "AN EPISTEMOLOGICAL OBJECTION TO ALETHIC REALISM",
+    "char_offset": 282043,
+    "char_end": 285346,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 285346,
+    "char_end": 286559,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "CHAPTER 4",
+    "char_offset": 286559,
+    "char_end": 288546,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 288546,
+    "char_end": 291247,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DUMMETT'S VERIFICATIONIST ALTERNATIVE TO ALETHIC REALISM",
+    "char_offset": 291247,
+    "char_end": 293864,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 293864,
+    "char_end": 296622,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DUMMETT'S VERIFICATIONIST ALTERNATIVE TO ALETHIC REALISM",
+    "char_offset": 296622,
+    "char_end": 299385,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 299385,
+    "char_end": 302201,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DUMMETT'S VERIFICATIONIST ALTERNATIVE TO ALETHIC REALISM 109",
+    "char_offset": 302201,
+    "char_end": 305062,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "110 A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 305062,
+    "char_end": 307795,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DUMMETT'S VERIFICATIONIST ALTERNATIVE TO ALETHIC REALISM",
+    "char_offset": 307795,
+    "char_end": 310879,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 310879,
+    "char_end": 313715,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DUMMETT'S VERIFICATIONIST ALTERNATIVE TO ALETHIC REALISM",
+    "char_offset": 313715,
+    "char_end": 316672,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 316672,
+    "char_end": 319544,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DUMMETT'S VERIFICATIONIST ALTERNATIVE TO ALETHIC REALISM",
+    "char_offset": 319544,
+    "char_end": 322151,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 322151,
+    "char_end": 324881,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DUMMETT'S VERIFICATIONIST ALTERNATIVE TO ALETHIC REALISM",
+    "char_offset": 324881,
+    "char_end": 327870,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 327870,
+    "char_end": 330849,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DUMMETT'S VERIFICATIONIST ALTERNATIVE TO ALETHIC REALISM 119",
+    "char_offset": 330849,
+    "char_end": 333500,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 333500,
+    "char_end": 336343,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DUMMETT'S VERIFICATIONIST ALTERNATIVE TO ALETHIC REALISM",
+    "char_offset": 336343,
+    "char_end": 339082,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 339082,
+    "char_end": 341235,
+    "page": null
+  },
+  {
+    "level": 26,
+    "title": "DNA",
+    "char_offset": 341235,
+    "char_end": 341830,
+    "page": 134
+  },
+  {
+    "level": 2,
+    "title": "DUMMETT'S VERIFICATIONIST ALTERNATIVE TO ALETHIC REALISM 123",
+    "char_offset": 341830,
+    "char_end": 344570,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 344570,
+    "char_end": 344714,
+    "page": null
+  },
+  {
+    "level": 0,
+    "title": "D.",
+    "char_offset": 344714,
+    "char_end": 347785,
+    "page": 279
+  },
+  {
+    "level": 2,
+    "title": "DUMMETT'S VERIFICATIONIST ALTERNATIVE TO ALETHIC REALISM 125",
+    "char_offset": 347785,
+    "char_end": 350655,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "126 A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 350655,
+    "char_end": 353224,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DUMMETT'S VERIFICATIONIST ALTERNATIVE TO ALETHIC REALISM",
+    "char_offset": 353224,
+    "char_end": 356110,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 356110,
+    "char_end": 357533,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "XXX, 155).",
+    "char_offset": 357533,
+    "char_end": 358708,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DUMMETT'S VERIFICATIONIST ALTERNATIVE TO ALETHIC REALISM",
+    "char_offset": 358708,
+    "char_end": 361456,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 361456,
+    "char_end": 364087,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DUMMETT'S VERIFICATIONIST ALTERNATIVE TO ALETHIC REALISM",
+    "char_offset": 364087,
+    "char_end": 366374,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "CHAPTER 5",
+    "char_offset": 366374,
+    "char_end": 368222,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM'S MODEL-THEORETIC ARGUMENT",
+    "char_offset": 368222,
+    "char_end": 371018,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 371018,
+    "char_end": 374191,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM'S MODEL-THEORETIC ARGUMENT",
+    "char_offset": 374191,
+    "char_end": 374858,
+    "page": null
+  },
+  {
+    "level": 95,
+    "title": "WORLD",
+    "char_offset": 374858,
+    "char_end": 376779,
+    "page": 147
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 376779,
+    "char_end": 379012,
+    "page": null
+  },
+  {
+    "level": 46,
+    "title": "MT",
+    "char_offset": 379012,
+    "char_end": 379328,
+    "page": 148
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM'S MODEL-THEORETIC ARGUMENT",
+    "char_offset": 379328,
+    "char_end": 382025,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 382025,
+    "char_end": 385021,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM'S MODEL-THEORETIC ARGUMENT",
+    "char_offset": 385021,
+    "char_end": 387556,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 387556,
+    "char_end": 390352,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM'S MODEL-THEORETIC ARGUMENT",
+    "char_offset": 390352,
+    "char_end": 393481,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 393481,
+    "char_end": 395606,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "chapter 2 of Reason, Truth, and History) Putnam is following a massive",
+    "char_offset": 395606,
+    "char_end": 396034,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM'S MODEL-THEORETIC ARGUMENT",
+    "char_offset": 396034,
+    "char_end": 398777,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 398777,
+    "char_end": 401762,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM'S MODEL-THEORETIC ARGUMENT",
+    "char_offset": 401762,
+    "char_end": 404514,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "9. See, 1978, 127-29 and 1983, 20, for endorsements of Dummett.",
+    "char_offset": 404514,
+    "char_end": 404582,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 404582,
+    "char_end": 407413,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM'S MODEL-THEORETIC ARGUMENT",
+    "char_offset": 407413,
+    "char_end": 410318,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 410318,
+    "char_end": 413261,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM'S MODEL-THEORETIC ARGUMENT",
+    "char_offset": 413261,
+    "char_end": 415963,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "150 A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 415963,
+    "char_end": 416375,
+    "page": null
+  },
+  {
+    "level": 83,
+    "title": "MR",
+    "char_offset": 416375,
+    "char_end": 416996,
+    "page": 162
+  },
+  {
+    "level": 30,
+    "title": "RTH",
+    "char_offset": 416996,
+    "char_end": 418932,
+    "page": 162
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM'S MODEL-THEORETIC ARGUMENT",
+    "char_offset": 418932,
+    "char_end": 421743,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 421743,
+    "char_end": 424831,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM'S MODEL-THEORETIC ARGUMENT",
+    "char_offset": 424831,
+    "char_end": 427068,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "14. For a good discussion of this see Hesse 1966.",
+    "char_offset": 427068,
+    "char_end": 427958,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 427958,
+    "char_end": 430725,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM'S MODEL-THEORETIC ARGUMENT 155",
+    "char_offset": 430725,
+    "char_end": 433526,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 433526,
+    "char_end": 436828,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM'S MODEL-THEORETIC ARGUMENT",
+    "char_offset": 436828,
+    "char_end": 439485,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 439485,
+    "char_end": 442338,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM'S MODEL-THEORETIC ARGUMENT",
+    "char_offset": 442338,
+    "char_end": 445112,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 445112,
+    "char_end": 448086,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM'S MODEL-THEORETIC ARGUMENT",
+    "char_offset": 448086,
+    "char_end": 449389,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "CHAPTER 6",
+    "char_offset": 449389,
+    "char_end": 451552,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM ON \"CONCEPTUAL RELATIVITY\"",
+    "char_offset": 451552,
+    "char_end": 452857,
+    "page": null
+  },
+  {
+    "level": 0,
+    "title": "book and a ballpoint pen, and nothing else, and I ask, 'How many ob",
+    "char_offset": 452857,
+    "char_end": 454378,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "164 A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 454378,
+    "char_end": 457246,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM ON \"CONCEPTUAL RELATIVITY\"",
+    "char_offset": 457246,
+    "char_end": 459745,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 459745,
+    "char_end": 462438,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM ON \"CONCEPTUAL RELATIVITY\"",
+    "char_offset": 462438,
+    "char_end": 465055,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "3. See, e.g., 1981, 54; 1989, 114.",
+    "char_offset": 465055,
+    "char_end": 465094,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 465094,
+    "char_end": 467709,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM ON \"CONCEPTUAL RELATIVITY\" 169",
+    "char_offset": 467709,
+    "char_end": 470638,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 470638,
+    "char_end": 473433,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "5. This possibility is exploited in Chapter 7, section v.",
+    "char_offset": 473433,
+    "char_end": 473495,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM ON \"CONCEPTUAL RELATIVITY\"",
+    "char_offset": 473495,
+    "char_end": 476326,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 476326,
+    "char_end": 479382,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM ON \"CONCEPTUAL RELATIVITY\"",
+    "char_offset": 479382,
+    "char_end": 481898,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "7. See O. K. Bouwsma, \"Descartes' Evil Genius\", in 1965.",
+    "char_offset": 481898,
+    "char_end": 481959,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "174 A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 481959,
+    "char_end": 484717,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "9. See, e.g., Putnam 1978, 132.",
+    "char_offset": 484717,
+    "char_end": 484749,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM ON \"CONCEPTUAL RELATIVITY\"",
+    "char_offset": 484749,
+    "char_end": 487576,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 487576,
+    "char_end": 490053,
+    "page": null
+  },
+  {
+    "level": 0,
+    "title": "part of, the original state of affairs in the substance scheme. But doesn't it seem obvious in",
+    "char_offset": 490053,
+    "char_end": 490673,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM ON \"CONCEPTUAL RELATIVITY\"",
+    "char_offset": 490673,
+    "char_end": 493643,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 493643,
+    "char_end": 496623,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM ON \"CONCEPTUAL RELATIVITY\"",
+    "char_offset": 496623,
+    "char_end": 499422,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "180 A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 499422,
+    "char_end": 500984,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "Chapter 2, that metaphysical commitment is not implied by a realist",
+    "char_offset": 500984,
+    "char_end": 502374,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM ON \"CONCEPTUAL RELATIVITY\"",
+    "char_offset": 502374,
+    "char_end": 504866,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "13. See 1978, 132; 1990, 41.",
+    "char_offset": 504866,
+    "char_end": 504899,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 504899,
+    "char_end": 505560,
+    "page": null
+  },
+  {
+    "level": 36,
+    "title": "NO",
+    "char_offset": 505560,
+    "char_end": 507962,
+    "page": 194
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM ON \"CONCEPTUAL RELATIVITY\"",
+    "char_offset": 507962,
+    "char_end": 510653,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 510653,
+    "char_end": 513313,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM ON \"CONCEPTUAL RELATIVITY\"",
+    "char_offset": 513313,
+    "char_end": 515971,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 515971,
+    "char_end": 518666,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "16. See Chapter 5, section v.",
+    "char_offset": 518666,
+    "char_end": 518700,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "PUTNAM ON \"CONCEPTUAL RELATIVITY\"",
+    "char_offset": 518700,
+    "char_end": 521003,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "CHAPTER 7",
+    "char_offset": 521003,
+    "char_end": 522850,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 522850,
+    "char_end": 525232,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "2. Bradley 1914, 1.",
+    "char_offset": 525232,
+    "char_end": 525252,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "3. Ibid., 223.",
+    "char_offset": 525252,
+    "char_end": 525267,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "4. Blanshard 1939, 2: 264.",
+    "char_offset": 525267,
+    "char_end": 525349,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "6. James 1975, 97.",
+    "char_offset": 525349,
+    "char_end": 525368,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "7. Dewey 1920, 156.",
+    "char_offset": 525368,
+    "char_end": 525388,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "8. Putnam 1978, 125.",
+    "char_offset": 525388,
+    "char_end": 525409,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "9. Putnam 1981, 55.",
+    "char_offset": 525409,
+    "char_end": 525429,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "10. Ibid., 49-50.",
+    "char_offset": 525429,
+    "char_end": 525451,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 525451,
+    "char_end": 528399,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 528399,
+    "char_end": 531295,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 531295,
+    "char_end": 533873,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 533873,
+    "char_end": 536770,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 536770,
+    "char_end": 539501,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 539501,
+    "char_end": 542422,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 542422,
+    "char_end": 545082,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 545082,
+    "char_end": 547530,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "14. See Alston 1991.",
+    "char_offset": 547530,
+    "char_end": 547907,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 547907,
+    "char_end": 550809,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 550809,
+    "char_end": 553522,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 553522,
+    "char_end": 556498,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 556498,
+    "char_end": 559474,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "202 A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 559474,
+    "char_end": 562234,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "16. See Plantinga 1982.",
+    "char_offset": 562234,
+    "char_end": 562258,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 562258,
+    "char_end": 565160,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "204 A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 565160,
+    "char_end": 567723,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 567723,
+    "char_end": 570674,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 570674,
+    "char_end": 573606,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 573606,
+    "char_end": 576389,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 576389,
+    "char_end": 577846,
+    "page": null
+  },
+  {
+    "level": 0,
+    "title": "part of the meaning of 'true' (the concept of truth). Such an argument",
+    "char_offset": 577846,
+    "char_end": 578951,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 578951,
+    "char_end": 581642,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "18. Putnam 1978, 29.",
+    "char_offset": 581642,
+    "char_end": 581663,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "19. Ibid., 46.",
+    "char_offset": 581663,
+    "char_end": 581682,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 581682,
+    "char_end": 584244,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "20. Blackburn 1984, 273. See also Davidson 1990, pt. 1.",
+    "char_offset": 584244,
+    "char_end": 584300,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "21. Wright 1992, 22-23.",
+    "char_offset": 584300,
+    "char_end": 584324,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "22. Wright 1992, 24ff.",
+    "char_offset": 584324,
+    "char_end": 584351,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH 211",
+    "char_offset": 584351,
+    "char_end": 586878,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "23. This move was suggested to me by Andrew Cortens.",
+    "char_offset": 586878,
+    "char_end": 586931,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 586931,
+    "char_end": 589862,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 589862,
+    "char_end": 592862,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 592862,
+    "char_end": 595595,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 595595,
+    "char_end": 597055,
+    "page": null
+  },
+  {
+    "level": 94,
+    "title": "AFC",
+    "char_offset": 597055,
+    "char_end": 598506,
+    "page": 227
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 598506,
+    "char_end": 601400,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 601400,
+    "char_end": 604255,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 604255,
+    "char_end": 606394,
+    "page": null
+  },
+  {
+    "level": 79,
+    "title": "P\"",
+    "char_offset": 606394,
+    "char_end": 606987,
+    "page": 230
+  },
+  {
+    "level": 2,
+    "title": "219EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 606987,
+    "char_end": 609638,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 609638,
+    "char_end": 612401,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 612401,
+    "char_end": 614987,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 614987,
+    "char_end": 617782,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH 223",
+    "char_offset": 617782,
+    "char_end": 620635,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 620635,
+    "char_end": 623068,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 623068,
+    "char_end": 625839,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 625839,
+    "char_end": 628661,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 628661,
+    "char_end": 631445,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "228 A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 631445,
+    "char_end": 633973,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "chapter 1, there could be facts about the nature of the property that are",
+    "char_offset": 633973,
+    "char_end": 634122,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "EPISTEMIC CONCEPTIONS OF TRUTH",
+    "char_offset": 634122,
+    "char_end": 634277,
+    "page": null
+  },
+  {
+    "level": 39,
+    "title": "H2O",
+    "char_offset": 634277,
+    "char_end": 637006,
+    "page": 241
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 637006,
+    "char_end": 639907,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "CHAPTER 8",
+    "char_offset": 639907,
+    "char_end": 640230,
+    "page": null
+  },
+  {
+    "level": 82,
+    "title": "IMPORTANT",
+    "char_offset": 640230,
+    "char_end": 641527,
+    "page": 243
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 641527,
+    "char_end": 642636,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "chapter with one sort of view that might be thought to fall under the",
+    "char_offset": 642636,
+    "char_end": 644419,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DOING WITHOUT TRUTH",
+    "char_offset": 644419,
+    "char_end": 647053,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 647053,
+    "char_end": 649594,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DOING WITHOUT TRUTH",
+    "char_offset": 649594,
+    "char_end": 650557,
+    "page": null
+  },
+  {
+    "level": 1,
+    "title": "Chapter 3, to the effect that truth is unattainable or that we can never",
+    "char_offset": 650557,
+    "char_end": 652188,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 652188,
+    "char_end": 655197,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DOING WITHOUT TRUTH",
+    "char_offset": 655197,
+    "char_end": 658161,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 658161,
+    "char_end": 660982,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "5. See, e.g., Horwich 1990, chap. 1, sec. 6.",
+    "char_offset": 660982,
+    "char_end": 661031,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DOING WITHOUT TRUTH",
+    "char_offset": 661031,
+    "char_end": 664282,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 664282,
+    "char_end": 667021,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DOING WITHOUT TRUTH",
+    "char_offset": 667021,
+    "char_end": 669914,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 669914,
+    "char_end": 672715,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DOING WITHOUT TRUTH",
+    "char_offset": 672715,
+    "char_end": 675648,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 675648,
+    "char_end": 678828,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DOING WITHOUT TRUTH",
+    "char_offset": 678828,
+    "char_end": 681306,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 681306,
+    "char_end": 684220,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DOING WITHOUT TRUTH",
+    "char_offset": 684220,
+    "char_end": 686903,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 686903,
+    "char_end": 689444,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DOING WITHOUT TRUTH",
+    "char_offset": 689444,
+    "char_end": 692419,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 692419,
+    "char_end": 694988,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "13. See the passages cited in n. 12.",
+    "char_offset": 694988,
+    "char_end": 695029,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DOING WITHOUT TRUTH",
+    "char_offset": 695029,
+    "char_end": 697823,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 697823,
+    "char_end": 700660,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DOING WITHOUT TRUTH",
+    "char_offset": 700660,
+    "char_end": 703222,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 703222,
+    "char_end": 706013,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DOING WITHOUT TRUTH",
+    "char_offset": 706013,
+    "char_end": 708917,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 708917,
+    "char_end": 711649,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DOING WITHOUT TRUTH",
+    "char_offset": 711649,
+    "char_end": 714340,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 714340,
+    "char_end": 716996,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DOING WITHOUT TRUTH",
+    "char_offset": 716996,
+    "char_end": 717946,
+    "page": null
+  },
+  {
+    "level": 66,
+    "title": "XYZ",
+    "char_offset": 717946,
+    "char_end": 719906,
+    "page": 271
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 719906,
+    "char_end": 722975,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "DOING WITHOUT TRUTH",
+    "char_offset": 722975,
+    "char_end": 726646,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "A REALIST CONCEPTION OF TRUTH",
+    "char_offset": 726646,
+    "char_end": 729656,
+    "page": null
+  },
+  {
+    "level": 9,
+    "title": "BIBLIOGRAPHY",
+    "char_offset": 729656,
+    "char_end": 731359,
+    "page": 277
+  },
+  {
+    "level": 2,
+    "title": "N.J",
+    "char_offset": 731359,
+    "char_end": 731380,
+    "page": 279
+  },
+  {
+    "level": 2,
+    "title": "1981. The First Person. Minneapolis: University of Minnesota Press.",
+    "char_offset": 731380,
+    "char_end": 732205,
+    "page": null
+  },
+  {
+    "level": 109,
+    "title": "MIT",
+    "char_offset": 732205,
+    "char_end": 733720,
+    "page": 279
+  },
+  {
+    "level": 2,
+    "title": "12. Realism and Antirealism.",
+    "char_offset": 733720,
+    "char_end": 734525,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "266 BIBLIOGRAPHY",
+    "char_offset": 734525,
+    "char_end": 734542,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "BIBLIOGRAPHY 267",
+    "char_offset": 734542,
+    "char_end": 734850,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "1989. Knowledge and Evidence. Cambridge: Cambridge University Press.",
+    "char_offset": 734850,
+    "char_end": 735944,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "1981. Reason, Truth, History. Cambridge: Cambridge University Press.",
+    "char_offset": 735944,
+    "char_end": 736108,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "1987. The Many Faces of Realism. LaSalle, Ill.: Open Court.",
+    "char_offset": 736108,
+    "char_end": 736168,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "1989. Representation and Reality. Cambridge, Mass.: MIT Press.",
+    "char_offset": 736168,
+    "char_end": 737689,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "1990. The Fragmentation of Reason. Cambridge, Mass.: MIT Press.",
+    "char_offset": 737689,
+    "char_end": 739435,
+    "page": null
+  },
+  {
+    "level": 2,
+    "title": "268 BIBLIOGRAPHY",
+    "char_offset": 739435,
+    "char_end": 739457,
+    "page": null
+  }
+]

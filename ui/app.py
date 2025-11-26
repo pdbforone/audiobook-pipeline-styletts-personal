@@ -27,7 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from pipeline_common import PHASE_KEYS  # noqa: E402
-from ui.models import FileSystemProgress, IncompleteWork, Phase4Summary, UISettings  # noqa: E402
+from ui.models import FileSystemProgress, Phase4Summary, PhaseStatusSummary, UISettings  # noqa: E402
 from ui.services.pipeline_api import PipelineAPI  # noqa: E402
 from ui.services.settings_manager import SettingsManager  # noqa: E402
 from ui.services.voice_manager import VoiceManager  # noqa: E402

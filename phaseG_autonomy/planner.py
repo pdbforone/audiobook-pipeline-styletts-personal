@@ -378,12 +378,23 @@ class AutonomyPlanner:
 
         # Optional self-eval context (read-only, metadata only)
         self_eval_cfg = getattr(autonomy_cfg, "self_eval", None) or self.self_eval_cfg or {}
+        self_eval_enabled = bool(self_eval_cfg.get("enable")) if isinstance(self_eval_cfg, dict) else bool(getattr(self_eval_cfg, "enable", False))
         enable_feedback = bool(getattr(self_eval_cfg, "enable_planner_feedback", False)) if not isinstance(self_eval_cfg, dict) else bool(self_eval_cfg.get("enable_planner_feedback", False))
         history_window = int(getattr(self_eval_cfg, "history_window_runs", 5)) if not isinstance(self_eval_cfg, dict) else int(self_eval_cfg.get("history_window_runs", 5) or 5)
-        if enable_feedback:
+        enable_scoring = bool(getattr(self_eval_cfg, "enable_scoring", False)) if not isinstance(self_eval_cfg, dict) else bool(self_eval_cfg.get("enable_scoring", False))
+        if self_eval_enabled and enable_feedback:
             context = self._load_self_eval_context(history_window)
             if context:
                 payload["self_eval_context"] = context
+        if self_eval_enabled and enable_feedback and enable_scoring:
+            try:
+                from phaseQ_self_eval import self_eval_kernel, cross_phase_fusion
+                kernel_results = self_eval_kernel.evaluate_run({})
+                fusion_results = cross_phase_fusion.fuse_phase_outputs({})
+                payload["self_eval_context"] = payload.get("self_eval_context", {})
+                payload["self_eval_context"].update({"kernel": kernel_results, "fusion": fusion_results})
+            except Exception:
+                pass
 
         return payload
 
@@ -476,7 +487,7 @@ class AutonomyPlanner:
         }
 
     def _load_self_eval_context(self, history_window: int = 5) -> Optional[Dict[str, Any]]:
-        base_dir = Path(".pipeline") / "policy_runtime" / "self_eval"
+        base_dir = Path(".pipeline") / "self_eval" / "reports"
         if not base_dir.exists():
             return None
         candidates = sorted(base_dir.glob("self_eval_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
