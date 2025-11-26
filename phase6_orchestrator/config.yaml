@@ -148,6 +148,7 @@ research:
   enable_quality_gate: false
   enable_feedback_loop: false
   enable_safety_verification: false
+  enable_lifecycle: false
 # Introspection (Phase I - opt-in)
 introspection:
   enable_clustering: false

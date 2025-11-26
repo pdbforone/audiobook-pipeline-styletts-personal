@@ -4781,6 +4781,7 @@ Next Steps:
             from phaseP_research.research_collector import ResearchCollector
             from phaseP_research.research_analyzer import ResearchAnalyzer
             from phaseP_research.research_reporter import ResearchReporter
+            from phaseP_research.init import initialize_research_state
 
             cfg_kwargs = {
                 "enable_research": research_enabled,
@@ -4809,6 +4810,27 @@ Next Steps:
                 run_state = state.read(validate=False)
             except Exception:
                 run_state = {}
+            try:
+                initialize_research_state(Path(".pipeline") / "research")
+            except Exception:
+                pass
+            # Observations per phase (read-only)
+            try:
+                from phaseP_research.observation_hooks import record_phase_observation
+
+                for phase_key, pdata in run_state.items():
+                    if not isinstance(pdata, dict) or not phase_key.startswith("phase"):
+                        continue
+                    observation_payload = {
+                        "input_size": pdata.get("input_size") or pdata.get("metrics", {}).get("files_processed") if isinstance(pdata.get("metrics"), dict) else None,
+                        "output_size": pdata.get("metrics", {}).get("files_processed") if isinstance(pdata.get("metrics"), dict) else None,
+                        "metadata": {
+                            "status": pdata.get("status"),
+                        },
+                    }
+                    record_phase_observation(phase_key, observation_payload, rcfg)
+            except Exception:
+                pass
             raw = ResearchCollector(rcfg).collect(run_state)
             analysis = ResearchAnalyzer().analyze(raw)
             ResearchReporter().write_report(analysis)
@@ -4859,6 +4881,24 @@ Next Steps:
                     from phaseP_research.safety_verification import verify_research_outputs
 
                     verify_research_outputs(research_signals)
+            except Exception:
+                pass
+
+            # Research lifecycle controller (opt-in)
+            try:
+                enable_lifecycle = False
+                if isinstance(research_cfg, dict):
+                    enable_lifecycle = bool(research_cfg.get("enable_lifecycle"))
+                else:
+                    enable_lifecycle = bool(getattr(research_cfg, "enable_lifecycle", False))
+                if enable_lifecycle:
+                    from phaseP_research.research_runner import ResearchRunner
+
+                    runner = ResearchRunner(research_cfg)
+                    runner.begin_run()
+                    evidence = runner.ingest_evidence(run_state, [])
+                    patterns = runner.extract_patterns(evidence)
+                    runner.write_report({"raw": raw, "analysis": analysis, "patterns": patterns})
             except Exception:
                 pass
     except Exception:

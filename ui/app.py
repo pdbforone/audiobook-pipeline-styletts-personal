@@ -12,7 +12,9 @@ from __future__ import annotations
 import atexit
 from dataclasses import dataclass
 import logging
+import os
 import signal
+import socket
 import sys
 from pathlib import Path
 from typing import Any, Awaitable, Callable, List, Optional, Tuple
@@ -1256,6 +1258,24 @@ def signal_handler(signum, frame, app_instance):
     sys.exit(0)
 
 
+def _first_available_port(preferred: int, *, attempts: int = 20) -> int:
+    """
+    Find the first available port starting at the preferred value.
+
+    This prevents binding failures when the default Gradio port is already in use.
+    """
+    for offset in range(attempts):
+        candidate = preferred + offset
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind(("0.0.0.0", candidate))
+                return candidate
+            except OSError:
+                continue
+    raise OSError(f"Cannot find empty port in range: {preferred}-{preferred + attempts - 1}")
+
+
 def main():
     """Launch the studio."""
     ui = StudioUI()
@@ -1268,10 +1288,13 @@ def main():
     logger.info("🎙️ Starting Personal Audiobook Studio...")
     logger.info("Press Ctrl+C to stop the server")
 
+    preferred_port = int(os.environ.get("GRADIO_SERVER_PORT", "7860"))
+    server_port = _first_available_port(preferred_port)
+
     try:
         app.launch(
             server_name="0.0.0.0",
-            server_port=7860,
+            server_port=server_port,
             share=False,
             show_error=True,
             quiet=False,
