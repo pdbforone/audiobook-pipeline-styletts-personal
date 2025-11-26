@@ -38,42 +38,63 @@ subtitles:
 # Benchmark harness (Phase E - opt-in)
 benchmark:
   enable: false
+  version: "phaseE"
   auto_run: false
   test_texts:
     - "Short generic English test passage used for timing and quality checks."
     - "Another test passage for benchmarking the audiobook pipeline end-to-end."
     - "A slightly longer passage to approximate real audiobook phrasing and pacing."
 
-# Autonomy/Self-Repair (opt-in)
+# Autonomy/Self-Repair (opt-in, safety-gated)
 autonomy:
+  enable: true
+  version: "phaseG"
+  global:
+    enable_full_autonomy: false
+    require_safety_envelope: true
+    require_passing_self_eval: true
+    require_schema_valid: true
+    require_no_high_drift: true
+  supervised_mode: false
   enable_self_repair: false
   use_reasoner: false
-  planner_mode: "disabled"  # disabled | recommend_only | enforce (future)
+  planner_mode: "recommend_only"  # disabled | recommend_only | enforce (future)
   memory_enabled: false
   memory_summarization: "periodic"  # periodic | off
-  mode: "disabled"         # disabled | recommend_only | supervised | autonomous (future)
+  mode: "autonomous"         # disabled | recommend_only | supervised | autonomous (future)
   supervised_threshold: 0.85
   policy_kernel_debug: false
   policy_kernel_enabled: false
+  enable_policy_engine: true
+  enable_engine_retry: true
+  enable_experiments: true
   enable_memory_feedback: false
   enable_stability_profiles: false
-  enable_confidence_calibration: false
-  enable_self_review: false
-  enable_rewards: false
+  enable_confidence_calibration: true
+  enable_self_evaluation: true
+  enable_planner_feedback: true
+  enable_self_review: true
+  enable_rewards: true
   enable_profile_learning: false
   enable_genre_learning: false
   enable_profile_fusion: false
   enable_long_horizon: false
-  enable_forecasting: false
+  enable_long_horizon_learning: true
+  enable_forecasting: true
+  enable_drift_monitoring: true
   enable_long_horizon_profiles: false
   enable_trend_modeling: false
+  enable_budget: true
+  enable_stability_bounds: true
+  enable_safety_envelope: true
+  enable_safety_escalation: true
   stability_bounds:
-    enable: false
+    enable: true
     max_chunk_delta_pct: 10
     max_engine_switches: 1
     max_rewrite_delta_pct: 10
   escalation:
-    enable: false
+    enable: true
     drift_threshold: 3
     lockout_runs: 5
   profiles:
@@ -83,7 +104,7 @@ autonomy:
     allow_reset_via_flag: false
     reset_now: false
   readiness_checks:
-    enable: false
+    enable: true
     min_reward_avg: 0.0
     require_recent_success: true
     require_no_anomalies: true
@@ -98,11 +119,13 @@ autonomy:
       - "engine_preference"
       - "rewrite_policy"
   self_eval:
-    enable: false
-    enable_planner_feedback: false
+    enable: true
+    enable_planner_feedback: true
     history_window_runs: 5
 
 self_repair:
+  enable: false
+  version: "phaseD"
   enable_text_rewrite: false
   rewrite_confidence_threshold: 0.7
   enable_repair_loop: false
@@ -112,6 +135,8 @@ self_repair:
   retry_confidence_threshold: 0.85
 
 reasoning:
+  enable: false
+  version: "phaseH"
   enable_evaluator: false
   enable_diagnostics: false
 
@@ -140,9 +165,20 @@ patches:
 
 dashboard:
   enable_data_api: false
+# Phase A-C placeholders (opt-in, disabled)
+phaseA:
+  enable: false
+  version: "phaseA"
+phaseB:
+  enable: false
+  version: "phaseB"
+phaseC:
+  enable: false
+  version: "phaseC"
 # Research (Phase P - opt-in)
 research:
   enable: false
+  version: "phaseP"
   collect_phase_metrics: false
   collect_failure_patterns: false
   collect_engine_stats: false
@@ -153,20 +189,114 @@ research:
   enable_feedback_loop: false
   enable_safety_verification: false
   enable_lifecycle: false
+phaseR:
+  enable: false
+  version: "phaseR"
+  lookback_runs: 20
+  include_benchmarks: true
+  include_self_eval: true
+  include_error_registry: true
+  include_policy_logs: true
+phaseS:
+  enable: false
+  version: "phaseS"
+  include_self_eval: true
+  include_phaseR: true
+  lookback: 10
+consistency:
+  enable: false
+  version: "phaseT"
+  max_history_runs: 50
+phaseT:
+  enable: false
+  version: "phaseT"
+  include_self_eval: true
+  include_phaseR: true
+  include_benchmarks: true
+phaseU:
+  enable: false
+  version: "phaseU"
+  include_self_eval: true
+  include_phaseR: true
+  include_phaseS: true
+  include_audit: true
+phaseV:
+  enable: false
+  version: "phaseV"
+  dry_run: true
+  lookback_runs: 20
+  include_policy_logs: true
+  include_error_registry: true
+  include_memory: true
+  include_stability_profiles: true
+  include_self_eval: true
+  include_research: true
+  targets:
+    - pipeline_state
+    - policy_logs
+    - stability_profiles
+    - memory
+    - self_eval
+    - research
+phaseW:
+  enable: false
+  version: "phaseW"
+  include_warnings: true
+  include_recommendations: true
+phaseX:
+  enable: false
+  version: "phaseX"
+  include_Q: true
+  include_R: true
+  include_S: true
+  max_depth: 3
+phaseY:
+  enable: false
+  version: "phaseY"
+phaseZ:
+  enable: false
+  version: "phaseZ"
+  include_phase_summaries: true
+  include_dependency_scan: true
+  include_invariants: true
 phaseQ_self_eval:
+  enable: false
+  version: "phaseQ"
   enable_meta_evaluator: false
   enable_reflection_writer: false
   output_dir: ".pipeline/self_eval"
 phaseQ_self_evaluation:
   enable: false
+  version: "phaseQ"
   metrics:
     - "run_health"
     - "stability"
     - "repair_effectiveness"
     - "autonomy_boundedness"
   output_dir: ".pipeline/self_evaluation"
+# Phase J-K-L-M-N-O (read-only, analytics)
+phaseJ:
+  enable: false
+  version: "phaseJ"
+phaseK:
+  enable: false
+  version: "phaseK"
+phaseL:
+  enable: false
+  version: "phaseL"
+phaseM:
+  enable: false
+  version: "phaseM"
+phaseN:
+  enable: false
+  version: "phaseN"
+phaseO:
+  enable: false
+  version: "phaseO"
 # Introspection (Phase I - opt-in)
 introspection:
+  enable: true
+  version: "phaseI"
   enable_clustering: false
   enable_narratives: false
   enable_self_critique: false
@@ -182,4 +312,29 @@ policy_engine:
   # tune: Same as enforce + allow self-driving parameter adjustments
 
 metadata:
+  enable: false
+  version: "phaseF"
   enable_llama_metadata: false
+# Capabilities switchboard (safe, read-only layers)
+capabilities:
+  enable_safe_modes: true
+  enable_phaseI: true
+  enable_phaseJ: true
+  enable_phaseK_safe: true
+  enable_phaseP: true
+  enable_phaseQ: true
+  enable_phaseR: true
+  enable_phaseS: true
+  enable_phaseT: true
+  enable_phaseU: true
+  enable_phaseV: true
+  enable_phaseW: true
+  enable_phaseX: true
+  enable_phaseY: true
+  enable_phaseZ: true
+phaseAB:
+  enable: false
+
+ui:
+  show_autonomy_features: true
+  allow_toggle: true

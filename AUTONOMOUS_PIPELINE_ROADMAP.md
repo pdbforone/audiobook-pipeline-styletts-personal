@@ -44,6 +44,12 @@
 | Repair integration | `self_repair/tests/test_repair_flow.py` | ✅ Added | Synthetic failure updates `error_registry.json`, no destructive overwrites |
 | Safety invariants | `tests/integration/test_safety_invariants.py` | ✅ Added | Confirms supervised/recommend-only/disabled autonomy leaves no overrides outside `.pipeline` |
 | Phase P research layer | `phaseP_research/*` | ✅ Opt-in | Registry, observations, lifecycle, evidence, patterns, safety verification; writes to `.pipeline/research/` only |
+| Phase R retro-analysis | `phaseR_retro/*` | ✅ Opt-in | Read-only history analysis plus regression/root-cause mapping; reports to `.pipeline/research/retro_reports/` |
+| Master harness | `tests/master_harness/*` | ✅ Opt-in | Isolated test harness for phase sequencing, engine integrity, snapshot consistency; uses temp pipeline dirs |
+| Phase W global consistency | `phaseW_global/*` | ✅ Opt-in | Schema lint + cross-phase consistency + global analysis; reports to `.pipeline/phaseW/reports/` |
+| Phase X meta-evaluator | `phaseX_meta/*` | ✅ Opt-in | Meta-layer over Q/R/S signals; reports to `.pipeline/meta/reports/` |
+| Phase Y self-heal | `phaseY_self_heal/*` | ✅ Opt-in | Informational self-heal signals/classification/suggestions; reports to `.pipeline/phaseY/reports/` |
+| Phase Z meta diagnostics | `phaseZ_meta/*` | ✅ Opt-in | Pipeline-of-pipelines diagnostics, invariants, dependency scan; reports to `.pipeline/meta/reports/` |
 
 ### Memory/Learning Infrastructure
 
@@ -74,6 +80,8 @@
 | Phase L: Autonomous (bounded) | ✅ Opt-in, reversible | Autonomous mode gated by readiness + policy/budget; overrides are temporary, in-memory, journaled; defaults remain disabled |
 | Phase M: Profiles & Long-Run Insights | ✅ Opt-in | Memory feedback, stability profiles, readiness-aware profiles/fusion hooks; all outputs additive under `.pipeline/memory/` and `.pipeline/stability_profiles/` |
 | Phase N: Integration Verification | ✅ Tests added | Integration + smoke suites ensure cross-phase schemas, engines, repairs, and autonomy guardrails stay consistent (non-semantic) |
+| Phase AA: Global Safety Envelope | ✅ Opt-in | Unifies readiness, stability bounds, drift, safety envelope, escalation, budget/policy, and downstream safety signals; downgrades to supervised when blocked; logs to `.pipeline/autonomy/final_safety/` |
+| Phase AB: Adaptive Brain | ✅ Opt-in, read-only | Fuses K/L/M/N/P/Q/R/S/T/U/V/W/X/Y/Z signals; writes `.pipeline/ab/ab_summary_<ts>.json`; produces safety-bounded recommendations only (no auto-apply) |
 
 > **Note on Phase G/H:** Stub scaffolding now exists (default skipped) so future autonomy/reasoning work can plug in without touching Phases 1-6. Existing supervisor/maintainer functions remain distributed across PolicyEngine/ErrorRegistry.
 

@@ -44,6 +44,7 @@ from autonomy.drift_detection import detect_drift
 from autonomy.safety_envelope import apply_safety_envelope
 from autonomy.safety_escalation import evaluate_escalation, apply_escalation, load_safety_state, write_safety_state
 from autonomy.safety_log import log_safety_event
+from phaseAA.global_safety_envelope import enforce_global_safety
 from introspection.cluster import cluster_anomalies
 from introspection.narratives import generate_narrative
 from introspection.critic import self_critique
@@ -254,6 +255,240 @@ def _policy_call(
             hook(context)
     except Exception:
         logger.debug("Policy hook %s failed", method, exc_info=True)
+
+
+def _timestamped_event_path(base_dir: Path) -> Path:
+    """Return a unique, timestamped path for structured events."""
+    base_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+    return base_dir / f"{ts}.json"
+
+
+def _log_decision_event(
+    mode: str,
+    overrides: Dict[str, Any],
+    safety_ctx: Optional[Dict[str, Any]],
+    run_id: Optional[str],
+    source: str,
+    allowed: bool,
+) -> None:
+    """Persist autonomy override decisions for auditability."""
+    try:
+        payload = {
+            "mode": mode,
+            "allowed": allowed,
+            "overrides": overrides or {},
+            "run_id": run_id,
+            "source": source,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "safety": {
+                "safe": (safety_ctx or {}).get("safety_eval", {}).get("safe", True) if safety_ctx else True,
+                "escalation": (safety_ctx or {}).get("escalation", {}),
+                "budget_allows": (safety_ctx or {}).get("budget_allows"),
+                "policy_allows": (safety_ctx or {}).get("policy_allows"),
+                "downgrade_reasons": (safety_ctx or {}).get("downgrade_reasons", []),
+                "context": (safety_ctx or {}).get("context"),
+            },
+        }
+        out_path = _timestamped_event_path(Path(".pipeline") / "autonomy" / "decisions")
+        out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    except Exception:
+        logger.debug("Autonomy decision log write failed", exc_info=True)
+
+
+def _load_readiness_inputs() -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Load evaluator summary and diagnostics (best-effort)."""
+    summary_path = Path(".pipeline") / "policy_runtime" / "last_run_summary.json"
+    evaluator_summary: Dict[str, Any] = {}
+    if summary_path.exists():
+        try:
+            evaluator_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except Exception:
+            evaluator_summary = {}
+
+    diagnostics_output: Dict[str, Any] = {}
+    diag_dir = Path(".pipeline") / "diagnostics"
+    latest_diag = sorted(diag_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if latest_diag:
+        try:
+            diagnostics_output = json.loads(latest_diag[0].read_text(encoding="utf-8"))
+        except Exception:
+            diagnostics_output = {}
+    return evaluator_summary, diagnostics_output
+
+
+def _evaluate_autonomy_safety(
+    orchestrator_config: "OrchestratorConfig",
+    recommendation: Optional[Dict[str, Any]],
+    *,
+    run_id: Optional[str] = None,
+    context: str = "runtime",
+) -> Dict[str, Any]:
+    """
+    Run the safety chain in the required order:
+    readiness -> stability_bounds -> drift_detection -> safety_envelope ->
+    safety_escalation -> budget -> policy -> overrides.
+    """
+    autonomy_cfg = orchestrator_config.autonomy
+    rec_changes: Dict[str, Any] = {}
+    confidence = 0.0
+    if recommendation:
+        rec_changes = (
+            recommendation.get("autonomous_recommendations", {}).get("changes", {})
+            or recommendation.get("suggested_changes", {})
+            or {}
+        )
+        confidence = float(
+            recommendation.get("autonomous_recommendations", {}).get("confidence", recommendation.get("confidence", 0.0))
+            or 0.0
+        )
+
+    readiness_report: Dict[str, Any] = {}
+    if autonomy_cfg.readiness_checks.get("enable", False):
+        try:
+            from autonomy import readiness, reinforcement
+            from policy_engine.policy_engine import get_benchmark_history
+
+            evaluator_summary, diagnostics_output = _load_readiness_inputs()
+            bench = get_benchmark_history()
+            recent_rewards = reinforcement.load_recent_rewards()
+            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            readiness_report = readiness.check_readiness(
+                evaluator_summary,
+                diagnostics_output,
+                recent_rewards,
+                bench,
+                autonomy_cfg.readiness_checks,
+            )
+            out_dir = Path(".pipeline") / "policy_runtime"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / f"autonomy_readiness_{ts}.json").write_text(
+                json.dumps(readiness_report, indent=2),
+                encoding="utf-8",
+            )
+        except Exception:
+            readiness_report = {}
+
+    stability_result: Dict[str, Any] = {}
+    filtered_changes = dict(rec_changes)
+    if autonomy_cfg.enable_stability_bounds and rec_changes:
+        try:
+            stability_result = check_stability_bounds(rec_changes, {}, autonomy_cfg)
+            if stability_result.get("violations"):
+                log_safety_event("stability_violation", {"violations": stability_result.get("violations")})
+            if stability_result.get("filtered_overrides"):
+                filtered_changes = stability_result["filtered_overrides"]
+        except Exception:
+            stability_result = {}
+
+    drift_info: Dict[str, Any] = {}
+    if autonomy_cfg.enable_drift_monitoring:
+        try:
+            from autonomy import memory_store  # type: ignore
+        except Exception:
+            memory_store = None  # type: ignore
+        run_history = memory_store.load_run_history(limit=50) if memory_store and hasattr(memory_store, "load_run_history") else []
+        try:
+            drift_info = detect_drift(run_history, {})
+            if drift_info.get("drift_detected"):
+                log_safety_event("drift_detected", drift_info)
+        except Exception:
+            drift_info = {}
+
+    safety_eval = {"safe": True, "blocked_reasons": []}
+    if autonomy_cfg.enable_safety_envelope:
+        try:
+            safety_eval = apply_safety_envelope(readiness_report or {}, stability_result, drift_info, autonomy_cfg)
+        except Exception:
+            safety_eval = {"safe": True, "blocked_reasons": []}
+
+    escalation_result: Dict[str, Any] = {"lockout": False}
+    if autonomy_cfg.enable_safety_escalation:
+        try:
+            safety_state_path = Path(".pipeline") / "policy_runtime" / "safety_state.json"
+            state = load_safety_state(safety_state_path)
+            escalation_result = evaluate_escalation(state, drift_info, stability_result, autonomy_cfg)
+            if escalation_result.get("updated_state") is not None:
+                write_safety_state(safety_state_path, escalation_result["updated_state"])
+            if escalation_result.get("lockout"):
+                log_safety_event("escalation_lockout", escalation_result)
+        except Exception:
+            escalation_result = {"lockout": False}
+
+    budgeted_changes = dict(filtered_changes)
+    budget_allows = True
+    if filtered_changes and autonomy_cfg.enable_budget:
+        try:
+            from autonomy.autonomy_budget import enforce_budget
+
+            budgeted = enforce_budget({"suggested_changes": filtered_changes, "confidence": confidence}, autonomy_cfg)
+            budgeted_changes = budgeted.get("suggested_changes") or {}
+            budget_allows = bool(budgeted_changes) or not filtered_changes
+        except Exception:
+            budget_allows = False
+
+    policy_filtered_changes = dict(budgeted_changes)
+    policy_allows = True
+    if budgeted_changes and autonomy_cfg.enable_policy_engine:
+        try:
+            from autonomy.autonomy_policy import check_policy
+
+            policy_filtered_changes = check_policy(budgeted_changes)
+            policy_allows = bool(policy_filtered_changes)
+        except Exception:
+            policy_allows = False
+
+    allow_overrides = (
+        safety_eval.get("safe", True)
+        and not escalation_result.get("lockout")
+        and (budget_allows or not filtered_changes)
+        and (policy_allows or not budgeted_changes)
+    )
+    autonomy_mode = autonomy_cfg.mode
+    downgrade_reasons: List[str] = []
+    if not safety_eval.get("safe", True):
+        autonomy_mode = "supervised"
+        downgrade_reasons.append("safety_envelope_block")
+    if escalation_result.get("lockout"):
+        autonomy_mode = "supervised"
+        downgrade_reasons.append("escalation_lockout")
+
+    if downgrade_reasons:
+        log_safety_event(
+            "autonomy_downgrade",
+            {
+                "reasons": downgrade_reasons,
+                "context": context,
+                "run_id": run_id,
+                "safety_eval": safety_eval,
+                "escalation": escalation_result,
+            },
+        )
+    elif not allow_overrides:
+        log_safety_event(
+            "autonomy_override_blocked",
+            {
+                "context": context,
+                "budget_allows": budget_allows,
+                "policy_allows": policy_allows,
+                "run_id": run_id,
+            },
+        )
+
+    return {
+        "autonomy_mode": autonomy_mode,
+        "readiness": readiness_report,
+        "stability": stability_result,
+        "drift": drift_info,
+        "safety_eval": safety_eval,
+        "escalation": escalation_result,
+        "budget_allows": budget_allows,
+        "policy_allows": policy_allows,
+        "filtered_overrides": policy_filtered_changes if allow_overrides else {},
+        "allow_overrides": allow_overrides,
+        "downgrade_reasons": downgrade_reasons,
+        "context": context,
+    }
 
 
 def _phase_entry_snapshot(state: PipelineState, phase_key: str, file_id: str) -> Dict[str, Any]:
@@ -474,6 +709,9 @@ class PhaseTimeouts(BaseModel):
 
 
 class AutonomyConfig(BaseModel):
+    enable: bool = False
+    supervised_mode: bool = True
+    global_settings: Dict[str, Any] = Field(default_factory=dict, alias="global")
     enable_self_repair: bool = False
     use_reasoner: bool = False
     planner_mode: str = "disabled"  # disabled | recommend_only | enforce (future)
@@ -483,14 +721,25 @@ class AutonomyConfig(BaseModel):
     supervised_threshold: float = 0.85
     policy_kernel_debug: bool = False
     policy_kernel_enabled: bool = False
+    enable_policy_engine: bool = False
+    enable_engine_retry: bool = False
+    enable_experiments: bool = False
     enable_memory_feedback: bool = False
     enable_stability_profiles: bool = False
     enable_confidence_calibration: bool = False
+    enable_self_evaluation: bool = False
+    enable_planner_feedback: bool = False
     enable_self_review: bool = False
     enable_rewards: bool = False
     enable_policy_limits: bool = False
+    enable_budget: bool = False
     enable_long_horizon: bool = False
+    enable_long_horizon_learning: bool = False
     enable_forecasting: bool = False
+    enable_drift_monitoring: bool = False
+    enable_stability_bounds: bool = False
+    enable_safety_envelope: bool = False
+    enable_safety_escalation: bool = False
     enable_long_horizon_profiles: bool = False
     enable_trend_modeling: bool = False
     stability_bounds: Dict[str, Any] = Field(default_factory=dict)
@@ -498,6 +747,7 @@ class AutonomyConfig(BaseModel):
     profiles: Dict[str, Any] = Field(default_factory=dict)
     readiness_checks: Dict[str, Any] = Field(default_factory=dict)
     budget: Dict[str, Any] = Field(default_factory=dict)
+    self_eval: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SelfRepairConfig(BaseModel):
@@ -2520,6 +2770,9 @@ def _apply_supervised_overrides(
     orchestrator_config: OrchestratorConfig,
     runtime_overrides: Dict[str, Any],
     file_id: str,
+    recommendation: Optional[Dict[str, Any]] = None,
+    safety_ctx: Optional[Dict[str, Any]] = None,
+    run_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Apply temporary in-memory overrides when autonomy.mode == supervised
@@ -2528,15 +2781,37 @@ def _apply_supervised_overrides(
     if orchestrator_config.autonomy.mode != "supervised":
         return runtime_overrides
 
-    recommendation = load_latest_staged_recommendation()
-    if not recommendation:
+    rec = recommendation or load_latest_staged_recommendation()
+    if not rec:
         return runtime_overrides
 
-    confidence = float(recommendation.get("confidence", 0.0))
+    if safety_ctx and not safety_ctx.get("allow_overrides", True):
+        _log_decision_event(
+            "supervised",
+            {},
+            safety_ctx,
+            run_id,
+            source="runtime_supervised",
+            allowed=False,
+        )
+        return runtime_overrides
+
+    confidence = float(rec.get("confidence", 0.0))
     if confidence < orchestrator_config.autonomy.supervised_threshold:
         return runtime_overrides
 
-    suggested = recommendation.get("suggested_changes") or {}
+    suggested = (safety_ctx or {}).get("filtered_overrides") or rec.get("suggested_changes") or {}
+    if not suggested:
+        _log_decision_event(
+            "supervised",
+            {},
+            safety_ctx,
+            run_id,
+            source="runtime_supervised",
+            allowed=False,
+        )
+        return runtime_overrides
+
     overrides = dict(runtime_overrides)
 
     global _SUPERVISED_OVERRIDES
@@ -2558,6 +2833,14 @@ def _apply_supervised_overrides(
         "confidence": confidence,
         "source": "supervised_mode",
     }
+    _log_decision_event(
+        "supervised",
+        overrides,
+        safety_ctx,
+        run_id,
+        source="runtime_supervised",
+        allowed=True,
+    )
 
     # Record supervised application to memory if enabled
     if orchestrator_config.autonomy.memory_enabled:
@@ -2585,6 +2868,9 @@ def _apply_autonomous_overrides(
     runtime_overrides: Dict[str, Any],
     file_id: str,
     autonomy_mode: Optional[str] = None,
+    recommendation: Optional[Dict[str, Any]] = None,
+    safety_ctx: Optional[Dict[str, Any]] = None,
+    run_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Apply temporary in-memory overrides when autonomy.mode == autonomous.
@@ -2594,58 +2880,45 @@ def _apply_autonomous_overrides(
     if mode != "autonomous":
         return runtime_overrides
 
-    recommendation = load_latest_staged_recommendation()
-    if not recommendation:
+    rec = recommendation or load_latest_staged_recommendation()
+    if not rec:
         return runtime_overrides
 
-    autonomous_rec = recommendation.get("autonomous_recommendations") or {}
-    changes = autonomous_rec.get("changes") or recommendation.get("suggested_changes") or {}
-    confidence = float(autonomous_rec.get("confidence", recommendation.get("confidence", 0.0) or 0.0))
+    if safety_ctx and (not safety_ctx.get("allow_overrides", True) or safety_ctx.get("autonomy_mode") != "autonomous"):
+        _log_decision_event(
+            "autonomous",
+            {},
+            safety_ctx,
+            run_id,
+            source="runtime_autonomous",
+            allowed=False,
+        )
+        return runtime_overrides
+
+    autonomous_rec = rec.get("autonomous_recommendations") or {}
+    changes = (safety_ctx or {}).get("filtered_overrides") or autonomous_rec.get("changes") or rec.get("suggested_changes") or {}
+    confidence = float(autonomous_rec.get("confidence", rec.get("confidence", 0.0) or 0.0))
     if not changes:
+        _log_decision_event(
+            "autonomous",
+            {},
+            safety_ctx,
+            run_id,
+            source="runtime_autonomous",
+            allowed=False,
+        )
         return runtime_overrides
 
     safe_changes = dict(changes)
-    try:
-        from autonomy.autonomy_policy import check_policy
-
-        safe_changes = check_policy(safe_changes)
-    except Exception:
-        pass
-
-    # Persist attribution if present
-    try:
-        if planner_output and isinstance(planner_output, dict) and planner_output.get("attribution"):
-            try:
-                run_id = policy_engine.run_id if policy_engine else datetime.utcnow().strftime("%Y%m%d-%H%M%S")
-            except Exception:
-                run_id = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
-            _write_json_safely(
-                Path(".pipeline") / "attribution" / f"{run_id}_attribution.json",
-                planner_output["attribution"],
-            )
-            if _RUN_TRACE is not None:
-                record_event(
-                    _RUN_TRACE,
-                    "attribution_write",
-                    "Attribution written to disk",
-                    {"path": str(Path(".pipeline") / "attribution" / f"{run_id}_attribution.json")},
-                )
-    except Exception:
-        pass
-
-    try:
-        from autonomy.autonomy_budget import enforce_budget
-
-        packaged = enforce_budget(
-            {"suggested_changes": safe_changes, "confidence": confidence},
-            orchestrator_config.autonomy,
-        )
-        safe_changes = packaged.get("suggested_changes") or safe_changes
-        confidence = packaged.get("confidence", confidence)
-    except Exception:
-        pass
-
     if not safe_changes:
+        _log_decision_event(
+            "autonomous",
+            {},
+            safety_ctx,
+            run_id,
+            source="runtime_autonomous",
+            allowed=False,
+        )
         return runtime_overrides
 
     overrides = dict(runtime_overrides)
@@ -2664,6 +2937,14 @@ def _apply_autonomous_overrides(
         "confidence": confidence,
         "source": "autonomous_mode",
     }
+    _log_decision_event(
+        "autonomous",
+        overrides,
+        safety_ctx,
+        run_id,
+        source="runtime_autonomous",
+        allowed=True,
+    )
 
     if orchestrator_config.autonomy.memory_enabled:
         try:
@@ -3430,6 +3711,14 @@ def run_pipeline(
     if not current_run_id:
         current_run_id = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
 
+    try:
+        if orchestrator_config.autonomy.enable_experiments:
+            orchestrator_config.experiments.enable = True
+    except Exception:
+        pass
+
+    staged_recommendation = load_latest_staged_recommendation()
+
     # Memory feedback (opt-in)
     if orchestrator_config.autonomy.enable_memory_feedback:
         try:
@@ -3441,41 +3730,63 @@ def run_pipeline(
         except Exception:
             pass
 
-    # Determine effective autonomy mode with readiness gating (in-memory only)
-    effective_autonomy_mode = orchestrator_config.autonomy.mode
-    if effective_autonomy_mode == "autonomous" and orchestrator_config.autonomy.readiness_checks.get("enable", False):
-        try:
-            from autonomy import readiness, reinforcement
-            from policy_engine.policy_engine import get_benchmark_history
+    base_autonomy_mode = orchestrator_config.autonomy.mode
+    if orchestrator_config.autonomy.supervised_mode:
+        base_autonomy_mode = "supervised"
+    if not orchestrator_config.autonomy.enable:
+        base_autonomy_mode = "disabled"
+    orchestrator_config.autonomy.mode = base_autonomy_mode
 
-            summary_path = Path(".pipeline") / "policy_runtime" / "last_run_summary.json"
-            evaluator_summary = {}
-            if summary_path.exists():
-                evaluator_summary = json.loads(summary_path.read_text(encoding="utf-8"))
-            diagnostics_output = {}
-            diag_dir = Path(".pipeline") / "diagnostics"
-            latest_diag = sorted(diag_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-            if latest_diag:
-                diagnostics_output = json.loads(latest_diag[0].read_text(encoding="utf-8"))
-            bench = get_benchmark_history()
-            recent_rewards = reinforcement.load_recent_rewards()
-            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-            readiness_report = readiness.check_readiness(
-                evaluator_summary,
-                diagnostics_output,
-                recent_rewards,
-                bench,
-                orchestrator_config.autonomy.readiness_checks,
-            )
-            out_dir = Path(".pipeline") / "policy_runtime"
-            out_dir.mkdir(parents=True, exist_ok=True)
-            (out_dir / f"autonomy_readiness_{ts}.json").write_text(
-                json.dumps(readiness_report, indent=2), encoding="utf-8"
-            )
-            if not readiness_report.get("ready"):
-                effective_autonomy_mode = "supervised"
-        except Exception:
-            pass
+    safety_ctx = _evaluate_autonomy_safety(
+        orchestrator_config,
+        staged_recommendation,
+        run_id=current_run_id,
+        context="runtime_overrides",
+    )
+    effective_autonomy_mode = safety_ctx.get("autonomy_mode", base_autonomy_mode) or base_autonomy_mode
+    if safety_ctx.get("downgrade_reasons"):
+        effective_autonomy_mode = "supervised"
+
+    global_safety = {"allow_autonomy": True, "blocked_reasons": [], "downgrade_to_supervised": False}
+    global_cfg = getattr(orchestrator_config.autonomy, "global_settings", {}) or {}
+    if global_cfg.get("enable_full_autonomy", False):
+        run_summary_input = dict(RUN_SUMMARY)
+        if not global_cfg.get("require_passing_self_eval", True):
+            run_summary_input.pop("self_eval_passed", None)
+        if not global_cfg.get("require_schema_valid", True):
+            run_summary_input.pop("schema_valid", None)
+        if not global_cfg.get("require_no_high_drift", True):
+            run_summary_input.pop("consistency_passed", None)
+            run_summary_input.pop("phaseS_consistency", None)
+        safety_eval_input = safety_ctx.get("safety_eval", {}) if global_cfg.get("require_safety_envelope", True) else {}
+        drift_input = safety_ctx.get("drift", {}) if global_cfg.get("require_no_high_drift", True) else {}
+        global_safety = enforce_global_safety(
+            run_summary=run_summary_input,
+            readiness=safety_ctx.get("readiness", {}),
+            safety_envelope=safety_eval_input,
+            escalation=safety_ctx.get("escalation", {}),
+            drift=drift_input,
+            stability=safety_ctx.get("stability", {}),
+            budget={"allows": safety_ctx.get("budget_allows", True)},
+        )
+        if not global_safety.get("allow_autonomy", False):
+            staged_recommendation = {}
+            effective_autonomy_mode = "supervised"
+            safety_ctx["allow_overrides"] = False
+            safety_ctx["downgrade_reasons"] = (safety_ctx.get("downgrade_reasons") or []) + global_safety.get("blocked_reasons", [])
+            try:
+                final_payload = {
+                    "run_id": current_run_id,
+                    "mode": effective_autonomy_mode,
+                    "blocked_reasons": global_safety.get("blocked_reasons", []),
+                    "downgrade_to_supervised": True,
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                }
+                final_path = _timestamped_event_path(Path(".pipeline") / "autonomy" / "final_safety")
+                final_path.write_text(json.dumps(final_payload, indent=2), encoding="utf-8")
+            except Exception:
+                logger.debug("Final safety log write failed", exc_info=True)
+
     # Apply effective mode in-memory only for this run
     orchestrator_config.autonomy.mode = effective_autonomy_mode
 
@@ -3491,6 +3802,9 @@ def run_pipeline(
         orchestrator_config,
         runtime_overrides,
         file_id,
+        recommendation=staged_recommendation,
+        safety_ctx=safety_ctx,
+        run_id=current_run_id,
     )
     # Apply autonomous overrides (in-memory only)
     runtime_overrides = _apply_autonomous_overrides(
@@ -3498,6 +3812,9 @@ def run_pipeline(
         runtime_overrides,
         file_id,
         autonomy_mode=effective_autonomy_mode,
+        recommendation=staged_recommendation,
+        safety_ctx=safety_ctx,
+        run_id=current_run_id,
     )
     phase4_overrides = runtime_overrides.get("phase4") or {}
     phase_retry_overrides = runtime_overrides.get("retry_policy") or {}
@@ -3829,12 +4146,22 @@ Examples:
         """,
     )
 
-    parser.add_argument("file", type=Path, help="Input file path (PDF or ebook)")
+    parser.add_argument(
+        "file",
+        type=Path,
+        nargs="?",
+        help="Input file path (PDF or ebook). Required unless --export-reference is used.",
+    )
     parser.add_argument(
         "--pipeline-json",
         type=Path,
         default=None,
         help="Path to pipeline.json (default: from config.yaml or ../pipeline.json)",
+    )
+    parser.add_argument(
+        "--export-reference",
+        action="store_true",
+        help="Generate UI capability map + pipeline training book (read-only) and exit",
     )
     parser.add_argument(
         "--phases",
@@ -3874,6 +4201,17 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    if args.export_reference:
+        from tools.book_generator import export_reference_bundle
+
+        config_path = Path(__file__).with_name("config.yaml")
+        summary = export_reference_bundle(config_path=config_path, output_dir=Path(".pipeline/reference"))
+        print(json.dumps(summary, indent=2))
+        return 0
+
+    if args.file is None:
+        parser.error("the following arguments are required: file (unless --export-reference is used)")
 
     orchestrator_config = get_orchestrator_config()
     pipeline_mode = orchestrator_config.pipeline_mode.lower()
@@ -4175,92 +4513,22 @@ Pipeline Mode: {pipeline_mode}
                 payload={"recommendations": planner_output},
             )
         autonomy_mode = orchestrator_config.autonomy.mode
-        readiness_report = {}
-        if (
-            autonomy_mode == "autonomous"
-            and orchestrator_config.autonomy.readiness_checks.get("enable", False)
-        ):
-            try:
-                from autonomy import readiness
-                from autonomy import reinforcement
-                from policy_engine.policy_engine import get_benchmark_history
+        safety_ctx_post = _evaluate_autonomy_safety(
+            orchestrator_config,
+            planner_output,
+            run_id=current_run_id,
+            context="planner_output",
+        )
+        autonomy_mode = safety_ctx_post.get("autonomy_mode", autonomy_mode)
+        readiness_report = safety_ctx_post.get("readiness", {})
+        filtered_overrides = safety_ctx_post.get("filtered_overrides") or {}
+        if planner_output and filtered_overrides:
+            if "suggested_changes" in planner_output:
+                planner_output["suggested_changes"] = filtered_overrides
+            if "autonomous_recommendations" in planner_output:
+                planner_output["autonomous_recommendations"]["changes"] = filtered_overrides
 
-                summary_path = Path(".pipeline") / "policy_runtime" / "last_run_summary.json"
-                evaluator_summary = {}
-                if summary_path.exists():
-                    evaluator_summary = json.loads(summary_path.read_text(encoding="utf-8"))
-                diagnostics_output = {}
-                diag_dir = Path(".pipeline") / "diagnostics"
-                latest_diag = sorted(diag_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-                if latest_diag:
-                    diagnostics_output = json.loads(latest_diag[0].read_text(encoding="utf-8"))
-                bench = get_benchmark_history()
-                recent_rewards = reinforcement.load_recent_rewards()
-                ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-                readiness_report = readiness.check_readiness(
-                    evaluator_summary,
-                    diagnostics_output,
-                    recent_rewards,
-                    bench,
-                    orchestrator_config.autonomy.readiness_checks,
-                )
-                out_dir = Path(".pipeline") / "policy_runtime"
-                out_dir.mkdir(parents=True, exist_ok=True)
-                (out_dir / f"autonomy_readiness_{ts}.json").write_text(
-                    json.dumps(readiness_report, indent=2), encoding="utf-8"
-                )
-                if not readiness_report.get("ready"):
-                    autonomy_mode = "supervised"
-            except Exception:
-                pass
-
-        # Phase J safety sequence: readiness -> stability -> drift -> escalation -> envelope -> policy/budget
-        safety_block_overrides = False
-        safety_state_path = Path(".pipeline") / "policy_runtime" / "safety_state.json"
-        stability_result: Dict[str, Any] = {}
-        drift_info: Dict[str, Any] = {}
-        escalation_result: Dict[str, Any] = {}
-        try:
-            # Stability bounds
-            if orchestrator_config.autonomy.stability_bounds.get("enable", False) and planner_output:
-                recs = planner_output.get("suggested_changes") or planner_output.get("autonomous_recommendations", {}).get("changes", {})
-                stability_result = check_stability_bounds(recs, {}, orchestrator_config.autonomy)
-                if stability_result.get("violations"):
-                    log_safety_event("stability_violation", {"violations": stability_result.get("violations")})
-                if recs and stability_result.get("filtered_overrides") and stability_result.get("filtered_overrides") != recs:
-                    if "suggested_changes" in planner_output:
-                        planner_output["suggested_changes"] = stability_result.get("filtered_overrides")
-                    if "autonomous_recommendations" in planner_output:
-                        planner_output["autonomous_recommendations"]["changes"] = stability_result.get("filtered_overrides")
-
-            # Drift detection
-            try:
-                from autonomy import memory_store
-            except Exception:
-                memory_store = None
-            run_history = memory_store.load_run_history(limit=50) if memory_store and hasattr(memory_store, "load_run_history") else []
-            drift_info = detect_drift(run_history, {})
-            if drift_info.get("drift_detected"):
-                log_safety_event("drift_detected", drift_info)
-
-            # Escalation
-            state = load_safety_state(safety_state_path)
-            escalation_result = evaluate_escalation(state, drift_info, stability_result, orchestrator_config.autonomy)
-            if escalation_result.get("updated_state") is not None:
-                write_safety_state(safety_state_path, escalation_result["updated_state"])
-            if escalation_result.get("lockout"):
-                autonomy_mode = "supervised"
-                safety_block_overrides = True
-                log_safety_event("escalation_lockout", escalation_result)
-
-            # Safety envelope
-            safety_eval = apply_safety_envelope(readiness_report or {}, stability_result, drift_info, orchestrator_config.autonomy)
-            if not safety_eval.get("safe", True):
-                autonomy_mode = "supervised"
-                safety_block_overrides = True
-                log_safety_event("safety_downgrade", {"reasons": safety_eval.get("blocked_reasons", [])})
-        except Exception:
-            pass
+        safety_block_overrides = not safety_ctx_post.get("allow_overrides", False)
         if safety_block_overrides:
             _SUPERVISED_OVERRIDES.clear()
             _AUTONOMOUS_OVERRIDES.clear()
@@ -4268,15 +4536,17 @@ Pipeline Mode: {pipeline_mode}
         if (
             autonomy_mode == "supervised"
             and planner_output
+            and safety_ctx_post.get("allow_overrides", False)
             and planner_output.get("confidence", 0.0) >= orchestrator_config.autonomy.supervised_threshold
         ):
             try:
-                from autonomy.autonomy_budget import enforce_budget
-
-                budgeted = enforce_budget(planner_output, orchestrator_config.autonomy)
+                budgeted = {
+                    "suggested_changes": filtered_overrides,
+                    "confidence": planner_output.get("confidence"),
+                }
                 if not safety_block_overrides:
                     _SUPERVISED_OVERRIDES = {
-                        "overrides": budgeted.get("suggested_changes"),
+                        "overrides": budgeted.get("suggested_changes") if filtered_overrides else {},
                         "confidence": budgeted.get("confidence", planner_output.get("confidence")),
                         "source": "supervised_mode",
                     }
@@ -4286,20 +4556,13 @@ Pipeline Mode: {pipeline_mode}
         elif (
             autonomy_mode == "autonomous"
             and planner_output
+            and safety_ctx_post.get("allow_overrides", False)
         ):
             try:
-                from autonomy.autonomy_policy import check_policy
-                from autonomy.autonomy_budget import enforce_budget
-
-                safe_overrides = check_policy(planner_output.get("autonomous_recommendations", {}).get("changes", {}))
-                safe_overrides = enforce_budget(
-                    {"suggested_changes": safe_overrides, "confidence": planner_output.get("confidence", 0.0)},
-                    orchestrator_config.autonomy,
-                )
                 if not safety_block_overrides:
                     _SUPERVISED_OVERRIDES = {
-                        "overrides": safe_overrides.get("suggested_changes"),
-                        "confidence": safe_overrides.get("confidence", planner_output.get("confidence")),
+                        "overrides": filtered_overrides,
+                        "confidence": planner_output.get("confidence", 0.0),
                         "source": "autonomous_mode",
                     }
             except Exception:
@@ -4977,30 +5240,355 @@ Next Steps:
                 else:
                     self_eval_enabled = bool(getattr(self_eval_cfg, "enable", False))
                 if self_eval_enabled:
-                    from autonomy.self_eval_fusion import fuse_signals_for_self_eval
-                    from autonomy.self_eval_kernel import SelfEvalKernel
+                    from phaseQ_self_eval import cross_phase_fusion, rating_explainer, self_eval_kernel, self_eval_reporter
 
-                    try:
-                        state = PipelineState(pipeline_json, validate_on_read=False)
-                    except Exception:
-                        state = None
                     run_id = None
                     try:
                         run_id = policy_engine.run_id if policy_engine else None
                     except Exception:
                         run_id = None
-                    run_id = run_id or file_id
-                    fused_input = fuse_signals_for_self_eval(state, run_id, base_dir=Path(".pipeline"))
-                    kernel = SelfEvalKernel()
-                    self_eval_result = kernel.rate_run(fused_input, run_id=run_id)
-                    payload = kernel.to_json(self_eval_result)
-                    out_dir = Path(".pipeline") / "policy_runtime" / "self_eval"
-                    out_dir.mkdir(parents=True, exist_ok=True)
-                    out_path = out_dir / f"self_eval_{run_id}.json"
-                    out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-                    logger.info("Phase Q self-eval: rating=%s verdict=%s", self_eval_result.overall_rating, self_eval_result.verdict)
+                    run_id = run_id or file_id or datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+                    kernel_result = self_eval_kernel.evaluate_run({"metrics": RUN_SUMMARY})
+                    fusion_result = cross_phase_fusion.fuse_phase_outputs(RUN_SUMMARY)
+                    explanation = rating_explainer.explain_rating(kernel_result.get("dimensions", {}), kernel_result.get("overall_rating", 0.0))
+                    out_path = self_eval_reporter.write_self_eval_report(
+                        run_id,
+                        kernel_result,
+                        kernel_result.get("overall_rating"),
+                        fusion_result,
+                        explanation,
+                        output_dir=None,
+                    )
+                    logger.info("Phase Q self-eval: rating=%s", kernel_result.get("overall_rating"))
+                    logger.debug("Phase Q self-eval written to %s", out_path)
             except Exception:
                 pass
+
+            # Phase R retrospective intelligence (opt-in, read-only)
+            try:
+                phase_r_cfg = getattr(orchestrator_config, "phaseR", None)
+                if isinstance(phase_r_cfg, dict):
+                    phase_r_enabled = bool(phase_r_cfg.get("enable"))
+                else:
+                    phase_r_enabled = bool(getattr(phase_r_cfg, "enable", False))
+                if phase_r_enabled:
+                    from phaseR_retro import init_state, research_runner
+
+                    init_state.ensure_research_state(Path(".pipeline"))
+                    run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                    research_runner.begin_run(run_id)
+                    evidence = research_runner.ingest_evidence(run_id)
+                    derived = research_runner.extract_patterns(run_id, evidence)
+                    research_runner.write_report(run_id, evidence, derived)
+            except Exception:
+                pass
+
+            # Phase S review (opt-in, read-only)
+            try:
+                phase_s_cfg = getattr(orchestrator_config, "phaseS", None)
+                if isinstance(phase_s_cfg, dict):
+                    phase_s_enabled = bool(phase_s_cfg.get("enable"))
+                else:
+                    phase_s_enabled = bool(getattr(phase_s_cfg, "enable", False))
+                if phase_s_enabled:
+                    from phaseS_review import review_kernel, review_aggregator, review_reporter
+
+                    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                    run_id = ts
+                    review = review_kernel.review_run(RUN_SUMMARY)
+                    aggregate = review_aggregator.aggregate_reviews([review])
+                    review_reporter.write_review_report(run_id, review, aggregate, base_dir=Path(".pipeline/review/reports"))
+            except Exception:
+                pass
+
+            # Phase T consistency (opt-in, read-only)
+            try:
+                consistency_cfg = getattr(orchestrator_config, "consistency", None)
+                if isinstance(consistency_cfg, dict):
+                    consistency_enabled = bool(consistency_cfg.get("enable"))
+                else:
+                    consistency_enabled = bool(getattr(consistency_cfg, "enable", False))
+                if consistency_enabled:
+                    from phaseT_consistency import consistency_checker, drift_monitor, health_reporter, schema_registry
+
+                    run_id = None
+                    try:
+                        run_id = policy_engine.run_id if policy_engine else None
+                    except Exception:
+                        run_id = None
+                    run_id = run_id or file_id or datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                    consistency = consistency_checker.check_consistency(RUN_SUMMARY, schema_registry)
+                    drift = drift_monitor.detect_system_drift(Path(".pipeline"))
+                    health_reporter.write_consistency_report(run_id=run_id, consistency=consistency, drift=drift)
+            except Exception:
+                pass
+
+            # Phase T audit (opt-in, read-only)
+            try:
+                phase_t_cfg = getattr(orchestrator_config, "phaseT", None)
+                if isinstance(phase_t_cfg, dict):
+                    phase_t_enabled = bool(phase_t_cfg.get("enable"))
+                else:
+                    phase_t_enabled = bool(getattr(phase_t_cfg, "enable", False))
+                if phase_t_enabled:
+                    from phaseT_audit import audit_kernel, eval_synthesizer, risk_classifier, audit_reporter
+
+                    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                    run_id = None
+                    try:
+                        run_id = policy_engine.run_id if policy_engine else None
+                    except Exception:
+                        run_id = None
+                    run_id = run_id or file_id or ts
+                    kernel_out = audit_kernel.evaluate_run(RUN_SUMMARY, RUN_SUMMARY)
+                    synthesized = eval_synthesizer.synthesize_evaluation(kernel_out, RUN_SUMMARY)
+                    risk = risk_classifier.classify(synthesized)
+                    report = {
+                        "id": ts,
+                        "run_id": run_id,
+                        "kernel": kernel_out,
+                        "synthesized": synthesized,
+                        "risk": risk,
+                        "created_at": ts,
+                        "notes": "Phase T audit",
+                    }
+                    audit_reporter.write_audit_report(report)
+            except Exception:
+                pass
+
+            # Phase U safety-integrity (opt-in, read-only)
+            try:
+                phase_u_cfg = getattr(orchestrator_config, "phaseU", None)
+                if isinstance(phase_u_cfg, dict):
+                    phase_u_enabled = bool(phase_u_cfg.get("enable"))
+                else:
+                    phase_u_enabled = bool(getattr(phase_u_cfg, "enable", False))
+                if phase_u_enabled:
+                    from phaseU_integrity import consistency_unifier, integrity_kernel, integrity_reporter, signal_hub
+
+                    run_id = None
+                    try:
+                        run_id = policy_engine.run_id if policy_engine else None
+                    except Exception:
+                        run_id = None
+                    run_id = run_id or file_id or datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                    signals = signal_hub.collect_signals(run_id, base_dir=".pipeline")
+                    integrity = integrity_kernel.evaluate_integrity(
+                        RUN_SUMMARY,
+                        signals["signals"].get("readiness"),
+                        signals["signals"].get("stability"),
+                        signals["signals"].get("drift"),
+                        signals["signals"].get("self_eval"),
+                        signals["signals"].get("retrospection"),
+                        signals["signals"].get("review"),
+                        signals["signals"].get("audit"),
+                    )
+                    unified = consistency_unifier.unify(signals, integrity)
+                    integrity_reporter.write_integrity_report(unified, base_dir=".pipeline/safety_integrity/reports/")
+            except Exception:
+                pass
+
+            # Phase V migrations (opt-in, non-destructive)
+            try:
+                phase_v_cfg = getattr(orchestrator_config, "phaseV", None)
+                if isinstance(phase_v_cfg, dict):
+                    phase_v_enabled = bool(phase_v_cfg.get("enable"))
+                    dry_run = bool(phase_v_cfg.get("dry_run", True))
+                else:
+                    phase_v_enabled = bool(getattr(phase_v_cfg, "enable", False))
+                    dry_run = bool(getattr(phase_v_cfg, "dry_run", True))
+                if phase_v_enabled:
+                    from phaseV_migrations import migration_reporter, migration_runner
+
+                    plan = migration_runner.plan_migrations(phase_v_cfg, base_dir=Path(".pipeline"))
+                    migration_reporter.write_plan_report(plan, base_dir=Path(".pipeline/migrations"))
+                    if not dry_run:
+                        result = migration_runner.apply_migrations(phase_v_cfg, base_dir=Path(".pipeline"))
+                        migration_reporter.write_apply_report(result, base_dir=Path(".pipeline/migrations"))
+            except Exception:
+                pass
+
+            # Phase W global consistency (opt-in, read-only)
+            try:
+                phase_w_cfg = getattr(orchestrator_config, "phaseW", None)
+                if isinstance(phase_w_cfg, dict):
+                    phase_w_enabled = bool(phase_w_cfg.get("enable"))
+                else:
+                    phase_w_enabled = bool(getattr(phase_w_cfg, "enable", False))
+                if phase_w_enabled:
+                    from phaseW_global import cross_phase_consistency, global_analyzer, schema_linter, w_reporter
+
+                    # Collect schemas best-effort from run summary; degrade gracefully.
+                    phase_schemas = {
+                        "phase1": RUN_SUMMARY.get("phase1") if isinstance(RUN_SUMMARY, dict) else None,
+                        "phase2": RUN_SUMMARY.get("phase2") if isinstance(RUN_SUMMARY, dict) else None,
+                        "phase3": RUN_SUMMARY.get("phase3") if isinstance(RUN_SUMMARY, dict) else None,
+                        "phase4": RUN_SUMMARY.get("phase4") if isinstance(RUN_SUMMARY, dict) else None,
+                        "phase5": RUN_SUMMARY.get("phase5") if isinstance(RUN_SUMMARY, dict) else None,
+                        "phase6": RUN_SUMMARY.get("phase6") if isinstance(RUN_SUMMARY, dict) else None,
+                    }
+                    lint = schema_linter.lint_schemas(phase_schemas)
+                    consistency = cross_phase_consistency.analyze_consistency(phase_schemas)
+                    global_info = global_analyzer.global_analysis(lint, consistency)
+                    report_payload = {
+                        "lint": lint,
+                        "consistency": consistency,
+                        "global_analysis": global_info,
+                        "notes": "Phase W global consistency layer",
+                    }
+                    w_reporter.write_phaseW_report(report_payload, base_dir=Path(".pipeline/phaseW/reports"))
+            except Exception:
+                pass
+
+            # Phase X meta-evaluator (opt-in, read-only)
+            try:
+                phase_x_cfg = getattr(orchestrator_config, "phaseX", None)
+                if isinstance(phase_x_cfg, dict):
+                    phase_x_enabled = bool(phase_x_cfg.get("enable"))
+                    max_depth = int(phase_x_cfg.get("max_depth", 3))
+                else:
+                    phase_x_enabled = bool(getattr(phase_x_cfg, "enable", False))
+                    max_depth = int(getattr(phase_x_cfg, "max_depth", 3))
+                if phase_x_enabled:
+                    from phaseX_meta import meta_kernel, meta_fusion, meta_ranking, meta_reporter
+
+                    # Load best-effort signals from prior phases (if present in RUN_SUMMARY or elsewhere)
+                    inputs = {
+                        "self_eval": RUN_SUMMARY.get("phaseQ") if isinstance(RUN_SUMMARY, dict) else {},
+                        "retro": RUN_SUMMARY.get("phaseR") if isinstance(RUN_SUMMARY, dict) else {},
+                        "review": RUN_SUMMARY.get("phaseS") if isinstance(RUN_SUMMARY, dict) else {},
+                    }
+                    kernel_out = meta_kernel.evaluate_signal_layers(inputs)
+                    fusion_out = meta_fusion.fuse_meta_context(kernel_out)
+                    ranking_out = meta_ranking.rank_meta_findings(kernel_out, fusion_out, max_depth=max_depth)
+                    report = {
+                        "id": datetime.utcnow().strftime("%Y%m%d_%H%M%S"),
+                        "timestamp": datetime.utcnow().strftime("%Y%m%d_%H%M%S"),
+                        "kernel": kernel_out,
+                        "fusion": fusion_out,
+                        "ranking": ranking_out,
+                        "summary": "Phase X meta-evaluator report",
+                    }
+                    meta_reporter.write_meta_report(report, base_dir=Path(".pipeline/meta/reports"))
+            except Exception:
+                pass
+
+            # Phase Y self-healing (opt-in, read-only; no auto-actions)
+            try:
+                phase_y_cfg = getattr(orchestrator_config, "phaseY", None)
+                if isinstance(phase_y_cfg, dict):
+                    phase_y_enabled = bool(phase_y_cfg.get("enable"))
+                else:
+                    phase_y_enabled = bool(getattr(phase_y_cfg, "enable", False))
+                if phase_y_enabled:
+                    try:
+                        from phaseY_self_opt import y_kernel, y_suggester, y_reporter  # type: ignore
+                        # If optional module exists, use it.
+                        fused = y_kernel.evaluate_run(RUN_SUMMARY if isinstance(RUN_SUMMARY, dict) else {})
+                        suggestions = y_suggester.generate_suggestions(fused)
+                        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                        report_payload = {
+                            "id": ts,
+                            "timestamp": ts,
+                            "run_id": RUN_SUMMARY.get("run_id", "") if isinstance(RUN_SUMMARY, dict) else "",
+                            "analysis": fused,
+                            "suggestions": suggestions,
+                        }
+                        y_reporter.write_phaseY_report(report_payload, base_dir=Path(".pipeline/phaseY/reports"))
+                    except Exception:
+                        # Fallback to existing self_heal implementations (informational only)
+                        from phaseY_self_heal import heal_kernel, heal_classifier, heal_suggester, heal_reporter
+
+                        kernel = heal_kernel.compute_heal_signals(RUN_SUMMARY if isinstance(RUN_SUMMARY, dict) else {})
+                        classification = heal_classifier.classify(kernel)
+                        suggestions = heal_suggester.suggest_corrections(
+                            RUN_SUMMARY if isinstance(RUN_SUMMARY, dict) else {}, classification
+                        )
+                        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                        report = {
+                            "id": ts,
+                            "timestamp": ts,
+                            "run_id": RUN_SUMMARY.get("run_id", "") if isinstance(RUN_SUMMARY, dict) else "",
+                            "kernel": kernel,
+                            "classification": classification,
+                            "suggestions": suggestions,
+                            "overall_severity": kernel.get("signals", {}).get("severity", "low") if isinstance(kernel, dict) else "low",
+                            "notes": "Phase Y self-heal report (informational only; no automatic actions).",
+                        }
+                        heal_reporter.write_heal_report(report, base_dir=Path(".pipeline/phaseY/reports"))
+            except Exception:
+                pass
+
+            # Phase Z meta diagnostics (opt-in, read-only)
+            try:
+                phase_z_cfg = getattr(orchestrator_config, "phaseZ", None)
+                if isinstance(phase_z_cfg, dict):
+                    phase_z_enabled = bool(phase_z_cfg.get("enable"))
+                else:
+                    phase_z_enabled = bool(getattr(phase_z_cfg, "enable", False))
+                if phase_z_enabled:
+                    from phaseZ_meta import dependency_scanner, invariant_checker, meta_kernel, meta_reporter, phase_health_summarizer
+
+                    kernel = meta_kernel.analyze_full_pipeline()
+                    inv = invariant_checker.check_invariants(kernel)
+                    deps = dependency_scanner.scan_dependencies()
+                    health = phase_health_summarizer.summarize_health()
+                    meta_reporter.write_meta_report(kernel, inv, deps, health, base_dir=Path(".pipeline/meta/reports"))
+            except Exception:
+                pass
+
+            # Phase AB Adaptive Brain (opt-in, read-only, no auto-apply)
+            try:
+                phase_ab_cfg = getattr(orchestrator_config, "phaseAB", None)
+                if isinstance(phase_ab_cfg, dict):
+                    phase_ab_enabled = bool(phase_ab_cfg.get("enable"))
+                else:
+                    phase_ab_enabled = bool(getattr(phase_ab_cfg, "enable", False))
+                if phase_ab_enabled:
+                    from uuid import uuid4
+                    from phaseAB_adaptive import ab_kernel, ab_fusion, ab_classifier, ab_recommender, ab_reporter
+
+                    raw_signals = ab_kernel.evaluate_all_sources(RUN_SUMMARY if isinstance(RUN_SUMMARY, dict) else {}, base_dir=".pipeline")
+                    fused = ab_fusion.fuse_signals(raw_signals)
+                    assessment = ab_classifier.classify_state(fused)
+                    actions = ab_recommender.recommend_actions(fused, assessment)
+                    report = {
+                        "id": str(uuid4()),
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                        "signals": fused,
+                        "unified_assessment": assessment,
+                        "recommended_actions": actions,
+                        "safe_to_apply": False,
+                        "safety_envelope_version": "phaseAB_v1",
+                    }
+                    ab_reporter.write_ab_summary(report, base_dir=".pipeline/ab")
+            except Exception:
+                pass
+
+            # Capabilities switchboard (read-only coordination for safe phases)
+            try:
+                capabilities_cfg = getattr(orchestrator_config, "capabilities", None)
+                if isinstance(capabilities_cfg, dict):
+                    cap_enabled = bool(capabilities_cfg.get("enable_safe_modes"))
+                else:
+                    cap_enabled = False
+                if cap_enabled:
+                    # This block is informational only; the individual phases already gate themselves.
+                    capabilities_report = {
+                        "capabilities": capabilities_cfg if isinstance(capabilities_cfg, dict) else {},
+                        "notes": "Safe modes coordination (read-only).",
+                    }
+                    cap_dir = Path(".pipeline") / "capabilities" / "reports"
+                    cap_dir.mkdir(parents=True, exist_ok=True)
+                    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                    cap_path = cap_dir / f"capabilities_{ts}.json"
+                    cap_path.write_text(json.dumps(capabilities_report, indent=2), encoding="utf-8")
+            except Exception:
+                pass
+
+    except Exception:
+        logger.exception("Optional post-run phases failed")
 
     return 0
 
