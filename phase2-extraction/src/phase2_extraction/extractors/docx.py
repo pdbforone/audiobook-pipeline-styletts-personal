@@ -76,7 +76,8 @@ def extract(path: Path) -> Tuple[str, Dict]:
                         )
                     else:
                         text_parts.append(para_text)
-                except:
+                except Exception as exc:
+                    logger.debug("Failed to parse heading level: %s", exc)
                     text_parts.append(para_text)
             else:
                 text_parts.append(para_text)

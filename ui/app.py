@@ -19,11 +19,12 @@ from typing import Any, Awaitable, Callable, List, Optional, Tuple
 
 import gradio as gr
 import yaml
-from pipeline_common import PHASE_KEYS
 
+# Add project root to path before importing pipeline modules
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from pipeline_common import PHASE_KEYS  # noqa: E402
 from ui.models import FileSystemProgress, IncompleteWork, Phase4Summary, UISettings  # noqa: E402
 from ui.services.pipeline_api import PipelineAPI  # noqa: E402
 from ui.services.settings_manager import SettingsManager  # noqa: E402
@@ -744,10 +745,29 @@ You can:
         if not voice:
             return "Select a voice to see details."
         profiles = ", ".join(voice.preferred_profiles)
+
+        # Build extra info for built-in voices
+        extra_info = []
+        if voice.built_in:
+            extra_info.append(f"**Engine:** {voice.engine.upper() if voice.engine else 'Unknown'}")
+            if voice.gender:
+                extra_info.append(f"**Gender:** {voice.gender.capitalize()}")
+            if voice.accent:
+                extra_info.append(f"**Accent:** {voice.accent}")
+            extra_info.append("**Type:** Built-in (no reference audio needed)")
+        else:
+            extra_info.append("**Type:** Custom voice clone")
+            if voice.local_path:
+                extra_info.append(f"**Reference:** `{voice.local_path}`")
+
+        extra_section = "\n".join(extra_info)
+
         return f"""
 ## 🎤 {voice.narrator_name}
 
 **Voice ID:** {voice.voice_id}
+
+{extra_section}
 
 **Best for:** {profiles or 'General'}
 
@@ -843,8 +863,12 @@ You can:
         file_ids = initial_state.pipeline_api.get_file_ids()
         incomplete_detected, incomplete_msg = self._resume_message(initial_state.pipeline_api)
 
+        # Create factory function to avoid deepcopy issues with threading objects
+        def create_state():
+            return UIState(pipeline_api=PipelineAPI(PROJECT_ROOT, log_files=LOG_FILES), worker=PipelineWorker())
+
         with gr.Blocks(theme=app_theme, css=CUSTOM_CSS, title="🎙️ Personal Audiobook Studio") as app:
-            ui_state = gr.State(initial_state)
+            ui_state = gr.State(create_state)
             gr.HTML(
                 """
                 <div class="header">
@@ -1026,20 +1050,20 @@ You can:
 
                 stop_status = gr.Markdown(visible=False)
 
-                        generate_click = generate_btn.click(
-                            fn=self.handle_create_audiobook,
-                            inputs=[
-                                ui_state,
-                                book_input,
+                generate_click = generate_btn.click(
+                    fn=self.handle_create_audiobook,
+                    inputs=[
+                        ui_state,
+                        book_input,
                         voice_dropdown,
                         engine_dropdown,
                         preset_dropdown,
                         enable_resume,
-                                max_retries,
-                                generate_subtitles,
-                                concat_only,
-                                phase_selector,
-                            ],
+                        max_retries,
+                        generate_subtitles,
+                        concat_only,
+                        phase_selector,
+                    ],
                     outputs=[audio_output, status_output, ui_state],
                 )
 
@@ -1124,7 +1148,7 @@ You can:
                         batch_status = gr.Markdown("Waiting to start...")
 
                         with gr.Accordion("📜 Batch History", open=False):
-                            batch_history_md = gr.Markdown(self.handle_batch_history_refresh(ui_state))
+                            batch_history_md = gr.Markdown(self.handle_batch_history_refresh(initial_state))
                             refresh_history_btn = gr.Button("🔄 Refresh History", variant="secondary")
                             refresh_history_btn.click(
                                 self.handle_batch_history_refresh,

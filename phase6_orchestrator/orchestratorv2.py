@@ -10,6 +10,7 @@ import logging
 import subprocess
 import sys
 import time
+import os
 from pathlib import Path
 
 # Simple logging setup
@@ -183,6 +184,15 @@ def run_phase(phase_num, file_path, file_id, pipeline_json):
 
     # Run it
     start = time.time()
+    env = os.environ.copy()
+    if phase_num == 3:
+        extra_path = str(phase_dir / "src")
+        env["PYTHONPATH"] = (
+            f"{extra_path}{os.pathsep}{env['PYTHONPATH']}"
+            if env.get("PYTHONPATH")
+            else extra_path
+        )
+
     try:
         result = subprocess.run(
             cmd,
@@ -190,6 +200,7 @@ def run_phase(phase_num, file_path, file_id, pipeline_json):
             capture_output=True,
             text=True,
             timeout=600,
+            env=env,
         )
 
         duration = time.time() - start

@@ -5,6 +5,133 @@
 
 ---
 
+## Implementation Status (Updated: 2025-11-25)
+
+### Production Pipeline (Phases 1-6)
+| Phase | Status | Notes |
+|-------|--------|-------|
+| Phase 1 - Validation | ✅ Done | `phase1-validation` module plus tests keep validation stable |
+| Phase 2 - Extraction | ✅ Done | `phase2-extraction` handles spacing, footnote stripping, and metadata extraction |
+| Phase 3 - Chunking | ✅ Done | `phase3-chunking/src/phase3_chunking/main.py` wires LlamaChunker with heuristic fallback |
+| Phase 4 - TTS | ✅ XTTS/Kokoro | `phase4_tts/src/main_multi_engine.py` and the capability-aware engine registry power XTTS/Kokoro synthesis (Piper disabled) |
+| Phase 5 - Enhancement | ✅ Done | `phase5_enhancement/src/phase5_enhancement` normalizes, compresses, and optionally subtitles outputs |
+| Phase 6 - Orchestrator | ✅ Done | `phase6_orchestrator/orchestrator.py` enforces timeouts, resume, policy telemetry, and LLM failure analysis |
+
+### AI Infrastructure
+| Component | Location | Built? | Wired In? |
+|-----------|----------|--------|-----------|
+| LlamaAgent base | `agents/llama_base.py` | ✅ | ✅ Provides resource-managed `LlamaAgent`, caching, and `LlamaResourceManager` for downstream agents |
+| LlamaChunker | `agents/llama_chunker.py` | ✅ | ✅ Optional Phase 3 step (`phase3-chunking/src/phase3_chunking/main.py`); falls back to heuristics when Ollama is unavailable |
+| LlamaReasoner | `agents/llama_reasoner.py` | ✅ | ✅ `phase6_orchestrator/orchestrator.py` calls it when phase failures exhaust retries and can stage patches |
+| LogParser | `self_repair/log_parser.py` | ✅ | ✅ Consumed by `self_repair.RepairLoop`; orchestrator post-run hook is opt-in |
+| RepairLoop | `self_repair/repair_loop.py` | ✅ | ✅ Post-run hook (opt-in) stages failures and attempts repairs; non-destructive |
+| ErrorRegistry | `self_repair/repair_loop.py` | ✅ | ✅ `_record_chunk_failures()` and DeadChunkRepair persist failures to `.pipeline/error_registry.json` |
+| DeadChunkRepair | `self_repair/repair_loop.py` | ✅ | ✅ Orchestrator can log and accept repairs; audio substitution is opt-in, non-destructive |
+| Engine Registry | `phase4_tts/engine_registry.yaml` | ✅ | ✅ `phase4_tts.engines.engine_manager.EngineManager` and `phase4_tts/src/main_multi_engine.py` consult it for XTTS/Kokoro only (Piper disabled) |
+| Ollama | System | Required | ✅ Agents call the `ollama` daemon (default `phi3:mini`) from `agents/llama_base.py` when RAM permits |
+| Per-Phase Timeouts | `phase6_orchestrator/config.yaml` | ✅ | ✅ Loaded into `PhaseTimeouts`/`OrchestratorConfig` and enforced before each phase |
+| pipeline_common | `pipeline_common.py` | ✅ | ✅ Shared constants, `PipelineState`, and `StateTransaction` are used by both the UI and orchestrator |
+| Gradio UI | `ui/app.py` | ✅ | ✅ Launches via `PipelineAPI`, `VoiceManager`, and background workers |
+
+### Memory/Learning Infrastructure
+
+| Component | Location | Built? | Wired In? |
+|-----------|----------|--------|-----------|
+| TuningOverridesStore | `policy_engine/policy_engine.py` | ✅ | ✅ Loaded by `PolicyEngine.prepare_run_overrides()` and `.pipeline/tuning_overrides.json` updates after every run |
+| PolicyAdvisor | `policy_engine/advisor.py` | ✅ | ✅ `PolicyEngine.advise()` and `complete_run()` rely on it for telemetry, rewards, and recommendations |
+| Run History Logs | `.pipeline/policy_logs/` | ✅ | ✅ PolicyEngine emits daily logs (e.g. `.pipeline/policy_logs/20251123.log`) for learning snapshots |
+| Reward System | `policy_engine/advisor.py` | ✅ | ✅ `_compute_run_reward()` plus rolling stats feed `TuningOverridesStore.apply_self_driving()` |
+| Self-Driving Tuning | `policy_engine/policy_engine.py` | ✅ | ✅ `_tune_chunk_from_reward()`/`_promote_best_engine()` adjust chunk size and engine when `learning_mode` ≠ `observe` |
+| Error Registry | `self_repair/repair_loop.py` | ✅ | ✅ `_record_chunk_failures()` and DeadChunkRepair keep provenance in `.pipeline/error_registry.json` |
+| State Transaction Log | `pipeline_common/state_manager.py` | ✅ | ✅ `StateTransactionLog` appends to `.pipeline/transactions.log` on every commit |
+| Memory Feedback Store | `.pipeline/memory/` + `autonomy/memory_store.py` | ✅ | ✅ Run-to-run profiles appended every run (opt-in flag `enable_memory_feedback`) |
+| Stability Profiles | `.pipeline/stability_profiles/` + `autonomy/memory_store.py` | ✅ | ✅ Snapshots written when `enable_stability_profiles` is true (engine/genre/chunk stability) |
+
+### Roadmap Features
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Phase A: Foundation Hardening | ✅ Complete | Engine-aware chunk thresholds + per-phase success checks are live in `phase4_tts` and `phase6_orchestrator` |
+| Phase B: Engine Ecosystem | ✅ XTTS/Kokoro | Engine registry + XTTS/Kokoro wired. Piper stays disabled; project standardizes on XTTS + Kokoro only. |
+| Phase C: Llama Intelligence | ✅ Core shipped | LlamaChunker + LlamaReasoner + LlamaRewriter + LlamaMetadata (opt-in, local) |
+| Phase D: Self-Repair | ✅ Opt-in | ErrorRegistry + DeadChunkRepair + post-run RepairLoop/LogParser + repair substitution + patch staging; text rewrite opt-in |
+| Phase E: Benchmarking | ✅ Opt-in | `phaseE_benchmark/benchmark_runner.py` writes JSON to `.pipeline/benchmark_history/` (opt-in/auto-run gated) |
+| Phase F: Metadata Suite | ✅ Core agents | `agents/llama_metadata.py` + `metadata/metadata_pipeline.py` + CLI `tools/generate_metadata.py` |
+| Phase G: Autonomy Scaffolding | ✅ Recommend/supervised | Planner emits staged recommendations; optional genre, policy kernel, diagnostics, confidence calibration, experiments, and supervised overrides (temporary only) |
+| Phase H: Reasoning Scaffolding | ✅ Evaluator/Diagnostics/Reflection | Evaluator produces run summaries; LlamaDiagnostics emits diagnostics; LlamaSelfReview writes reflections (opt-in) |
+| Phase L: Autonomous (bounded) | ✅ Opt-in, reversible | Autonomous mode gated by readiness + policy/budget; overrides are temporary, in-memory, journaled; defaults remain disabled |
+| Phase M: Profiles & Long-Run Insights | ✅ Opt-in | Memory feedback, stability profiles, readiness-aware profiles/fusion hooks; all outputs additive under `.pipeline/memory/` and `.pipeline/stability_profiles/` |
+| Phase N: Integration Verification | ✅ Tests added | Integration + smoke suites ensure cross-phase schemas, engines, repairs, and autonomy guardrails stay consistent (non-semantic) |
+
+> **Note on Phase G/H:** Stub scaffolding now exists (default skipped) so future autonomy/reasoning work can plug in without touching Phases 1-6. Existing supervisor/maintainer functions remain distributed across PolicyEngine/ErrorRegistry.
+
+### What's Working Now
+
+- **Gradio UI**: Launch with `python ui/app.py` from project root
+- **XTTS Built-in Voices**: 33 built-in XTTS voices now selectable from UI dropdown (2025-11-23)
+- **LlamaReasoner**: Analyzes failures with Ollama when retries exhausted
+- **LlamaChunker**: Enabled by default in Phase 3 (falls back to heuristics if Ollama unavailable)
+- **PolicyEngine**: Logs telemetry + applies learned overrides (engine, voice, chunk size)
+- **Per-phase timeouts**: Configure in `phase6_orchestrator/config.yaml` (Phase 4: 3 days for long books)
+- **ErrorRegistry**: Records phase4 chunk failures for tracking and future self-repair
+- **Auto-engine switching**: When `learning_mode: "enforce"`, PolicyEngine auto-switches engine on retry
+- **Footnote sanitization**: `[FOOTNOTE]` and `[1]` markers auto-removed before TTS
+- **Engine Capability Registry**: `phase4_tts/configs/engine_capabilities.yaml` with per-engine limits, failure patterns, and quality metrics (2025-11-23)
+- **Audio Quality Scorer**: `phase4_tts/src/quality_scorer.py` for SNR, silence, clipping, spectral clarity analysis (2025-11-23)
+- **Voice Sample Generator**: `tools/generate_voice_samples.py` for previewing all TTS voices (2025-11-23)
+- **Auto-Repair**: DeadChunkRepair + ErrorRegistry + post-run RepairLoop (opt-in) log and save high-confidence repairs (>85% success); substitutions are non-destructive and recorded in run summaries
+
+### Verified Learning/Decision-Making (2025-11-23)
+
+The system **IS actively learning and making decisions**:
+
+```json
+// .pipeline/tuning_overrides.json
+{
+  "overrides": {
+    "phase3": {
+      "chunk_size": {
+        "delta_percent": -0.59,
+        "mode": "reduce_chunk_size",
+        "reason": "Self-driving adaptive tuning",
+        "source": "self_driving"
+      }
+    }
+  },
+  "runtime_state": {
+    "voice_success_streak": 4,
+    "last_run": {
+      "file_id": "sample_10_paragraphs",
+      "success": true
+    }
+  }
+}
+```
+
+**Evidence of AI decision chains:**
+
+- Self-driving tuning applied `-0.59%` chunk size reduction
+- Voice success streak tracking (4 consecutive successes)
+- Daily telemetry logs in `.pipeline/policy_logs/` (~54MB)
+- Full phase snapshots with coherence/readability scores + embeddings
+
+### Next Steps
+
+1. **Run benchmarks (opt-in)**: `python -m phaseE_benchmark.benchmark_runner` to populate `.pipeline/benchmark_history/` and feed planner/diagnostics.
+2. **Text rewrite (opt-in)**: `self_repair.enable_text_rewrite=true` to allow LlamaRewriter-assisted retries in DeadChunkRepair; keep off by default.
+3. **Metadata generation (opt-in)**: `python -m tools.generate_metadata --book_id <id>` to write `.pipeline/metadata/<book>.json`.
+4. **Planner/evaluator loop (opt-in)**: `autonomy.planner_mode: recommend_only` + `reasoning.enable_evaluator: true` to produce staged recommendations and run summaries (no auto-apply). Memory logging stays opt-in.
+5. **Diagnostics (opt-in)**: `reasoning.enable_diagnostics: true` to capture LlamaDiagnostics into `.pipeline/diagnostics/`.
+6. **Genre-aware planning (opt-in)**: `genre.enable_classifier` (and `use_llama`) to factor genre into recommendations.
+7. **Policy kernel (opt-in)**: `autonomy.policy_kernel_enabled` (debug via `policy_kernel_debug`) for insight normalization; planner remains recommend-only.
+8. **Rewrite policies (opt-in)**: `rewriter.enable_policies` + `default_policy` for policy helpers without touching the main rewriter.
+9. **Adaptive chunking helper (opt-in)**: `adaptive_chunking.enable` lets planner request suggestions (chunker remains unchanged).
+10. **Experiments (opt-in, dry-run default)**: `experiments.enable`/`dry_run`/`limit_per_run` for temporary per-run overrides; state resets after each run.
+11. **Supervised/Autonomous (opt-in, temporary only)**: `autonomy.mode: supervised|autonomous` with readiness checks, policy limits, and budget; overrides stay in-memory, are journaled, and reset after each run.
+12. **Memory/stability/reward signals (opt-in)**: `autonomy.enable_memory_feedback`, `enable_stability_profiles`, `enable_confidence_calibration`, `enable_self_review`, `enable_rewards`, and `autonomy.readiness_checks.enable` feed insights without altering defaults.
+
+---
+
 ## Executive Summary
 
 This document outlines the evolution of the Personal Audiobook Studio from a **deterministic pipeline** to an **autonomous, self-healing system** with local AI reasoning capabilities.
@@ -45,13 +172,13 @@ OS:      Windows 11 x64
 
 | Proposed Feature | Current State | Gap |
 |------------------|---------------|-----|
-| Local Llama integration | None | **NEW** - Need llama.cpp/Ollama layer |
-| Multi-engine TTS (6+ engines) | 2 engines (XTTS, Kokoro) | **PARTIAL** - Add Piper, evaluate others |
-| Self-repair agent | PolicyAdvisor exists | **EXTEND** - Add log parsing + patch suggestion |
-| Adaptive chunking via LLM | Heuristic-based (Phase 3) | **ENHANCE** - Add semantic LLM layer |
-| Metadata generation | None | **NEW** - Add local AI metadata suite |
-| Benchmarking suite | RTF metrics only | **EXTEND** - Add comprehensive profiling |
-| Dead-chunk repair | Fallback to different engine | **ENHANCE** - Add chunk splitting + rewrite |
+| Local Llama integration | `agents/llama_base.py`, `agents/llama_chunker.py`, `agents/llama_reasoner.py`, `agents/llama_rewriter.py`, `agents/llama_metadata.py` | **MAINTAIN** - all core agents present; keep local/CPU posture |
+| Multi-engine TTS | XTTS + Kokoro are registered via `phase4_tts/src/main_multi_engine.py` and `phase4_tts/engine_registry.yaml`; Piper entry exists but is disabled | **MAINTAIN** – keep XTTS/Kokoro-only posture; revisit additional engines later |
+| Self-repair agent | PolicyAdvisor, ErrorRegistry, DeadChunkRepair, LogParser, RepairLoop with orchestrator hook | **MAINTAIN/ENHANCE** - post-run RepairLoop/LogParser + repair substitution are opt-in and non-destructive; continue tuning confidence gates |
+| Adaptive chunking via LLM | LlamaChunker is optional and PolicyEngine self-driving tuning already nudges chunk size/engine | **ENHANCE** – feed chunker metadata back into PolicyAdvisor to refine heuristics and per-genre settings |
+| Metadata generation | `agents/llama_metadata.py` + `metadata/metadata_pipeline.py` + CLI | **MAINTAIN** - metadata generation is local and opt-in |
+| Benchmarking suite | `phaseE_benchmark/benchmark_runner.py` writes history | **MAINTAIN** - keep opt-in benchmark runs feeding planner/diagnostics |
+| Dead-chunk repair | DeadChunkRepair + orchestrator substitution path | **MAINTAIN** - repairs saved to `.pipeline/repairs/` and recorded in summaries; remains opt-in |
 
 ---
 
@@ -147,40 +274,14 @@ engines:
     typical_rtf_cpu: 1.3
     memory_mb: 800
 
-  piper:  # NEW
-    class: phase4_tts.engines.piper_engine.PiperEngine
-    cpu_friendly: true
-    max_tokens: 1000
-    sample_rate: 22050
-    languages: [en, de, es, fr, it, pl, pt, ru, uk, nl]
-    supports_cloning: false
-    typical_rtf_cpu: 0.3  # Very fast
-    memory_mb: 200
-    voices:
-      - en_US-lessac-medium
-      - en_US-amy-medium
-      - en_GB-alan-medium
+  # NOTE: Piper is intentionally disabled for this project.
+  # piper:
+  #   class: phase4_tts.engines.piper_engine.PiperEngine
+  #   enabled: false
 ```
 
-#### B.2: Add Piper Engine (CPU-Friendly, Fast)
-**Why Piper first:**
-- Apache-2.0 license
-- RTF ~0.3 on CPU (10x faster than XTTS)
-- Small models (~50-200MB)
-- Good quality voices available
-- Perfect for draft/proofing mode
-
-```python
-# phase4_tts/engines/piper_engine.py
-class PiperEngine(TTSEngine):
-    name = "Piper (Ultra-Fast CPU)"
-    supports_emotions = False
-    sample_rate = 22050
-
-    def __init__(self, device: str = "cpu", voice: str = "en_US-lessac-medium"):
-        self.voice = voice
-        # Uses piper-tts package
-```
+#### B.2: CPU Engines (Deferred)
+- Piper support is **deferred/disabled**. XTTS and Kokoro remain the only supported engines.
 
 #### B.3: Engine Capability Profiling
 Runtime profiling that updates registry:
@@ -621,52 +722,64 @@ class MetadataGenerator:
 
 ```
 audiobook-pipeline/
-├── agents/                          # NEW: AI agent layer
+├── agents/
 │   ├── __init__.py
-│   ├── llama_base.py               # Base Ollama client
-│   ├── llama_chunker.py            # Semantic chunking
-│   ├── llama_reasoner.py           # Failure analysis
-│   ├── llama_rewriter.py           # Text repair
-│   ├── llama_metadata.py           # Metadata generation
-│   └── resource_manager.py         # Memory management
-│
-├── core/                            # NEW: Shared core logic
+│   ├── llama_base.py
+│   ├── llama_chunker.py
+│   ├── llama_reasoner.py
+│   └── (planned) llama_rewriter.py, llama_metadata.py
+├── phaseG_autonomy/
 │   ├── __init__.py
-│   ├── engine_registry.py          # Engine capabilities
-│   ├── benchmark.py                # Performance profiling
-│   ├── adaptive_chunker.py         # Learning-based chunking
-│   └── repair_strategies.py        # Dead-chunk recovery
-│
-├── self_repair/                     # NEW: Self-healing layer
+│   ├── base_agent.py
+│   ├── planner.py
+│   └── task_memory.py
+├── phaseH_reasoning/
 │   ├── __init__.py
-│   ├── log_parser.py               # Failure extraction
-│   ├── patch_generator.py          # Suggest fixes
-│   ├── patch_staging.py            # Safe staging queue
-│   └── repair_loop.py              # Main repair orchestration
-│
+│   ├── evaluator.py
+│   ├── reward_model.py
+│   └── pruning.py
+├── audiobook_agent/
+│   ├── __init__.py
+│   ├── agent_core.py
+│   └── storage_interface.py
+├── core/
+│   ├── __init__.py
+│   └── engine_registry.py  # Engine capabilities
+├── self_repair/
+│   ├── __init__.py
+│   ├── log_parser.py
+│   └── repair_loop.py  # DeadChunkRepair + ErrorRegistry
 ├── phase4_tts/
+│   ├── configs/
+│   │   ├── engine_capabilities.yaml
+│   │   ├── voice_references.json
+│   │   └── (stub) ../config/engines/llama.yaml
 │   ├── engines/
 │   │   ├── __init__.py
-│   │   ├── engine_manager.py       # EXISTING: Enhanced
-│   │   ├── xtts_engine.py          # EXISTING
-│   │   ├── kokoro_engine.py        # EXISTING
-│   │   └── piper_engine.py         # NEW: Ultra-fast CPU
-│   ├── engine_registry.yaml        # NEW: Capabilities
-│   └── ...
-│
+│   │   ├── engine_manager.py
+│   │   ├── xtts_engine.py
+│   │   ├── kokoro_engine.py
+│   │   ├── piper_engine.py
+│   │   └── (stub) llama_engine.py
+│   └── src/
+│       ├── main_multi_engine.py
+│       ├── validation.py
+│       ├── utils.py
+│       └── quality_scorer.py
 ├── policy_engine/
-│   ├── policy_engine.py            # EXISTING: Extended
-│   ├── advisor.py                  # EXISTING: Extended
-│   └── learning_loop.py            # NEW: Continuous tuning
-│
-├── models/
-│   ├── registry.json               # Engine + LLM capabilities
-│   └── benchmark_results.json      # Performance data
-│
-└── .pipeline/
-    ├── staged_patches/             # NEW: Pending fixes
-    ├── benchmark_history/          # NEW: Performance logs
-    └── llm_cache/                  # NEW: Response cache
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── advisor.py
+│   └── policy_engine.py
+├── .pipeline/
+│   ├── backups/
+│   ├── llm_cache/
+│   ├── policy_logs/
+│   ├── policy_runtime/
+│   ├── error_registry.json
+│   ├── transactions.log
+│   ├── tuning_overrides.json
+│   └── (planned) staged_patches/
 ```
 
 ---
@@ -738,10 +851,10 @@ audiobook-pipeline/
 
 ## Next Steps
 
-1. **Immediate:** Implement Phase A fixes (chunk granularity, orchestrator success)
-2. **This week:** Set up engine registry, add Piper engine
-3. **Next week:** Install Ollama, implement llama_base.py
-4. **Following weeks:** Implement agents one by one, testing each
+1. **Hook failure analysis**: Schedule `self_repair.RepairLoop` (LogParser + DeadChunkRepair) so high-confidence patches from `LlamaReasoner.stage_patch()` land in `.pipeline/staged_patches/` for review.
+2. **Engine scope (XTTS + Kokoro only)**: Keep Piper disabled; ensure CLI, docs, and registry reflect XTTS/Kokoro as the supported engines.
+3. **Ship new agents**: Build `agents/llama_rewriter.py` and `agents/llama_metadata.py`, then let DeadChunkRepair and the metadata pipeline consume their outputs before applying fixes.
+4. **Benchmark & adapt**: Wrap `quality_scorer`, EngineRegistry profiling, and chunk metrics into a Phase E harness that writes to `.pipeline/benchmark_history/` for ongoing adaptive tuning.
 
 ---
 
@@ -751,7 +864,7 @@ audiobook-pipeline/
 |--------|---------|---------|---------|---------|---------|
 | XTTS v2 | 3.2 | Excellent | Yes | Coqui (NC) | **Primary** |
 | Kokoro | 1.3 | Good | No | Apache-2.0 | **Fast fallback** |
-| Piper | 0.3 | Good | No | Apache-2.0 | **Ultra-fast draft** |
+| Piper (disabled) | 0.3 | Good | No | Apache-2.0 | Deferred / keep disabled |
 | Bark | 8.0+ | Variable | No | MIT | Not recommended (too slow) |
 | FishSpeech | GPU-only | Excellent | Yes | Apache-2.0 | Future (needs GPU) |
 | LlamaTTS | Unknown | Experimental | Unknown | Unknown | Evaluate later |

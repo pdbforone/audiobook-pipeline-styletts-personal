@@ -1,0 +1,7 @@
+This is a short demonstration text for the audiobook pipeline.
+It contains multiple sentences to validate extraction and chunking.
+The goal is to ensure that each phase can run end-to-end without errors.
+Phase one should hash and classify this text as plain text.
+Phase two should read the text, normalize spacing, and write the extracted output.
+Phase three should chunk the text into manageable segments for TTS.
+This content is intentionally simple so tests complete quickly. This content is intentionally simple so tests complete quickly.

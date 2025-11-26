@@ -32,7 +32,17 @@ class PolicyEngine:
         learning_mode: str = "observe",
         advisor: Optional[PolicyAdvisor] = None,
         run_id: Optional[str] = None,
+        autonomy_mode: Optional[str] = None,
     ) -> None:
+        # Optional mapping between autonomy and learning modes (additive only)
+        try:
+            from policy_engine.policy_engine import _map_autonomy_to_learning  # type: ignore
+        except Exception:
+            _map_autonomy_to_learning = None  # type: ignore
+
+        if autonomy_mode and _map_autonomy_to_learning:
+            learning_mode = _map_autonomy_to_learning(autonomy_mode)
+
         self.logging_enabled = logging_enabled
         self.learning_mode = learning_mode
         self._log_root = Path(".pipeline") / "policy_logs"

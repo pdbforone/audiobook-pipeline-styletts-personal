@@ -2,18 +2,34 @@ import hashlib
 import logging
 import sys
 from pathlib import Path
+from typing import Any, Tuple
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
-from pipeline_common import (
-    PipelineState,
-    StateError,
-    ensure_phase_and_file,
-    ensure_phase_block,
+def _load_pipeline_common() -> Tuple[Any, Any, Any, Any]:
+    """
+    Import pipeline_common after ensuring the repo root is on sys.path.
+
+    The test runner sometimes executes from the phase1-validation folder,
+    which omits the repo root from sys.path by default.
+    """
+    project_root = Path(__file__).resolve().parents[3]
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
+    from pipeline_common import (  # local import keeps ruff E402 satisfied
+        PipelineState,
+        StateError,
+        ensure_phase_and_file,
+        ensure_phase_block,
+    )
+
+    return PipelineState, StateError, ensure_phase_and_file, ensure_phase_block
+
+
+PipelineState, StateError, ensure_phase_and_file, ensure_phase_block = (
+    _load_pipeline_common()
 )
 
 

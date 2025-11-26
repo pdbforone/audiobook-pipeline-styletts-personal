@@ -150,7 +150,7 @@ engines:
     # Piper TTS - Ultra-fast CPU synthesis
     class: "phase4_tts.engines.piper_engine.PiperEngine"
     display_name: "Piper (Ultra-Fast)"
-    enabled: false  # Set to true after implementation
+    enabled: false  # Disabled: project currently supports XTTS and Kokoro only
 
     # Capability flags
     cpu_friendly: true

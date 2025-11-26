@@ -6,6 +6,35 @@ import json
 from pathlib import Path
 
 import pytest
+import sys
+import types
+
+pytest.importorskip("numpy", reason="numpy required for Phase 4 tests")
+
+# Lightweight stubs for optional heavy deps used only in non-exercised code paths
+if "librosa" not in sys.modules:
+    stub_librosa = types.ModuleType("librosa")
+    stub_librosa.load = lambda *args, **kwargs: (None, None)
+    sys.modules["librosa"] = stub_librosa
+
+if "requests" not in sys.modules:
+    stub_requests = types.ModuleType("requests")
+    stub_requests.get = lambda *args, **kwargs: None
+    sys.modules["requests"] = stub_requests
+
+if "nltk" not in sys.modules:
+    stub_nltk = types.ModuleType("nltk")
+    stub_nltk.data = types.SimpleNamespace(find=lambda *a, **k: True)
+    stub_nltk.download = lambda *a, **k: None
+    sys.modules["nltk"] = stub_nltk
+    tokenize_mod = types.ModuleType("nltk.tokenize")
+    tokenize_mod.sent_tokenize = lambda text: [text]
+    sys.modules["nltk.tokenize"] = tokenize_mod
+    stub_nltk.tokenize = tokenize_mod
+
+# Provide a lightweight stub for soundfile when not installed
+if "soundfile" not in sys.modules:
+    sys.modules["soundfile"] = types.SimpleNamespace(write=lambda *args, **kwargs: None)
 
 from phase4_tts.src import main_multi_engine as multi
 

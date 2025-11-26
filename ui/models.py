@@ -60,6 +60,10 @@ class VoiceMetadata:
     description: str = ""
     notes: str = ""
     local_path: Optional[str] = None
+    built_in: bool = False
+    engine: Optional[str] = None
+    gender: Optional[str] = None
+    accent: Optional[str] = None
 
     @classmethod
     def from_dict(cls, voice_id: str, data: Dict[str, Any]) -> "VoiceMetadata":
@@ -71,12 +75,21 @@ class VoiceMetadata:
             description=data.get("description") or "",
             notes=data.get("notes") or "",
             local_path=data.get("local_path"),
+            built_in=bool(data.get("built_in", False)),
+            engine=data.get("engine"),
+            gender=data.get("gender"),
+            accent=data.get("accent"),
         )
 
     def to_dropdown_label(self) -> str:
         profiles = ", ".join(self.preferred_profiles)
         profile_part = f" ({profiles})" if profiles else ""
-        return f"{self.voice_id}: {self.narrator_name}{profile_part}"
+        # Add engine tag for built-in voices
+        if self.built_in and self.engine:
+            engine_tag = f"[{self.engine.upper()}] "
+        else:
+            engine_tag = ""
+        return f"{self.voice_id}: {engine_tag}{self.narrator_name}{profile_part}"
 
 
 @dataclass

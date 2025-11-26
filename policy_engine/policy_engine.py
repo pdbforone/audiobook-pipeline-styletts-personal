@@ -4,9 +4,31 @@ import json
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
+
+try:
+    from phase3_chunking.adaptive_chunking import choose_chunk_size
+except Exception:  # pragma: no cover - optional
+    choose_chunk_size = None  # type: ignore
+
+# Optional: map autonomy mode to learning mode without altering defaults
+def _map_autonomy_to_learning(autonomy_mode: str) -> str:
+    """
+    Maps autonomy.mode to policy_engine.learning_mode:
+      disabled        -> observe
+      recommend_only  -> observe
+      supervised      -> enforce
+      autonomous      -> tune
+    """
+    mode = (autonomy_mode or "disabled").lower()
+    if mode == "supervised":
+        return "enforce"
+    if mode == "autonomous":
+        return "tune"
+    return "observe"
 
 OVERRIDES_PATH = Path(".pipeline") / "tuning_overrides.json"
+BENCHMARK_HISTORY_DIR = Path(".pipeline") / "benchmark_history"
 
 
 class TuningOverridesStore:
@@ -290,3 +312,89 @@ class TuningOverridesStore:
         entry["source"] = "self_driving"
         entry["updated_at"] = timestamp
         self.mark_dirty()
+
+
+# --------------------------------------------------------------------------- #
+# Supplemental helpers (opt-in)
+# --------------------------------------------------------------------------- #
+def load_latest_benchmarks(limit: int = 3) -> List[Dict[str, Any]]:
+    """Load the most recent N benchmark reports (non-intrusive)."""
+    if not BENCHMARK_HISTORY_DIR.exists():
+        return []
+    reports: List[Dict[str, Any]] = []
+    paths = sorted(
+        BENCHMARK_HISTORY_DIR.glob("*.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )[:limit]
+    for path in paths:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                reports.extend(data)
+            elif isinstance(data, dict):
+                reports.append(data)
+        except Exception:
+            continue
+    return reports
+
+
+def get_benchmark_history(limit: int = 5) -> List[Dict[str, Any]]:
+    """Load sorted benchmark history (latest first)."""
+    return load_latest_benchmarks(limit=limit)
+
+
+def get_adaptive_chunk_recommendation(
+    *,
+    config: Dict[str, Any],
+    base_size: int,
+    genre_info: Dict[str, Any],
+    evaluator_summary: Dict[str, Any],
+    diagnostics: Dict[str, Any],
+    memory_summary: Dict[str, Any],
+    engine: str,
+) -> Optional[Dict[str, Any]]:
+    """Return adaptive chunk suggestion if enabled; otherwise None."""
+    enabled = bool(config.get("adaptive_chunking", {}).get("enable", False))
+    if not enabled or not choose_chunk_size:
+        return None
+    try:
+        return choose_chunk_size(
+            base_size=base_size,
+            genre=genre_info,
+            memory_summary=memory_summary,
+            diagnostics=diagnostics,
+            evaluator_summary=evaluator_summary,
+            engine=engine,
+        )
+    except Exception:
+        return None
+
+
+def enrich_insights(
+    insights: Dict[str, Any],
+    config: Dict[str, Any],
+    *,
+    genre_data: Dict[str, Any],
+    evaluator_data: Dict[str, Any],
+    diagnostics_data: Dict[str, Any],
+    memory_data: Dict[str, Any],
+    active_engine: str,
+) -> Dict[str, Any]:
+    """
+    Enrich an insights dict with benchmarks and adaptive chunking suggestions.
+    This is non-intrusive and does not mutate configs or behavior.
+    """
+    insights = dict(insights or {})
+    insights["benchmarks"] = load_latest_benchmarks()
+    adaptive_rec = get_adaptive_chunk_recommendation(
+        config=config,
+        base_size=(config.get("chunker", {}) or {}).get("default_chunk_size", 0),
+        genre_info=genre_data or {},
+        evaluator_summary=evaluator_data or {},
+        diagnostics=diagnostics_data or {},
+        memory_summary=memory_data or {},
+        engine=active_engine,
+    )
+    insights["adaptive_chunking"] = adaptive_rec
+    return insights

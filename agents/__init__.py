@@ -17,11 +17,15 @@ Requirements:
 from .llama_base import LlamaAgent, LlamaResourceManager, get_agent
 from .llama_chunker import LlamaChunker
 from .llama_reasoner import LlamaReasoner
+from .llama_rewriter import LlamaRewriter
+from .llama_metadata import LlamaMetadataGenerator
 
 __all__ = [
     "LlamaAgent",
     "LlamaResourceManager",
     "LlamaChunker",
     "LlamaReasoner",
+    "LlamaRewriter",
+    "LlamaMetadataGenerator",
     "get_agent",
 ]

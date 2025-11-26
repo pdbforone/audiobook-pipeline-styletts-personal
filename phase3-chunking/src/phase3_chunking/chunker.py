@@ -19,17 +19,12 @@ from typing import Dict, List, Optional, Tuple
 # Import existing modules
 try:
     from .profiles import get_profile, list_profiles, get_profile_info
-    from .detect import detect_genre, get_genre_from_metadata, validate_genre
-    from .voice_selection import select_voice, get_voice_params
+    from .detect import detect_genre
     from .main import run_phase3, load_pipeline_state
     from .models import Phase3Config
     from .utils import (
-        clean_text,
         detect_sentences,
         form_semantic_chunks,
-        assess_readability,
-        save_chunks,
-        calculate_chunk_metrics,
     )
     from .models import ChunkRecord, ValidationConfig
 except ImportError:
@@ -37,10 +32,7 @@ except ImportError:
     from detect import detect_genre
     from main import run_phase3, load_pipeline_state
     from models import Phase3Config
-    from utils import (
-        detect_sentences,
-        form_semantic_chunks,
-    )
+    from utils import detect_sentences, form_semantic_chunks
     from models import ChunkRecord, ValidationConfig
 
 logging.basicConfig(

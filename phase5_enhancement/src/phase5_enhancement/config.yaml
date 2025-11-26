@@ -1,5 +1,5 @@
 audiobook_author: Marcus Aurelius
-audiobook_title: Sample 10 Paragraphs
+audiobook_title: Sample
 backup_original: false
 chunk_size_seconds: 30
 cleanup_temp_files: true
@@ -24,7 +24,7 @@ silero_vad_threshold: 0.6
 silero_vad_min_speech: 1.0
 trim_silence_with_vad: false
 output_dir: processed/{file_id}
-pipeline_json: C:\Users\myson\Pipeline\audiobook-pipeline-personal\pipeline.json
+pipeline_json: C:\Users\myson\Pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\pipeline.json
 processing_timeout: 60
 quality_validation_enabled: false
 resume_on_failure: true

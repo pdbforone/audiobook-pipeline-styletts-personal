@@ -54,11 +54,31 @@ class VoiceManager:
 
     def _load(self) -> Dict[str, VoiceMetadata]:
         config = self._load_config()
-        voices = config.get("voice_references", {}) or {}
-        return {
-            vid: VoiceMetadata.from_dict(vid, meta)
-            for vid, meta in voices.items()
-        }
+        voices: Dict[str, VoiceMetadata] = {}
+
+        # Load custom voice references first
+        voice_refs = config.get("voice_references", {}) or {}
+        for vid, meta in voice_refs.items():
+            voices[vid] = VoiceMetadata.from_dict(vid, meta)
+
+        # Load built-in voices (XTTS, Kokoro, etc.)
+        built_in_voices = config.get("built_in_voices", {}) or {}
+        for engine_name, engine_voices in built_in_voices.items():
+            if not isinstance(engine_voices, dict):
+                continue
+            for voice_name, voice_data in engine_voices.items():
+                # Use voice name as ID for built-in voices
+                voice_id = voice_name
+                # Merge engine name into voice data
+                enriched_data = dict(voice_data)
+                enriched_data["engine"] = engine_name
+                enriched_data["built_in"] = True
+                # Use voice name as narrator name if not specified
+                if "narrator_name" not in enriched_data:
+                    enriched_data["narrator_name"] = voice_name
+                voices[voice_id] = VoiceMetadata.from_dict(voice_id, enriched_data)
+
+        return voices
 
     def _normalize_voice_id(self, raw_id: str) -> str:
         slug = re.sub(r"[^a-z0-9_]+", "_", (raw_id or "").strip().lower())
@@ -108,7 +128,34 @@ class VoiceManager:
             return self._voices
 
     def list_dropdown(self) -> List[str]:
-        return [meta.to_dropdown_label() for meta in self._voices.values()]
+        """Return dropdown labels sorted: custom voices first, then built-in by engine."""
+        custom_voices = []
+        builtin_by_engine: Dict[str, List[str]] = {}
+
+        for meta in self._voices.values():
+            label = meta.to_dropdown_label()
+            if meta.built_in:
+                engine = meta.engine or "unknown"
+                if engine not in builtin_by_engine:
+                    builtin_by_engine[engine] = []
+                builtin_by_engine[engine].append(label)
+            else:
+                custom_voices.append(label)
+
+        # Sort custom voices alphabetically
+        custom_voices.sort()
+
+        # Build final list: custom first, then built-in by engine (xtts first, then kokoro)
+        result = custom_voices
+        for engine in ["xtts", "kokoro"]:
+            if engine in builtin_by_engine:
+                result.extend(sorted(builtin_by_engine[engine]))
+        # Any other engines
+        for engine, voices in sorted(builtin_by_engine.items()):
+            if engine not in ["xtts", "kokoro"]:
+                result.extend(sorted(voices))
+
+        return result
 
     def get_voice(self, selection: str) -> Optional[VoiceMetadata]:
         voice_id = (selection or "").split(":")[0].strip()

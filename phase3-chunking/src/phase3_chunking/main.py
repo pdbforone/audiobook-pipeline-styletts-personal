@@ -10,17 +10,45 @@ import warnings
 import hashlib
 from typing import List, Optional, Dict, Any
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
-from pipeline_common import (
+def _load_pipeline_common():
+    """Import pipeline_common after ensuring the repo root is on sys.path."""
+    project_root = Path(__file__).resolve().parents[3]
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
+    from pipeline_common import (
+        PipelineState,
+        StateError,
+        ensure_phase_block,
+        ensure_phase_and_file,
+    )
+    from pipeline_common.state_manager import StateTransaction
+    from pipeline_common.astromech_notify import (
+        play_success_beep,
+        play_alert_beep,
+    )
+
+    return (
+        PipelineState,
+        StateError,
+        ensure_phase_block,
+        ensure_phase_and_file,
+        StateTransaction,
+        play_success_beep,
+        play_alert_beep,
+    )
+
+
+(
     PipelineState,
     StateError,
     ensure_phase_block,
     ensure_phase_and_file,
-)
-from pipeline_common.state_manager import StateTransaction
+    StateTransaction,
+    play_success_beep,
+    play_alert_beep,
+) = _load_pipeline_common()
 
 # Smart import: works both as script and as module
 try:
@@ -34,7 +62,6 @@ try:
         form_semantic_chunks,
         assess_readability,
         save_chunks,
-        log_chunk_times,
         calculate_chunk_metrics,
     )
     from .structure_chunking import (
@@ -60,8 +87,6 @@ except ImportError:
         should_use_structure_chunking,
     )
     from io_utils import ensure_absolute_path
-from pipeline_common.astromech_notify import play_success_beep, play_alert_beep
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -114,6 +139,72 @@ def _install_update_phase_api() -> None:
 
 
 _install_update_phase_api()
+
+
+# -------------------------------------------------------------------
+# LlamaChunker lazy loader (optional, requires Ollama + agents module)
+# -------------------------------------------------------------------
+_LLAMA_CHUNKER = None
+_LLAMA_CHUNKER_CHECKED = False
+
+
+def _get_llama_chunker(model: str = "phi3:mini"):
+    """
+    Lazy-load LlamaChunker to avoid import errors when Ollama not available.
+
+    Returns:
+        LlamaChunker instance or None if unavailable
+    """
+    global _LLAMA_CHUNKER, _LLAMA_CHUNKER_CHECKED
+
+    if _LLAMA_CHUNKER_CHECKED:
+        return _LLAMA_CHUNKER
+
+    _LLAMA_CHUNKER_CHECKED = True
+
+    try:
+        # Add monorepo root to path for agents import
+        monorepo_root = Path(__file__).resolve().parents[3]
+        if str(monorepo_root) not in sys.path:
+            sys.path.insert(0, str(monorepo_root))
+
+        from agents import LlamaChunker
+        _LLAMA_CHUNKER = LlamaChunker(model=model)
+        logger.info(f"LlamaChunker initialized with model: {model}")
+    except ImportError as e:
+        logger.warning(f"LlamaChunker unavailable (import failed): {e}")
+        _LLAMA_CHUNKER = None
+    except Exception as e:
+        logger.warning(f"LlamaChunker initialization failed: {e}")
+        _LLAMA_CHUNKER = None
+
+    return _LLAMA_CHUNKER
+
+
+def _llama_chunk_text(
+    text: str,
+    max_chars: int,
+    min_chars: int,
+    model: str = "phi3:mini",
+) -> tuple[list[str], list[float]]:
+    """
+    Use LlamaChunker to split text into semantic chunks.
+
+    Returns:
+        (chunks, coherence_scores) - coherence is 0.9 for LLM-based splits
+    """
+    chunker = _get_llama_chunker(model)
+    if chunker is None:
+        raise RuntimeError("LlamaChunker not available")
+
+    # Use split_text which returns (chunk_text, boundary_info) tuples
+    results = chunker.split_text(text, max_chars=max_chars, min_chars=min_chars)
+
+    chunks = [chunk_text for chunk_text, _ in results]
+    # LLM-based chunking has high semantic coherence by design
+    coherence = [0.9] * len(chunks)
+
+    return chunks, coherence
 
 
 def _read_chunk_text_length(path: Path) -> Optional[int]:
@@ -697,13 +788,38 @@ def run_phase3(
     sentence_engine_used = sentence_model_label
     structure_mode_used = False
 
-    # Structure-aware chunking if permitted
+    # Chunking strategy selection (priority: LlamaChunker > Structure > Sentence)
     chunks: List[str] = []
     coherence: List[float] = []
     embeddings: List[List[float]] = []
+    llama_mode_used = False
+    timers["llama"] = 0.0
 
+    # Option 1: LlamaChunker (LLM-powered semantic chunking)
+    if config.use_llama_chunker:
+        llama_start = perf_counter()
+        try:
+            chunks, coherence = _llama_chunk_text(
+                cleaned,
+                max_chars=hard_limit,
+                min_chars=min_chars,
+                model=config.llama_model,
+            )
+            llama_mode_used = True
+            timers["llama"] = perf_counter() - llama_start
+            logger.info(
+                f"LlamaChunker created {len(chunks)} chunks in {timers['llama']:.2f}s"
+            )
+        except Exception as e:
+            logger.warning(f"LlamaChunker failed, falling back to standard chunking: {e}")
+            # Reset for fallback
+            chunks = []
+            coherence = []
+
+    # Option 2: Structure-aware chunking (if LlamaChunker not used/failed)
     if (
-        config.use_structure_chunking
+        not chunks
+        and config.use_structure_chunking
         and structure_nodes
         and should_use_structure_chunking(
             structure_nodes, config.min_structure_nodes
@@ -724,7 +840,9 @@ def run_phase3(
         timers["structure"] = perf_counter() - structure_start
         if embeddings_enabled:
             timers["embeddings"] = timers["structure"]
-    else:
+
+    # Option 3: Sentence-based chunking (default fallback)
+    if not chunks:
         sentence_start = perf_counter()
         sentences, detected_engine = detect_sentences(
             cleaned,
@@ -860,9 +978,9 @@ def run_phase3(
     )
 
     logger.info(
-        f"Timers - sentence detection: {timers['sentence_detection']:.2f}s, "
+        f"Timers - llama: {timers['llama']:.2f}s, sentence: {timers['sentence_detection']:.2f}s, "
         f"chunking: {timers['chunking']:.2f}s, embeddings: {timers['embeddings']:.2f}s, "
-        f"structure: {timers['structure']:.2f}s"
+        f"structure: {timers['structure']:.2f}s (llama_mode={llama_mode_used})"
     )
 
     return record

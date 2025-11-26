@@ -10,7 +10,7 @@ Enhanced with registry-based capability lookup for:
 
 import logging
 import time
-from typing import Dict, Optional, List, Tuple, Union
+from typing import Any, Dict, Optional, List, Tuple, Union
 from pathlib import Path
 import numpy as np
 
@@ -454,3 +454,24 @@ class EngineManager:
         if "xtts" in self.engines:
             return "xtts"
         return self.default_engine or list(self.engines.keys())[0]
+
+    # ------------------------------------------------------------------
+    # Safe hook for repaired chunks (opt-in via orchestrator)
+    # ------------------------------------------------------------------
+    def try_repaired_chunk(self, chunk_id: str, repair_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Accept a repaired chunk (if confidence high) and return a synthetic result.
+
+        This does NOT alter engine behavior or selection; it only provides
+        a structured response the orchestrator can use for optional substitution.
+        """
+        return {
+            "chunk_id": chunk_id,
+            "engine_used": repair_result.get("engine_used"),
+            "audio": repair_result.get("audio"),
+            "sample_rate": repair_result.get("sample_rate", 24000),
+            "metadata": {
+                "confidence": repair_result.get("rewrite_confidence") or repair_result.get("confidence"),
+                "notes": repair_result.get("notes"),
+            },
+        }

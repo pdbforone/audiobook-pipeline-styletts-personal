@@ -168,6 +168,28 @@ class LogParser:
             logger.error(f"Failed to parse log {log_path}: {e}")
             return []
 
+    def parse_logs(
+        self,
+        log_dir: Path,
+        max_files: int = 3,
+        max_lines: int = 1000,
+    ) -> List[FailureEvent]:
+        """Parse multiple log files from a directory (latest first)."""
+        log_dir = Path(log_dir)
+        if not log_dir.exists():
+            return []
+
+        log_paths = sorted(
+            [p for p in log_dir.glob("*.log") if p.is_file()],
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )[:max_files]
+
+        events: List[FailureEvent] = []
+        for path in log_paths:
+            events.extend(self.parse_file(path, max_lines=max_lines))
+        return events
+
     def _read_lines(
         self,
         path: Path,

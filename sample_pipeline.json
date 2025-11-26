@@ -1,0 +1,266 @@
+{
+  "phase1": {
+    "status": "success",
+    "timestamps": {
+      "start": 227600.6829115,
+      "last_completed": 227600.6937142
+    },
+    "artifacts": {
+      "hashes": [
+        "87b48626007b5ee90f2d4f4552b480cf83d896b56b77394ccc0983ec904055a9"
+      ]
+    },
+    "metrics": {
+      "files_processed": 1,
+      "duplicates": 0,
+      "repaired": 0
+    },
+    "errors": [],
+    "files": {
+      "sample_phase": {
+        "status": "success",
+        "timestamps": {
+          "start": 227600.6829115,
+          "end": 227600.6937142,
+          "duration": 0.010802700009662658
+        },
+        "artifacts": {
+          "source_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\input\\sample_phase.txt",
+          "file_type": "txt",
+          "classification": "text",
+          "sha256": "87b48626007b5ee90f2d4f4552b480cf83d896b56b77394ccc0983ec904055a9",
+          "hash": "87b48626007b5ee90f2d4f4552b480cf83d896b56b77394ccc0983ec904055a9",
+          "repair_attempted": false,
+          "repair_success": false,
+          "duplicate": false
+        },
+        "metrics": {
+          "elapsed_time": 0.010802700009662658
+        },
+        "errors": [],
+        "chunks": [],
+        "file_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\input\\sample_phase.txt",
+        "file_type": "txt",
+        "classification": "text",
+        "size_bytes": 480,
+        "sha256": "87b48626007b5ee90f2d4f4552b480cf83d896b56b77394ccc0983ec904055a9",
+        "repair_attempted": false,
+        "repair_success": false,
+        "page_count": null,
+        "title": null,
+        "author": null,
+        "creation_date": null,
+        "artifacts_path": null,
+        "duplicate": false,
+        "hash": "87b48626007b5ee90f2d4f4552b480cf83d896b56b77394ccc0983ec904055a9",
+        "file_size_bytes": 480,
+        "model_config": {
+          "extra": "allow"
+        }
+      }
+    },
+    "hashes": [
+      "87b48626007b5ee90f2d4f4552b480cf83d896b56b77394ccc0983ec904055a9"
+    ],
+    "chunks": []
+  },
+  "pipeline_version": "3.0.0",
+  "created_at": "2025-11-25T18:59:45.262872+00:00",
+  "last_updated": "2025-11-25T19:01:02.879189+00:00",
+  "batch_runs": [],
+  "phase2": {
+    "status": "success",
+    "timestamps": {
+      "start": 1764118821.874697,
+      "end": 1764118823.91507,
+      "duration": 2.0406055000203196
+    },
+    "artifacts": {
+      "text": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase2-extraction\\extracted_text\\sample_phase.txt",
+      "metadata": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase2-extraction\\extracted_text\\sample_phase_meta.json"
+    },
+    "metrics": {
+      "yield_pct": 1.1291666666666667,
+      "quality_score": 1.0
+    },
+    "errors": [],
+    "files": {
+      "sample_phase": {
+        "status": "success",
+        "timestamps": {
+          "start": 1764118821.874697,
+          "end": 1764118823.91507,
+          "duration": 2.0406055000203196
+        },
+        "artifacts": {
+          "text": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase2-extraction\\extracted_text\\sample_phase.txt",
+          "metadata": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase2-extraction\\extracted_text\\sample_phase_meta.json"
+        },
+        "metrics": {
+          "yield_pct": 1.1291666666666667,
+          "quality_score": 1.0,
+          "word_count": 85,
+          "char_count": 542
+        },
+        "errors": [],
+        "chunks": [],
+        "extracted_text_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase2-extraction\\extracted_text\\sample_phase.txt",
+        "metadata_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase2-extraction\\extracted_text\\sample_phase_meta.json",
+        "detected_format": "txt",
+        "tool_used": "unknown",
+        "language": "en",
+        "lang_confidence": 0.9,
+        "structure": [],
+        "yield_pct": 1.1291666666666667,
+        "quality_score": 1.0
+      }
+    }
+  },
+  "phase3": {
+    "status": "success",
+    "timestamps": {
+      "start": 227677.1665004,
+      "last_completed": 227678.1831254,
+      "duration": 1.0166250000183936
+    },
+    "artifacts": [],
+    "metrics": {
+      "total_files": 1,
+      "successful": 1,
+      "failed": 0,
+      "partial": 0,
+      "total_chunks": 1
+    },
+    "errors": [],
+    "files": {
+      "sample_phase": {
+        "status": "success",
+        "timestamps": {
+          "start": 227677.1665004,
+          "end": 227678.1831254,
+          "duration": 1.0166250000183936
+        },
+        "artifacts": {
+          "text_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase2-extraction\\extracted_text\\sample_phase.txt",
+          "chunk_paths": [
+            "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase3-chunking\\chunks\\sample_phase_chunk_001.txt"
+          ]
+        },
+        "metrics": {
+          "chunk_char_lengths": [
+            542
+          ],
+          "chunk_word_counts": [
+            85
+          ],
+          "chunk_durations": [
+            12.044444444444444
+          ],
+          "avg_char_length": 542.0,
+          "avg_word_count": 85.0,
+          "avg_duration": 12.044444444444444,
+          "max_duration": 12.044444444444444,
+          "min_duration": 12.044444444444444,
+          "chunks_within_soft_limit": 1,
+          "chunks_within_hard_limit": 0,
+          "chunks_within_emergency_limit": 0,
+          "chunks_exceeding_emergency": 0,
+          "soft_limit": 780,
+          "hard_limit": 950,
+          "emergency_limit": 1250,
+          "max_duration_limit": 20.0,
+          "emergency_duration_limit": 24.0,
+          "chunk_count": 1,
+          "avg_chunk_chars": 542,
+          "avg_chunk_words": 85,
+          "avg_chunk_duration_sec": 12.044444444444444,
+          "avg_coherence": 0.9,
+          "avg_readability": 62.68121323529414
+        },
+        "errors": [],
+        "chunks": [
+          {
+            "chunk_id": "chunk_0001",
+            "text_len": 542,
+            "est_dur": 30.97142857142857,
+            "engine": null,
+            "rt_factor": null,
+            "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase3-chunking\\chunks\\sample_phase_chunk_001.txt"
+          }
+        ],
+        "text_path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase2-extraction\\extracted_text\\sample_phase.txt",
+        "chunk_paths": [
+          "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase3-chunking\\chunks\\sample_phase_chunk_001.txt"
+        ],
+        "coherence_scores": [
+          0.9
+        ],
+        "readability_scores": [
+          62.68121323529414
+        ],
+        "embeddings": [],
+        "chunk_metrics": {
+          "chunk_char_lengths": [
+            542
+          ],
+          "chunk_word_counts": [
+            85
+          ],
+          "chunk_durations": [
+            12.044444444444444
+          ],
+          "avg_char_length": 542.0,
+          "avg_word_count": 85.0,
+          "avg_duration": 12.044444444444444,
+          "max_duration": 12.044444444444444,
+          "min_duration": 12.044444444444444,
+          "chunks_within_soft_limit": 1,
+          "chunks_within_hard_limit": 0,
+          "chunks_within_emergency_limit": 0,
+          "chunks_exceeding_emergency": 0,
+          "soft_limit": 780,
+          "hard_limit": 950,
+          "emergency_limit": 1250,
+          "max_duration_limit": 20.0,
+          "emergency_duration_limit": 24.0
+        },
+        "chunk_metadata": [
+          {
+            "chunk_id": "chunk_0001",
+            "text_len": 542,
+            "est_dur": 30.97142857142857,
+            "engine": null,
+            "rt_factor": null,
+            "path": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\phase3-chunking\\chunks\\sample_phase_chunk_001.txt"
+          }
+        ],
+        "source_hash": "23473d34139bced2c00142be3c375c7541101ffc40c99a854dc0d650eaf3b25d",
+        "applied_profile": null,
+        "genre_confidence": 0.0,
+        "suggested_voice": "neutral_narrator",
+        "coherence_threshold": 0.87,
+        "flesch_threshold": 60.0,
+        "chunk_voice_overrides": {
+          "chunk_0001": "neutral_narrator"
+        },
+        "structure_mode_used": false,
+        "text_hash": "23473d34139bced2c00142be3c375c7541101ffc40c99a854dc0d650eaf3b25d",
+        "chunk_ids": [
+          "chunk_0001"
+        ],
+        "genre": "auto",
+        "profile": "auto",
+        "sentence_model": "spacy_lg",
+        "embeddings_enabled": true,
+        "avg_coherence": 0.9,
+        "avg_readability": 62.68121323529414
+      }
+    },
+    "chunks": []
+  },
+  "phases": {
+    "phase1": "success",
+    "phase2": "success",
+    "phase3": "success"
+  }
+}

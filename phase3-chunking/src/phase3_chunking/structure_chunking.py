@@ -10,13 +10,6 @@ Falls back to fixed chunking if no structure is available.
 import logging
 from typing import List, Tuple, Optional
 
-# Smart import: works both as script and as module
-try:
-    from .models import ValidationConfig
-    from .utils import assess_readability
-except ImportError:
-    pass
-
 logger = logging.getLogger(__name__)
 
 
@@ -185,11 +178,12 @@ def chunk_by_structure(
             # Calculate coherence (simplified - just check if it's a reasonable chunk)
             if model:
                 try:
-                    embedding = model.encode([section_text])
+                    _ = model.encode([section_text])
                     coherence = (
                         0.9  # Assume high coherence for natural sections
                     )
-                except:
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Embedding model failed; using fallback: %s", exc)
                     coherence = 0.85
             else:
                 coherence = 0.85
@@ -251,7 +245,6 @@ def chunk_by_structure(
         current_dur = estimate_duration(current)
         if i + 1 < len(chunks) and current_dur < soft_merge_sec:
             merged_text = current + " " + chunks[i + 1]
-            merged_dur = current_dur + estimate_duration(chunks[i + 1])
             softened_chunks.append(merged_text.strip())
             softened_coherence.append(0.85)
             i += 2

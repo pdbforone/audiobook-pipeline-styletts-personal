@@ -1,0 +1,306 @@
+# Engine Capability Registry
+# Used by orchestrator and engine manager for intelligent dispatch decisions
+#
+# This file codifies engine properties to enable:
+# - Smart chunk routing based on text properties
+# - Predictive resource estimation
+# - Intelligent failure recovery
+# - Per-engine optimization
+
+version: 1
+
+engines:
+  xtts:
+    display_name: "XTTS v2"
+    description: "Coqui XTTS v2 - Production-grade multilingual TTS with excellent voice cloning"
+
+    # Performance characteristics
+    performance:
+      typical_rtf_cpu: 3.2      # Real-time factor on CPU
+      typical_rtf_gpu: 0.8      # Real-time factor on GPU
+      memory_mb_cpu: 4000       # Peak memory on CPU
+      memory_mb_gpu: 6000       # Peak VRAM on GPU
+      startup_seconds: 15       # Model load time
+
+    # Text limits
+    limits:
+      max_chars: 10000          # Conservative limit (actual ~2000-2500 optimal)
+      optimal_chars: 1500       # Best quality chunk size
+      min_chars: 50             # Below this, quality degrades
+      max_tokens: 400           # GPT-based architecture token limit
+
+    # Capabilities
+    capabilities:
+      supports_cloning: true    # Can clone voice from reference audio
+      supports_emotions: true   # Via reference audio tone
+      supports_fine_tuning: true
+      multilingual: true
+      streaming: false
+
+    # Supported languages (ISO 639-1 codes)
+    languages:
+      - en    # English
+      - es    # Spanish
+      - fr    # French
+      - de    # German
+      - it    # Italian
+      - pt    # Portuguese
+      - pl    # Polish
+      - tr    # Turkish
+      - ru    # Russian
+      - nl    # Dutch
+      - cs    # Czech
+      - ar    # Arabic
+      - zh-cn # Chinese (Simplified)
+      - ja    # Japanese
+      - hu    # Hungarian
+      - ko    # Korean
+
+    # Built-in voices (sample - main list in voice_references.json)
+    default_voice: "Claribel Dervla"
+    voice_count: 33
+
+    # Failure patterns and handlers
+    failure_patterns:
+      - pattern: "sequence too long"
+        category: "text_too_long"
+        handler: "split_chunk"
+        confidence: 0.95
+
+      - pattern: "CUDA out of memory"
+        category: "memory_error"
+        handler: "reduce_batch_or_switch_cpu"
+        confidence: 0.99
+
+      - pattern: "Reference audio not found"
+        category: "voice_error"
+        handler: "use_builtin_voice"
+        confidence: 0.90
+
+      - pattern: "Language.*not supported"
+        category: "language_error"
+        handler: "switch_engine_or_fallback"
+        confidence: 0.85
+
+      - pattern: "NaN|inf"
+        category: "numerical_error"
+        handler: "retry_with_different_params"
+        confidence: 0.70
+
+    # Quality characteristics
+    quality:
+      voice_stability: 0.85     # How consistent is voice across chunks (0-1)
+      naturalness: 0.90         # How natural does output sound (0-1)
+      articulation: 0.88        # How clear is pronunciation (0-1)
+      emotion_range: 0.82       # Emotional expressiveness (0-1)
+
+    # Best use cases
+    recommended_for:
+      - "voice_cloning"
+      - "multilingual"
+      - "expressive_narration"
+      - "audiobooks"
+      - "quality_over_speed"
+
+  kokoro:
+    display_name: "Kokoro"
+    description: "Kokoro - Fast, CPU-friendly TTS with good quality"
+
+    # Performance characteristics
+    performance:
+      typical_rtf_cpu: 1.3      # Real-time factor on CPU
+      typical_rtf_gpu: 0.4      # Real-time factor on GPU (if supported)
+      memory_mb_cpu: 800        # Peak memory on CPU
+      memory_mb_gpu: 1500       # Peak VRAM on GPU
+      startup_seconds: 5        # Model load time
+
+    # Text limits
+    limits:
+      max_chars: 5000           # Can handle longer text
+      optimal_chars: 800        # Best quality chunk size
+      min_chars: 20             # Minimum for good output
+      max_tokens: 512           # Token limit
+
+    # Capabilities
+    capabilities:
+      supports_cloning: false   # No voice cloning
+      supports_emotions: false  # Limited emotion control
+      supports_fine_tuning: false
+      multilingual: false       # English only currently
+      streaming: true           # Can stream output
+
+    # Supported languages
+    languages:
+      - en    # English only
+
+    # Built-in voices
+    default_voice: "af_sarah"
+    voice_count: 4
+
+    # Failure patterns and handlers
+    failure_patterns:
+      - pattern: "unsupported language"
+        category: "language_error"
+        handler: "switch_engine"
+        confidence: 0.99
+
+      - pattern: "voice.*not found"
+        category: "voice_error"
+        handler: "use_default_voice"
+        confidence: 0.95
+
+      - pattern: "text too long"
+        category: "text_too_long"
+        handler: "split_chunk"
+        confidence: 0.90
+
+    # Quality characteristics
+    quality:
+      voice_stability: 0.92     # Very consistent
+      naturalness: 0.82         # Good but less expressive
+      articulation: 0.90        # Clear pronunciation
+      emotion_range: 0.60       # Limited emotional range
+
+    # Best use cases
+    recommended_for:
+      - "speed"
+      - "cpu_constrained"
+      - "batch_processing"
+      - "english_only"
+      - "consistent_voice"
+
+  piper:
+    display_name: "Piper (Ultra-Fast)"
+    description: "Piper - CPU-first, ultra-fast TTS suitable for drafts"
+
+    performance:
+      typical_rtf_cpu: 0.3
+      typical_rtf_gpu: null
+      memory_mb_cpu: 200
+      memory_mb_gpu: null
+      startup_seconds: 1
+
+    limits:
+      max_chars: 3500
+      optimal_chars: 2000
+      min_chars: 10
+      max_tokens: 1000
+
+    capabilities:
+      supports_cloning: false
+      supports_emotions: false
+      supports_fine_tuning: false
+      multilingual: true
+      streaming: true
+
+    languages:
+      - en
+      - de
+      - es
+      - fr
+      - it
+      - pl
+      - pt
+      - ru
+      - uk
+      - nl
+
+    default_voice: "en_US-lessac-medium"
+    voice_count: 3
+
+    failure_patterns:
+      - pattern: "text too long"
+        category: "text_too_long"
+        handler: "split_chunk"
+        confidence: 0.85
+
+    quality:
+      voice_stability: 0.80
+      naturalness: 0.75
+      articulation: 0.82
+      emotion_range: 0.40
+
+    recommended_for:
+      - "draft"
+      - "cpu_only"
+      - "speed"
+      - "batch_processing"
+
+# Engine selection rules
+selection_rules:
+  # Rule 1: Language-based selection
+  - condition: "language not in engine.languages"
+    action: "exclude_engine"
+    priority: 100
+
+  # Rule 2: Text length check
+  - condition: "text_length > engine.limits.max_chars"
+    action: "exclude_engine"
+    priority: 90
+
+  # Rule 3: Memory check
+  - condition: "available_memory_mb < engine.performance.memory_mb_cpu"
+    action: "exclude_engine"
+    priority: 85
+
+  # Rule 4: Voice cloning requirement
+  - condition: "requires_cloning and not engine.capabilities.supports_cloning"
+    action: "exclude_engine"
+    priority: 80
+
+  # Rule 5: Speed priority (prefer lower RTF)
+  - condition: "priority == 'speed'"
+    action: "sort_by_rtf_ascending"
+    priority: 50
+
+  # Rule 6: Quality priority (prefer higher quality scores)
+  - condition: "priority == 'quality'"
+    action: "sort_by_quality_descending"
+    priority: 50
+
+# Repair strategies (used by DeadChunkRepair)
+repair_strategies:
+  text_too_long:
+    - strategy: "split_chunk"
+      description: "Split chunk into 2-4 smaller sub-chunks"
+      success_rate: 0.85
+
+  memory_error:
+    - strategy: "switch_to_cpu"
+      description: "Fall back to CPU processing"
+      success_rate: 0.90
+    - strategy: "reduce_batch_size"
+      description: "Process fewer chunks in parallel"
+      success_rate: 0.80
+
+  voice_error:
+    - strategy: "use_builtin_voice"
+      description: "Switch to a built-in voice"
+      success_rate: 0.95
+    - strategy: "use_default_reference"
+      description: "Use fallback reference audio"
+      success_rate: 0.70
+
+  language_error:
+    - strategy: "switch_engine"
+      description: "Try a different TTS engine"
+      success_rate: 0.75
+    - strategy: "transliterate"
+      description: "Convert non-ASCII to pronunciation hints"
+      success_rate: 0.50
+
+  numerical_error:
+    - strategy: "retry"
+      description: "Simple retry (transient errors)"
+      success_rate: 0.60
+    - strategy: "adjust_temperature"
+      description: "Lower temperature for more stable output"
+      success_rate: 0.70
+
+# Telemetry thresholds for PolicyEngine
+telemetry_thresholds:
+  rtf_warning: 4.0              # RT factor above this triggers warning
+  rtf_critical: 8.0             # RT factor above this triggers engine switch recommendation
+  fallback_rate_warning: 0.20   # Fallback rate above 20% triggers warning
+  memory_warning_percent: 85    # Memory usage above 85% triggers warning
+  chunk_failure_rate_warning: 0.10  # Chunk failure rate above 10% triggers review

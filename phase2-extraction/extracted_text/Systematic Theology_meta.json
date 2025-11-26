@@ -1,0 +1,33 @@
+{
+  "title": "Systematic Theology",
+  "tool_used": "pdfplumber",
+  "quality_score": 1.0,
+  "char_count": 3861063,
+  "removed_junk_lines": 2643,
+  "removed_inline_numbers": 939,
+  "converted_numbers_to_words": 0,
+  "converted_quotes": false,
+  "preserved_headings": 0,
+  "extracted_footnotes": 1,
+  "language": "en",
+  "language_confidence": 0.9,
+  "changes": [
+    "Detected language: en",
+    "Removed 2643 junk lines",
+    "Removed 939 inline page numbers",
+    "Extracted 1 footnotes",
+    "Normalized unicode characters",
+    "Removed PDF artifacts",
+    "Fixed punctuation spacing"
+  ],
+  "normalizer": "regex",
+  "tts_ready": true,
+  "original_length": 3861063,
+  "final_length": 3863125,
+  "size_change": 2062,
+  "text_yield": 1.0005340498199589,
+  "file_id": "Systematic Theology",
+  "source_file": "C:\\Users\\myson\\AppData\\Local\\Temp\\gradio\\5f270c0a3527c6b7fe3891822bc4be4a7d45456b780a33d5ff9a3f2718cfb913\\Systematic Theology.pdf",
+  "detected_format": "pdf",
+  "classification": "text"
+}

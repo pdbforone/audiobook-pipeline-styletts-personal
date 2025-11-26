@@ -5,14 +5,29 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+import sys
 
 import pytest
-import yaml
+
+try:
+    import yaml  # type: ignore
+except ImportError:
+    yaml = None
+
+TESTS_DIR = Path(__file__).resolve().parent
+PHASE_ROOT = TESTS_DIR.parent
+SRC_DIR = PHASE_ROOT / "src"
+REPO_ROOT = PHASE_ROOT.parent
+for candidate in (REPO_ROOT, PHASE_ROOT, SRC_DIR):
+    if str(candidate) not in sys.path:
+        sys.path.insert(0, str(candidate))
 
 
 @pytest.fixture
 def phase4_assets(tmp_path: Path) -> SimpleNamespace:
     """Create temporary config, validation, pipeline, and chunk assets for Phase 4 tests."""
+    if yaml is None:
+        pytest.skip("PyYAML is required for Phase 4 test fixtures", allow_module_level=True)
     output_dir = tmp_path / "artifacts" / "audio"
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     config_data = {

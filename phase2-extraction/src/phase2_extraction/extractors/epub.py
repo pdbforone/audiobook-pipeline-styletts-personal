@@ -117,29 +117,29 @@ def extract(path: Path) -> Tuple[str, Dict]:
             title_meta = book.get_metadata("DC", "title")
             if title_meta:
                 metadata["title"] = title_meta[0][0]
-        except:
-            logger.debug("No title metadata found")
+        except Exception as exc:
+            logger.debug("No title metadata found: %s", exc)
 
         try:
             author_meta = book.get_metadata("DC", "creator")
             if author_meta:
                 metadata["author"] = author_meta[0][0]
-        except:
-            logger.debug("No author metadata found")
+        except Exception as exc:
+            logger.debug("No author metadata found: %s", exc)
 
         try:
             language_meta = book.get_metadata("DC", "language")
             if language_meta:
                 metadata["language"] = language_meta[0][0]
-        except:
-            logger.debug("No language metadata found")
+        except Exception as exc:
+            logger.debug("No language metadata found: %s", exc)
 
         try:
             publisher_meta = book.get_metadata("DC", "publisher")
             if publisher_meta:
                 metadata["publisher"] = publisher_meta[0][0]
-        except:
-            logger.debug("No publisher metadata found")
+        except Exception as exc:
+            logger.debug("No publisher metadata found: %s", exc)
 
         # Quality assessment
         if not text.strip():

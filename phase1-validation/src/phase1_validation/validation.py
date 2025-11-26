@@ -3,9 +3,17 @@ import json
 import logging
 import os
 import shutil
+import sys
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Dict, List, Optional, Tuple
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+if str(PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_ROOT))
 
 import chardet
 import ebooklib
@@ -25,8 +33,12 @@ from pipeline_common import (
 )
 from pipeline_common.state_manager import StateTransaction
 
-from .utils import compute_sha256 as utils_compute_sha256
-from .utils import log_error
+try:
+    from .utils import compute_sha256 as utils_compute_sha256
+    from .utils import log_error
+except ImportError:
+    from phase1_validation.utils import compute_sha256 as utils_compute_sha256  # type: ignore
+    from phase1_validation.utils import log_error  # type: ignore
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -530,7 +542,7 @@ def persist_metadata(
     errors = list(metadata.errors)
     state = PipelineState(json_path, validate_on_read=False)
     with state.transaction(operation="phase1_persist") as txn:
-        file_entry = txn.update_phase(
+        txn.update_phase(
             file_id,
             PHASE_NAME,
             status,

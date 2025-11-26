@@ -695,6 +695,37 @@ def synthesize_chunk_with_engine(
             return max_len
         return None
 
+    def split_into_sentences(text: str, limit: int) -> List[str]:
+        """
+        Lightweight sentence splitter that respects a hard character limit.
+
+        Falls back to whitespace chunking if a single sentence still exceeds the limit.
+        """
+        sentences = re.split(r"(?<=[.!?])\\s+", text.strip())
+        normalized: List[str] = []
+        for sent in sentences:
+            if not sent:
+                continue
+            if len(sent) <= limit:
+                normalized.append(sent.strip())
+                continue
+            # If a sentence is still too long, break it by words into safe windows
+            words = sent.split()
+            current = []
+            current_len = 0
+            for word in words:
+                wlen = len(word) + (1 if current else 0)
+                if current_len + wlen <= limit:
+                    current.append(word)
+                    current_len += wlen
+                else:
+                    normalized.append(" ".join(current))
+                    current = [word]
+                    current_len = len(word)
+            if current:
+                normalized.append(" ".join(current))
+        return [s for s in normalized if s]
+
     max_len = None
     try:
         max_len = text_length_limit(effective_engine)
@@ -716,7 +747,60 @@ def synthesize_chunk_with_engine(
             validation_details={"engine": effective_engine},
         )
 
+    sentence_split_enabled = os.getenv("TTS_SENTENCE_SPLIT", "0") == "1"
+    sentence_regen_enabled = os.getenv("TTS_SENTENCE_REGEN", "0") == "1"
+
     if max_len and len(chunk.text) > max_len:
+        if sentence_split_enabled:
+            sentences = split_into_sentences(chunk.text, max_len)
+            if sentences and all(len(s) <= max_len for s in sentences) and len(sentences) > 1:
+                try:
+                    audio_parts: List[np.ndarray] = []
+                    total_duration = 0.0
+                    used_engine = effective_engine
+                    rt_factor = None
+                    sample_rate = None
+                    for idx, sent in enumerate(sentences):
+                        logger.info(
+                            "Chunk %s sentence split %d/%d (len=%d) for engine '%s'",
+                            chunk.chunk_id,
+                            idx + 1,
+                            len(sentences),
+                            len(sent),
+                            effective_engine,
+                        )
+                        (
+                            sent_audio,
+                            used_engine,
+                            sample_rate,
+                            sent_duration,
+                            rt_factor,
+                        ) = attempt_synthesis(effective_engine, allow_fallback, 1.1, text_override=sent)
+                        audio_parts.append(sent_audio)
+                        total_duration += sent_duration or 0.0
+                    if audio_parts and sample_rate:
+                        audio = np.concatenate(audio_parts)
+                        output_path = output_dir / f"{chunk.chunk_id}.wav"
+                        sf.write(output_path, audio, sample_rate)
+                        return ChunkResult(
+                            chunk_id=chunk.chunk_id,
+                            success=True,
+                            output_path=output_path,
+                            engine_used=used_engine,
+                            rt_factor=rt_factor,
+                            audio_duration=total_duration,
+                            text_len=text_len,
+                            est_dur=est_dur_sec,
+                            latency_fallback_used=False,
+                            voice_used=voice_used,
+                        )
+                except Exception as exc:  # pylint: disable=broad-except
+                    logger.error(
+                        "Chunk %s sentence-split fallback failed: %s",
+                        chunk.chunk_id,
+                        exc,
+                    )
+
         logger.error(
             "Chunk %s text length %d exceeds max %d for engine '%s'",
             chunk.chunk_id,
@@ -745,11 +829,15 @@ def synthesize_chunk_with_engine(
         )
 
     def attempt_synthesis(
-        target_engine: str, allow_fb: bool, rtf_threshold: Optional[float]
+        target_engine: str,
+        allow_fb: bool,
+        rtf_threshold: Optional[float],
+        *,
+        text_override: Optional[str] = None,
     ) -> Tuple[np.ndarray, str, int, float, float]:
         synth_start = time.time()
         audio_out, selected_engine = engine_manager.synthesize(
-            text=chunk.text,
+            text=text_override or chunk.text,
             reference_audio=reference,
             engine=target_engine,
             language=language,
@@ -782,19 +870,84 @@ def synthesize_chunk_with_engine(
             engine_name,
             exc,
         )
-        return ChunkResult(
-            chunk_id=chunk.chunk_id,
-            success=False,
-            output_path=None,
-            engine_used=None,
-            rt_factor=None,
-            audio_duration=None,
-            text_len=text_len,
-            est_dur=est_dur_sec,
-            latency_fallback_used=False,
-            voice_used=voice_used,
-            error=str(exc),
-        )
+        if sentence_regen_enabled:
+            sentences = split_into_sentences(chunk.text, max_len or len(chunk.text))
+            if sentences and len(sentences) > 1:
+                logger.info(
+                    "Chunk %s attempting sentence-level regeneration after failure.",
+                    chunk.chunk_id,
+                )
+                try:
+                    audio_parts: List[np.ndarray] = []
+                    total_duration = 0.0
+                    used_engine = effective_engine
+                    rt_factor = None
+                    sample_rate = None
+                    for idx, sent in enumerate(sentences):
+                        (
+                            sent_audio,
+                            used_engine,
+                            sample_rate,
+                            sent_duration,
+                            rt_factor,
+                        ) = attempt_synthesis(effective_engine, allow_fallback, 1.1, text_override=sent)
+                        audio_parts.append(sent_audio)
+                        total_duration += sent_duration or 0.0
+                    if audio_parts and sample_rate:
+                        audio = np.concatenate(audio_parts)
+                        audio_duration = total_duration
+                        logger.info(
+                            "Chunk %s regeneration succeeded with %d sentence segments.",
+                            chunk.chunk_id,
+                            len(audio_parts),
+                        )
+                except Exception as regen_exc:  # pylint: disable=broad-except
+                    logger.error(
+                        "Chunk %s sentence-level regeneration failed: %s",
+                        chunk.chunk_id,
+                        regen_exc,
+                    )
+                    return ChunkResult(
+                        chunk_id=chunk.chunk_id,
+                        success=False,
+                        output_path=None,
+                        engine_used=None,
+                        rt_factor=None,
+                        audio_duration=None,
+                        text_len=text_len,
+                        est_dur=est_dur_sec,
+                        latency_fallback_used=False,
+                        voice_used=voice_used,
+                        error=str(exc),
+                    )
+            else:
+                return ChunkResult(
+                    chunk_id=chunk.chunk_id,
+                    success=False,
+                    output_path=None,
+                    engine_used=None,
+                    rt_factor=None,
+                    audio_duration=None,
+                    text_len=text_len,
+                    est_dur=est_dur_sec,
+                    latency_fallback_used=False,
+                    voice_used=voice_used,
+                    error=str(exc),
+                )
+        else:
+            return ChunkResult(
+                chunk_id=chunk.chunk_id,
+                success=False,
+                output_path=None,
+                engine_used=None,
+                rt_factor=None,
+                audio_duration=None,
+                text_len=text_len,
+                est_dur=est_dur_sec,
+                latency_fallback_used=False,
+                voice_used=voice_used,
+                error=str(exc),
+            )
 
     latency_fallback_used = False
     synth_wall = audio_duration * rt_factor if audio_duration else 0.0
@@ -1102,6 +1255,27 @@ def update_phase4_summary(
 
     chunk_rows: List[Dict[str, Any]] = []
     for result in results:
+        # Preserve the most specific error we can find; only fall back to
+        # "unknown error" when nothing is available.
+        error_message = None
+        if not result.success:
+            error_message = (
+                result.error
+                or (
+                    result.validation_reason
+                    if isinstance(result.validation_reason, str)
+                    else None
+                )
+                or (
+                    result.validation_details.get("error")
+                    if isinstance(result.validation_details, dict)
+                    else None
+                )
+            )
+            # Some callers may stick an error string in rt_factor; capture it
+            # when present to avoid losing detail in summaries.
+            if not error_message and isinstance(result.rt_factor, str):
+                error_message = result.rt_factor
         chunk_rows.append(
             {
                 "chunk_id": result.chunk_id,
@@ -1116,7 +1290,7 @@ def update_phase4_summary(
                 ),
                 "status": "success" if result.success else "failed",
                 "errors": (
-                    [] if result.success else [result.error or "unknown error"]
+                    [] if result.success else [error_message or "unknown error"]
                 ),
                 "latency_fallback_used": result.latency_fallback_used,
                 "validation_tier": result.validation_tier,
@@ -1126,7 +1300,22 @@ def update_phase4_summary(
         )
 
     file_errors = [
-        {"chunk_id": r.chunk_id, "message": r.error or "unknown error"}
+        {
+            "chunk_id": r.chunk_id,
+            "message": (
+                r.error
+                or (
+                    r.validation_reason if isinstance(r.validation_reason, str) else None
+                )
+                or (
+                    r.validation_details.get("error")
+                    if isinstance(r.validation_details, dict)
+                    else None
+                )
+                or (r.rt_factor if isinstance(r.rt_factor, str) else None)
+                or "unknown error"
+            ),
+        }
         for r in results
         if not r.success
     ]
@@ -1343,7 +1532,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--engine",
         default=None,
         choices=["auto", "xtts", "kokoro"],
-        help="Preferred engine (auto defers to heuristic). Fallback order is managed automatically.",
+        help="Preferred engine (auto defers to heuristic). Fallback order is managed automatically for XTTS/Kokoro.",
     )
     parser.add_argument(
         "--prefer_kokoro",

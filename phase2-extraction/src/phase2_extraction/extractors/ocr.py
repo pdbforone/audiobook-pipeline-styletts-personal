@@ -97,8 +97,8 @@ def extract(path: Path, batch_size: int = 10) -> Tuple[str, Dict]:
             total_pages = len(doc)
             doc.close()
             logger.info(f"Document has {total_pages} pages")
-        except:
-            logger.warning("Could not determine page count")
+        except Exception as exc:
+            logger.warning("Could not determine page count: %s", exc)
             total_pages = None
 
         all_results = []

@@ -84,8 +84,6 @@ class ChunkRecord(BaseModel):
             logger.warning("No readability scores provided")
             return v
 
-        avg = sum(v) / len(v)
-
         return v
 
     @field_validator("status")
@@ -411,6 +409,9 @@ class Phase3Config(ValidationConfig):
     min_structure_nodes: int = 10
     text_path_override: Optional[str] = None
     voice_override: Optional[str] = None
+    # LlamaChunker integration (enabled by default, requires Ollama)
+    use_llama_chunker: bool = True
+    llama_model: str = "phi3:mini"
 
     @field_validator("phase3_profile")
     @classmethod

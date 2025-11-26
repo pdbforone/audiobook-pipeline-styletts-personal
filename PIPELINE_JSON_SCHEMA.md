@@ -23,6 +23,8 @@ The **canonical, phase-first schema** now lives at `pipeline_common/schema.json`
   "phase5_5": { /* Phase 5.5 Schema */ },
   "phase6": { /* Optional orchestration telemetry */ },
   "phase7": { /* Optional batch telemetry */ },
+  "phaseG": { /* Optional autonomy scaffolding (stub, defaults to pending) */ },
+  "phaseH": { /* Optional reasoning scaffolding (stub, defaults to pending) */ },
   "batch_runs": [ /* Batch summaries */ ]
 }
 ```

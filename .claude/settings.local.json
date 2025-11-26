@@ -18,7 +18,21 @@
       "Bash(git submodule:*)",
       "Bash(git stash push:*)",
       "Bash(git pull:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(where:*)",
+      "Bash(nul)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(ollama --version:*)",
+      "Bash(ollama list:*)",
+      "Bash(ollama run:*)",
+      "Bash(timeout 30 python:*)",
+      "Bash(dir \"c:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\.pipeline\\policy_logs\")",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(more:*)"
     ],
     "deny": [],
     "ask": []

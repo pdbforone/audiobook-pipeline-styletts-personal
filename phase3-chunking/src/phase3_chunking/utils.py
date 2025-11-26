@@ -1,13 +1,18 @@
+from __future__ import annotations
+
 import logging
 import time
 import os
 import re
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Optional, Dict, Any, TYPE_CHECKING
 import ftfy
 import spacy
 import nltk
 import textstat
 from langdetect import DetectorFactory
+
+if TYPE_CHECKING:
+    from .models import ValidationConfig
 
 try:
     import pysbd  # Fast rule-based sentence boundary detector
@@ -1234,12 +1239,18 @@ def form_semantic_chunks(
     )
 
     # Report limit adherence
-    within_soft = sum(1 for l in char_lengths if l <= soft_limit)
-    within_hard = sum(1 for l in char_lengths if soft_limit < l <= hard_limit)
-    within_emergency = sum(
-        1 for l in char_lengths if hard_limit < l <= emergency_limit
+    within_soft = sum(1 for length in char_lengths if length <= soft_limit)
+    within_hard = sum(
+        1 for length in char_lengths if soft_limit < length <= hard_limit
     )
-    over_emergency = sum(1 for l in char_lengths if l > emergency_limit)
+    within_emergency = sum(
+        1
+        for length in char_lengths
+        if hard_limit < length <= emergency_limit
+    )
+    over_emergency = sum(
+        1 for length in char_lengths if length > emergency_limit
+    )
 
     logger.info(
         f"Limit adherence: {within_soft} within SOFT ({soft_limit}), "
@@ -1459,12 +1470,18 @@ def calculate_chunk_metrics(
         config, "emergency_chunk_duration", EMERGENCY_DURATION_SECONDS
     )
 
-    within_soft = sum(1 for l in char_lengths if l <= soft_limit)
-    within_hard = sum(1 for l in char_lengths if soft_limit < l <= hard_limit)
-    within_emergency = sum(
-        1 for l in char_lengths if hard_limit < l <= emergency_limit
+    within_soft = sum(1 for length in char_lengths if length <= soft_limit)
+    within_hard = sum(
+        1 for length in char_lengths if soft_limit < length <= hard_limit
     )
-    exceeding = sum(1 for l in char_lengths if l > emergency_limit)
+    within_emergency = sum(
+        1
+        for length in char_lengths
+        if hard_limit < length <= emergency_limit
+    )
+    exceeding = sum(
+        1 for length in char_lengths if length > emergency_limit
+    )
 
     return {
         "chunk_char_lengths": char_lengths,

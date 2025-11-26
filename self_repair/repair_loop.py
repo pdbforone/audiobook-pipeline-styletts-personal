@@ -170,6 +170,66 @@ class ErrorRegistry:
         """Get failures by category."""
         return [e for e in self.entries.values() if e.failure_category == category]
 
+    def get_strategy_success_rate(self, strategy: str, category: str) -> float:
+        """
+        Calculate historical success rate for a repair strategy on a failure category.
+
+        Returns value between 0.0 and 1.0.
+        """
+        relevant_entries = self.get_by_category(category)
+        if not relevant_entries:
+            return 0.0
+
+        strategy_attempts = []
+        for entry in relevant_entries:
+            for attempt in entry.attempts:
+                if attempt.strategy == strategy:
+                    strategy_attempts.append(attempt.success)
+
+        if not strategy_attempts:
+            return 0.0
+
+        return sum(1 for s in strategy_attempts if s) / len(strategy_attempts)
+
+    def get_best_strategy_for_category(self, category: str) -> Optional[Dict[str, Any]]:
+        """
+        Find the best repair strategy for a failure category based on historical success.
+
+        Returns dict with strategy name, success_rate, and confidence.
+        """
+        strategies = ["smaller_splits", "different_engine", "text_rewrite", "simplify_text"]
+        best_strategy = None
+        best_rate = 0.0
+        total_attempts = 0
+
+        for strategy in strategies:
+            rate = self.get_strategy_success_rate(strategy, category)
+            # Count attempts for confidence
+            attempts_count = sum(
+                1
+                for e in self.get_by_category(category)
+                for a in e.attempts
+                if a.strategy == strategy
+            )
+            total_attempts += attempts_count
+
+            if rate > best_rate:
+                best_rate = rate
+                best_strategy = strategy
+
+        if best_strategy and best_rate > 0:
+            # Confidence based on number of attempts (more data = higher confidence)
+            # 10 attempts = 50% confidence, 50 attempts = 90% confidence
+            confidence = min(0.95, 0.3 + (total_attempts / 100))
+            return {
+                "strategy": best_strategy,
+                "success_rate": best_rate,
+                "confidence": confidence,
+                "total_attempts": total_attempts,
+            }
+
+        return None
+
 
 class DeadChunkRepair:
     """
@@ -187,10 +247,134 @@ class DeadChunkRepair:
         engine_manager=None,
         llama_rewriter=None,
         error_registry: Optional[ErrorRegistry] = None,
+        *,
+        enable_text_rewrite: bool = False,
+        rewrite_confidence_threshold: float = 0.7,
+        memory_enabled: bool = False,
     ):
         self.engine_manager = engine_manager
         self.llama_rewriter = llama_rewriter
         self.registry = error_registry or ErrorRegistry()
+        self.enable_text_rewrite = enable_text_rewrite
+        self.rewrite_confidence_threshold = rewrite_confidence_threshold
+        self.memory_enabled = memory_enabled
+
+    def auto_repair_if_confident(
+        self,
+        chunk_id: str,
+        file_id: str,
+        text: str,
+        original_engine: str,
+        failure_category: str,
+        reference_audio: Optional[Path] = None,
+        min_success_rate: float = 0.85,
+        min_confidence: float = 0.70,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Automatically repair a chunk if we have a high-confidence strategy.
+
+        Only applies repair if:
+        - Historical success rate >= min_success_rate (default 85%)
+        - Confidence >= min_confidence (default 70%)
+
+        Args:
+            chunk_id: Chunk identifier
+            file_id: Parent file identifier
+            text: Chunk text content
+            original_engine: Engine that originally failed
+            failure_category: Category of failure (tts_failure, timeout, etc.)
+            reference_audio: Voice reference audio
+            min_success_rate: Minimum success rate to auto-apply (0-1)
+            min_confidence: Minimum confidence level to auto-apply (0-1)
+
+        Returns:
+            Dict with repair result if auto-repair applied, None if conditions not met
+        """
+        # Look up best strategy for this failure category
+        best = self.registry.get_best_strategy_for_category(failure_category)
+
+        if not best:
+            logger.info(f"No repair history for category '{failure_category}', manual repair needed")
+            return None
+
+        success_rate = best["success_rate"]
+        confidence = best["confidence"]
+        strategy = best["strategy"]
+
+        if success_rate < min_success_rate:
+            logger.info(
+                f"Auto-repair skipped: success rate {success_rate:.1%} < threshold {min_success_rate:.1%}"
+            )
+            return None
+
+        if confidence < min_confidence:
+            logger.info(
+                f"Auto-repair skipped: confidence {confidence:.1%} < threshold {min_confidence:.1%}"
+            )
+            return None
+
+        logger.info(
+            f"🤖 Auto-repair applying strategy '{strategy}' "
+            f"(success_rate={success_rate:.1%}, confidence={confidence:.1%})"
+        )
+
+        # Apply the single best strategy
+        strategy_map = {
+            "smaller_splits": self._try_smaller_splits,
+            "different_engine": self._try_different_engine,
+            "text_rewrite": self._try_text_rewrite,
+            "simplify_text": self._try_simplify_text,
+        }
+
+        strategy_fn = strategy_map.get(strategy)
+        if not strategy_fn:
+            return None
+
+        try:
+            result = strategy_fn(
+                text=text,
+                original_engine=original_engine,
+                reference_audio=reference_audio,
+            )
+
+                attempt = RepairAttempt(
+                    strategy=strategy,
+                    success=result is not None,
+                    chunk_id=chunk_id,
+                    details={
+                    "auto_repair": True,
+                    "success_rate": success_rate,
+                    "confidence": confidence,
+                    **(result or {}),
+                },
+            )
+
+            self.registry.add_attempt(chunk_id, attempt)
+
+            if result:
+                logger.info(f"✅ Auto-repair successful with strategy '{strategy}'")
+                return {
+                    "audio": result.get("audio"),
+                    "audio_path": result.get("audio_path"),
+                    "strategy": strategy,
+                    "engine_used": result.get("engine_used"),
+                    "auto_repair": True,
+                }
+
+        except Exception as e:
+            logger.warning(f"Auto-repair strategy '{strategy}' failed: {e}")
+            self.registry.add_attempt(
+                chunk_id,
+                RepairAttempt(
+                    strategy=strategy,
+                    success=False,
+                    chunk_id=chunk_id,
+                    error=str(e),
+                    details={"auto_repair": True},
+                ),
+            )
+
+        return None
 
     def repair(
         self,
@@ -200,6 +384,8 @@ class DeadChunkRepair:
         original_engine: str,
         reference_audio: Optional[Path] = None,
         max_attempts: int = 4,
+        auto_repair: bool = True,
+        failure_category: str = "tts_failure",
     ) -> Optional[Dict[str, Any]]:
         """
         Attempt to repair a failed chunk.
@@ -211,16 +397,34 @@ class DeadChunkRepair:
             original_engine: Engine that originally failed
             reference_audio: Voice reference audio
             max_attempts: Maximum repair strategies to try
+            auto_repair: If True, try auto-repair first if confident
+            failure_category: Category of failure for strategy lookup
 
         Returns:
             Dict with audio_path and metadata if successful, None otherwise
         """
+        # Try auto-repair first if enabled
+        if auto_repair:
+            result = self.auto_repair_if_confident(
+                chunk_id=chunk_id,
+                file_id=file_id,
+                text=text,
+                original_engine=original_engine,
+                failure_category=failure_category,
+                reference_audio=reference_audio,
+            )
+            if result:
+                return result
+
         strategies = [
             ("smaller_splits", self._try_smaller_splits),
             ("different_engine", self._try_different_engine),
-            ("text_rewrite", self._try_text_rewrite),
-            ("simplify_text", self._try_simplify_text),
         ]
+
+        if self.enable_text_rewrite:
+            strategies.append(("text_rewrite", self._try_text_rewrite))
+
+        strategies.append(("simplify_text", self._try_simplify_text))
 
         for strategy_name, strategy_fn in strategies[:max_attempts]:
             try:
@@ -240,6 +444,21 @@ class DeadChunkRepair:
                 )
 
                 self.registry.add_attempt(chunk_id, attempt)
+                if self.memory_enabled:
+                    try:
+                        from autonomy.memory_store import add_experience
+
+                        add_experience(
+                            "repair",
+                            {
+                                "chunk_id": chunk_id,
+                                "strategy": strategy,
+                                "success": result is not None,
+                                "file_id": file_id,
+                            },
+                        )
+                    except Exception:
+                        pass
 
                 if result:
                     logger.info(f"Repair successful: {strategy_name}")
@@ -261,6 +480,22 @@ class DeadChunkRepair:
                         error=str(e),
                     ),
                 )
+                if self.memory_enabled:
+                    try:
+                        from autonomy.memory_store import add_experience
+
+                        add_experience(
+                            "repair",
+                            {
+                                "chunk_id": chunk_id,
+                                "strategy": strategy_name,
+                                "success": False,
+                                "file_id": file_id,
+                                "error": str(e),
+                            },
+                        )
+                    except Exception:
+                        pass
 
         # All strategies failed
         self.registry.add_failure(
@@ -350,6 +585,9 @@ class DeadChunkRepair:
         reference_audio: Optional[Path] = None,
     ) -> Optional[Dict[str, Any]]:
         """Rewrite problematic text using LLM."""
+        if not self.enable_text_rewrite:
+            return None
+
         if not self.llama_rewriter or not self.engine_manager:
             return None
 
@@ -357,18 +595,48 @@ class DeadChunkRepair:
         max_chars = self.engine_manager.get_max_chars(original_engine)
 
         # Use LLM to rewrite
-        rewritten = self.llama_rewriter.rewrite_for_tts(
+        rewritten_payload = self.llama_rewriter.rewrite_for_tts(
             text=text,
             max_chars=max_chars,
             issues=["synthesis failure", "possible truncation"],
         )
 
-        if not rewritten or len(rewritten) >= len(text):
+        rewritten_text = rewritten_payload.get("rewritten") if isinstance(rewritten_payload, dict) else None
+        confidence = 0.0
+        try:
+            confidence = float(rewritten_payload.get("confidence", 0.0)) if isinstance(rewritten_payload, dict) else 0.0
+        except Exception:
+            confidence = 0.0
+
+        if not rewritten_text:
             return None
+
+        if confidence < self.rewrite_confidence_threshold:
+            logger.info(
+                "Text rewrite skipped (confidence %.2f < threshold %.2f)",
+                confidence,
+                self.rewrite_confidence_threshold,
+            )
+            return None
+
+        if len(rewritten_text) >= len(text):
+            logger.info(
+                "Text rewrite rejected (length not reduced): %d -> %d",
+                len(text),
+                len(rewritten_text),
+            )
+            return None
+
+        logger.info(
+            "Trying text rewrite (confidence %.2f, len %d -> %d)",
+            confidence,
+            len(text),
+            len(rewritten_text),
+        )
 
         # Try synthesis with rewritten text
         audio = self.engine_manager.synthesize(
-            text=rewritten,
+            text=rewritten_text,
             reference_audio=reference_audio,
             engine=original_engine,
         )
@@ -378,6 +646,9 @@ class DeadChunkRepair:
                 "audio": audio,
                 "engine_used": original_engine,
                 "rewritten": True,
+                "rewrite_confidence": confidence,
+                "original_len": len(text),
+                "rewritten_len": len(rewritten_text),
             }
 
         return None
@@ -438,6 +709,7 @@ class RepairLoop:
         self.dead_chunk_repair = dead_chunk_repair or DeadChunkRepair()
         self.staging_dir = staging_dir
         self.staging_dir.mkdir(parents=True, exist_ok=True)
+        self._successful_repairs: List[Dict[str, Any]] = []
 
     def scan_logs(
         self,
@@ -488,6 +760,59 @@ class RepairLoop:
                 })
 
         return suggestions
+
+    def run(
+        self,
+        events: List[FailureEvent],
+        confidence_threshold: float = 0.85,
+    ) -> List[Dict[str, Any]]:
+        """
+        Attempt repairs for the provided events.
+
+        Returns list of repair results (non-destructive).
+        """
+        results: List[Dict[str, Any]] = []
+        for event in events:
+            if not event.chunk_id or not event.file_id:
+                continue
+            # Without source text/reference we cannot perform full repair; skip if missing.
+            try:
+                repair_result = self.dead_chunk_repair.repair(
+                    chunk_id=event.chunk_id,
+                    file_id=event.file_id,
+                    text="",
+                    original_engine="xtts",
+                    reference_audio=None,
+                    auto_repair=True,
+                    failure_category=event.category,
+                )
+            except Exception:
+                repair_result = None
+
+            if not repair_result:
+                continue
+
+            confidence = float(repair_result.get("rewrite_confidence", 0.0)) if isinstance(repair_result, dict) else 0.0
+            if confidence < confidence_threshold:
+                continue
+
+            results.append(
+                {
+                    "chunk_id": event.chunk_id,
+                    "file_id": event.file_id,
+                    "result": repair_result,
+                    "confidence": confidence,
+                }
+            )
+
+        self._successful_repairs = results
+        return results
+
+    def get_successful_repairs(self) -> List[Dict[str, Any]]:
+        """
+        Return a list of successful repairs from the last run.
+        """
+        return list(self._successful_repairs or [])
 
     def get_repair_summary(self) -> Dict[str, Any]:
         """Get summary of repair attempts and outcomes."""

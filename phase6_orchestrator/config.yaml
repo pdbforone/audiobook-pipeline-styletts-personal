@@ -1,10 +1,21 @@
 # Phase 6 Orchestrator Configuration
 pipeline_json: "../pipeline.json"
 phases_to_run: [1, 2, 3, 4, 5]
-phase_timeout: 600  # 10 minutes per phase
 resume_enabled: true
 log_level: "INFO"
 log_file: "orchestrator.log"
+
+# Per-phase timeouts (in seconds)
+# Set phase_timeout to override all phases with a single value
+# phase_timeout: 600  # Uncomment to set global timeout
+phase_timeouts:
+  phase1: 18000       # 5 hours - validation
+  phase2: 18000       # 5 hours - extraction
+  phase3: 3600        # 1 hour - chunking (LlamaChunker can be slow)
+  phase4: 259200      # 3 days - TTS synthesis (280-page book ~2 days on CPU)
+  phase5: 7200        # 2 hours - enhancement
+  phase5_5: 14400     # 4 hours - subtitles
+  poetry_install: 300 # 5 minutes - dependency install
 
 # Runtime switches
 pipeline_mode: "personal"
@@ -23,3 +34,123 @@ subtitles:
   enable_backup_align: true
   max_drift_sec: 2.0
   min_coverage_ratio: 0.95
+
+# Benchmark harness (Phase E - opt-in)
+benchmark:
+  enable: false
+  auto_run: false
+  test_texts:
+    - "Short generic English test passage used for timing and quality checks."
+    - "Another test passage for benchmarking the audiobook pipeline end-to-end."
+    - "A slightly longer passage to approximate real audiobook phrasing and pacing."
+
+# Autonomy/Self-Repair (opt-in)
+autonomy:
+  enable_self_repair: false
+  use_reasoner: false
+  planner_mode: "disabled"  # disabled | recommend_only | enforce (future)
+  memory_enabled: false
+  memory_summarization: "periodic"  # periodic | off
+  mode: "disabled"         # disabled | recommend_only | supervised | autonomous (future)
+  supervised_threshold: 0.85
+  policy_kernel_debug: false
+  policy_kernel_enabled: false
+  enable_memory_feedback: false
+  enable_stability_profiles: false
+  enable_confidence_calibration: false
+  enable_self_review: false
+  enable_rewards: false
+  enable_profile_learning: false
+  enable_genre_learning: false
+  enable_profile_fusion: false
+  enable_long_horizon: false
+  enable_forecasting: false
+  enable_long_horizon_profiles: false
+  enable_trend_modeling: false
+  stability_bounds:
+    enable: false
+    max_chunk_delta_pct: 10
+    max_engine_switches: 1
+    max_rewrite_delta_pct: 10
+  escalation:
+    enable: false
+    drift_threshold: 3
+    lockout_runs: 5
+  profiles:
+    enable: false
+    exploration_rate: 0.05
+    export_on_shutdown: false
+    allow_reset_via_flag: false
+    reset_now: false
+  readiness_checks:
+    enable: false
+    min_reward_avg: 0.0
+    require_recent_success: true
+    require_no_anomalies: true
+    require_stable_benchmarks: true
+    require_positive_reward: false
+  enable_policy_limits: false
+  budget:
+    max_overrides_per_run: 2
+    max_change_magnitude: "small"
+    allowed_fields:
+      - "chunk_size"
+      - "engine_preference"
+      - "rewrite_policy"
+
+self_repair:
+  enable_text_rewrite: false
+  rewrite_confidence_threshold: 0.7
+  enable_repair_loop: false
+  enable_log_parser: false
+  repair_confidence_threshold: 0.85
+  enable_engine_retry: false
+  retry_confidence_threshold: 0.85
+
+reasoning:
+  enable_evaluator: false
+  enable_diagnostics: false
+
+experiments:
+  enable: false
+  limit_per_run: 1
+  allowed:
+    - "chunk_size"
+    - "engine_preference"
+    - "rewrite_policy"
+  dry_run: true
+
+genre:
+  enable_classifier: false
+  use_llama: false
+
+rewriter:
+  enable_policies: false
+  default_policy: "minimal_fix"
+
+adaptive_chunking:
+  enable: false
+
+patches:
+  enable_simulation: false
+
+dashboard:
+  enable_data_api: false
+# Introspection (Phase I - opt-in)
+introspection:
+  enable_clustering: false
+  enable_narratives: false
+  enable_self_critique: false
+  enable_summary: false
+  enable_reasoning_trace: false
+  enable_feature_attribution: false
+# Policy Engine (learning/telemetry)
+policy_engine:
+  logging: true               # Record telemetry to .pipeline/policy_logs/
+  learning_mode: "enforce"    # observe | enforce | tune
+  # observe: Log recommendations but don't apply
+  # enforce: Auto-apply recommendations on retry (engine switching, voice variants)
+  # tune: Same as enforce + allow self-driving parameter adjustments
+
+metadata:
+  enable_llama_metadata: false

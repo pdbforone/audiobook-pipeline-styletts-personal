@@ -1,0 +1,8 @@
+# LLaMA engine configuration stub.
+# This file is a placeholder for future llama.cpp/Ollama integration.
+# It is intentionally disabled and not referenced by any registry.
+
+enabled: false
+description: "Local LLaMA/llama.cpp stub (not wired into pipeline)"
+model: null
+options: {}

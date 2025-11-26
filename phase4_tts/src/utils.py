@@ -458,6 +458,10 @@ def sanitize_text_for_tts(
                 flags=re.IGNORECASE,
             )
 
+    # Remove footnote markers (e.g., [FOOTNOTE], [1], [FOOTNOTE][1])
+    text = re.sub(r"\[FOOTNOTE\]", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\[\d+\]", "", text)  # Remove numbered references like [1], [2]
+
     # Normalize unicode (smart quotes → straight quotes)
     text = unicodedata.normalize("NFKC", text)
 

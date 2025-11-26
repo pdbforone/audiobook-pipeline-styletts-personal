@@ -29,6 +29,184 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from pipeline_common import PipelineState, StateError, ensure_phase_and_file
 from pipeline_common.policy_engine import PolicyEngine
 from pydantic import BaseModel, Field, ValidationError, ConfigDict
+from autonomy.profiles import export_profiles, reset_profiles
+from autonomy.trace_recorder import begin_run_trace, finalize_trace, record_event
+from autonomy.feature_attribution import explain_recommendations
+from autonomy import introspection as auto_introspection
+from long_horizon import aggregator as lh_aggregator
+from long_horizon import patterns as lh_patterns
+from long_horizon import forecaster as lh_forecaster
+from autonomy import long_horizon as auto_long_horizon
+from autonomy import trends as auto_trends
+from autonomy import predictive as auto_predictive
+from autonomy.stability_bounds import check_stability_bounds
+from autonomy.drift_detection import detect_drift
+from autonomy.safety_envelope import apply_safety_envelope
+from autonomy.safety_escalation import evaluate_escalation, apply_escalation, load_safety_state, write_safety_state
+from autonomy.safety_log import log_safety_event
+from introspection.cluster import cluster_anomalies
+from introspection.narratives import generate_narrative
+from introspection.critic import self_critique
+from introspection.summary import build_introspection_summary
+
+# Lazy import for LlamaReasoner to avoid import errors if agents not available
+_LLAMA_REASONER = None
+_LAST_PHASE_ERROR = ""  # Stores last error output for AI analysis
+
+# Lazy import for ErrorRegistry (self-repair tracking)
+_ERROR_REGISTRY = None
+_DEAD_CHUNK_REPAIR = None
+
+# Experiment state (reset after each run to avoid leakage)
+_ACTIVE_EXPERIMENT = None
+_TEMP_EXPERIMENT_OVERRIDES: Dict[str, Any] = {}
+_EXPERIMENT_CONTEXT: Dict[str, Any] = {}
+_CURRENT_EXPERIMENT = None
+_SUPERVISED_OVERRIDES: Dict[str, Any] = {}
+_AUTONOMOUS_OVERRIDES: Dict[str, Any] = {}
+_RUN_TRACE: Optional[Dict[str, Any]] = None
+
+
+def _write_json_safely(path: Path, payload: Dict[str, Any]) -> None:
+    """Write JSON to disk without affecting runtime on failure."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    except Exception:
+        logger.debug("Failed to write profile output to %s", path)
+
+
+def _get_error_registry():
+    """Lazy-load ErrorRegistry for tracking chunk failures."""
+    global _ERROR_REGISTRY
+    if _ERROR_REGISTRY is None:
+        try:
+            from self_repair.repair_loop import ErrorRegistry
+            _ERROR_REGISTRY = ErrorRegistry()
+            logger.debug("ErrorRegistry loaded successfully")
+        except ImportError:
+            logger.debug("ErrorRegistry not available (self_repair module not found)")
+            _ERROR_REGISTRY = False
+        except Exception as e:
+            logger.debug(f"ErrorRegistry init failed: {e}")
+            _ERROR_REGISTRY = False
+    return _ERROR_REGISTRY if _ERROR_REGISTRY else None
+
+
+def _get_dead_chunk_repair(
+    enable_text_rewrite: bool = False,
+    rewrite_conf_threshold: float = 0.7,
+    memory_enabled: bool = False,
+):
+    """Lazy-load DeadChunkRepair for self-healing chunk recovery."""
+    global _DEAD_CHUNK_REPAIR
+    if (
+        _DEAD_CHUNK_REPAIR is None
+        or getattr(_DEAD_CHUNK_REPAIR, "enable_text_rewrite", None) != enable_text_rewrite
+        or getattr(_DEAD_CHUNK_REPAIR, "rewrite_confidence_threshold", None) != rewrite_conf_threshold
+        or getattr(_DEAD_CHUNK_REPAIR, "memory_enabled", None) != memory_enabled
+    ):
+        try:
+            from self_repair.repair_loop import DeadChunkRepair
+            registry = _get_error_registry()
+            _DEAD_CHUNK_REPAIR = DeadChunkRepair(
+                error_registry=registry,
+                enable_text_rewrite=enable_text_rewrite,
+                rewrite_confidence_threshold=rewrite_conf_threshold,
+                memory_enabled=memory_enabled,
+            )
+            logger.debug("DeadChunkRepair loaded successfully")
+        except ImportError:
+            logger.debug("DeadChunkRepair not available (self_repair module not found)")
+            _DEAD_CHUNK_REPAIR = False
+        except Exception as e:
+            logger.debug(f"DeadChunkRepair init failed: {e}")
+            _DEAD_CHUNK_REPAIR = False
+    return _DEAD_CHUNK_REPAIR if _DEAD_CHUNK_REPAIR else None
+
+
+def _get_llama_reasoner():
+    """Lazy-load LlamaReasoner to avoid import errors."""
+    global _LLAMA_REASONER
+    if _LLAMA_REASONER is None:
+        try:
+            from agents import LlamaReasoner
+            _LLAMA_REASONER = LlamaReasoner()
+            logger.debug("LlamaReasoner loaded successfully")
+        except ImportError:
+            logger.debug("LlamaReasoner not available (agents module not found)")
+            _LLAMA_REASONER = False  # Mark as unavailable
+        except Exception as e:
+            logger.debug(f"LlamaReasoner init failed: {e}")
+            _LLAMA_REASONER = False
+    return _LLAMA_REASONER if _LLAMA_REASONER else None
+
+
+def _store_phase_error(error_text: str) -> None:
+    """Store error text for later AI analysis."""
+    global _LAST_PHASE_ERROR
+    _LAST_PHASE_ERROR = error_text
+
+
+def _analyze_failure_with_llm(phase_num: int, file_id: str, error_output: Optional[str] = None) -> None:
+    """Use LlamaReasoner to analyze a phase failure (if available)."""
+    global _LAST_PHASE_ERROR
+
+    # Use provided error or fall back to stored error
+    error_text = error_output or _LAST_PHASE_ERROR
+    if not error_text:
+        logger.debug("No error text available for AI analysis")
+        return
+
+    reasoner = _get_llama_reasoner()
+    if not reasoner:
+        return
+
+    try:
+        context = {"phase": phase_num, "file_id": file_id}
+        analysis = reasoner.analyze_failure(error_text, context=context)
+
+        # Log the AI analysis
+        logger.info("=" * 60)
+        logger.info("🤖 AI FAILURE ANALYSIS (LlamaReasoner)")
+        logger.info("=" * 60)
+        logger.info(f"Root Cause: {analysis.root_cause}")
+        logger.info(f"Category: {analysis.category} (confidence: {analysis.confidence:.0%})")
+        logger.info(f"Severity: {analysis.severity}")
+        logger.info(f"Suggested Fix: {analysis.suggested_fix}")
+        if analysis.config_changes:
+            logger.info(f"Config Changes: {analysis.config_changes}")
+        if analysis.prevention_strategy:
+            logger.info(f"Prevention: {analysis.prevention_strategy}")
+        logger.info("=" * 60)
+
+    except Exception as e:
+        logger.debug(f"LlamaReasoner analysis failed: {e}")
+
+
+def _record_chunk_failures(
+    file_id: str,
+    failed_chunks: List[str],
+    engine: str,
+    error_message: str = "TTS synthesis failed",
+) -> None:
+    """Record chunk failures to ErrorRegistry for tracking and future self-repair."""
+    registry = _get_error_registry()
+    if not registry:
+        return
+
+    for chunk_id in failed_chunks:
+        try:
+            registry.add_failure(
+                chunk_id=chunk_id,
+                file_id=file_id,
+                category="tts_failure",
+                message=f"{error_message} (engine: {engine})",
+            )
+            logger.debug(f"Recorded failure for {chunk_id} in ErrorRegistry")
+        except Exception as e:
+            logger.debug(f"Failed to record chunk failure: {e}")
+
 
 try:
     from rich.console import Console
@@ -279,10 +457,85 @@ class TTSEngineConfig(BaseModel):
     secondary: Optional[str] = "kokoro"
 
 
+class PhaseTimeouts(BaseModel):
+    """Per-phase timeout configuration in seconds."""
+
+    phase1: int = 18000  # 5 hours for validation
+    phase2: int = 18000  # 5 hours for extraction
+    phase3: int = 600    # 10 minutes for chunking
+    phase4: int = 18000  # 5 hours for TTS (large books)
+    phase5: int = 1800   # 30 minutes for enhancement
+    phase5_5: int = 3600  # 60 minutes for subtitles
+    poetry_install: int = 300  # 5 minutes for dependency install
+
+    def get(self, phase_num: int) -> int:
+        """Get timeout for a specific phase."""
+        return getattr(self, f"phase{phase_num}", 18000)
+
+
+class AutonomyConfig(BaseModel):
+    enable_self_repair: bool = False
+    use_reasoner: bool = False
+    planner_mode: str = "disabled"  # disabled | recommend_only | enforce (future)
+    memory_enabled: bool = False
+    memory_summarization: str = "periodic"  # periodic | off
+    mode: str = "disabled"  # disabled | recommend_only | supervised | autonomous (not implemented)
+    supervised_threshold: float = 0.85
+    policy_kernel_debug: bool = False
+    policy_kernel_enabled: bool = False
+    enable_memory_feedback: bool = False
+    enable_stability_profiles: bool = False
+    enable_confidence_calibration: bool = False
+    enable_self_review: bool = False
+    enable_rewards: bool = False
+    enable_policy_limits: bool = False
+    enable_long_horizon: bool = False
+    enable_forecasting: bool = False
+    enable_long_horizon_profiles: bool = False
+    enable_trend_modeling: bool = False
+    stability_bounds: Dict[str, Any] = Field(default_factory=dict)
+    escalation: Dict[str, Any] = Field(default_factory=dict)
+    profiles: Dict[str, Any] = Field(default_factory=dict)
+    readiness_checks: Dict[str, Any] = Field(default_factory=dict)
+    budget: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SelfRepairConfig(BaseModel):
+    enable_text_rewrite: bool = False
+    rewrite_confidence_threshold: float = 0.7
+    enable_repair_loop: bool = False
+    enable_log_parser: bool = False
+    repair_confidence_threshold: float = 0.85
+    enable_engine_retry: bool = False
+    retry_confidence_threshold: float = 0.85
+
+
+class ReasoningConfig(BaseModel):
+    enable_evaluator: bool = False
+    enable_diagnostics: bool = False
+
+
+class ExperimentsConfig(BaseModel):
+    enable: bool = False
+    limit_per_run: int = 1
+    allowed: List[str] = Field(default_factory=lambda: ["chunk_size", "engine_preference", "rewrite_policy"])
+    dry_run: bool = True
+
+
+class DashboardConfig(BaseModel):
+    enable_data_api: bool = False
+
+
+class GenreConfig(BaseModel):
+    enable_classifier: bool = False
+    use_llama: bool = False
+
+
 class OrchestratorConfig(BaseModel):
     pipeline_path: Path = Field(default=Path("../pipeline.json"), alias="pipeline_json")
     phases_to_run: List[int] = Field(default_factory=lambda: [1, 2, 3, 4, 5])
-    phase_timeout: Optional[int] = None
+    phase_timeout: Optional[int] = None  # Legacy: global override
+    phase_timeouts: PhaseTimeouts = Field(default_factory=PhaseTimeouts)  # Per-phase timeouts
     resume_enabled: bool = True
     log_level: str = "INFO"
     log_file: Optional[str] = None
@@ -298,7 +551,20 @@ class OrchestratorConfig(BaseModel):
     global_time_budget_sec: Optional[int] = None
     subtitles: SubtitleConfig = Field(default_factory=SubtitleConfig)
     policy_engine: Dict[str, Any] = Field(default_factory=lambda: {"logging": True, "learning_mode": "observe"})
+    self_repair: SelfRepairConfig = Field(default_factory=SelfRepairConfig)
+    autonomy: AutonomyConfig = Field(default_factory=AutonomyConfig)
+    reasoning: ReasoningConfig = Field(default_factory=ReasoningConfig)
+    experiments: ExperimentsConfig = Field(default_factory=ExperimentsConfig)
+    genre: GenreConfig = Field(default_factory=GenreConfig)
+    dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
+    introspection: Dict[str, Any] = Field(default_factory=dict)
     model_config = ConfigDict(populate_by_name=True)
+
+    def get_phase_timeout(self, phase_num: int) -> int:
+        """Get timeout for a phase, respecting legacy global override."""
+        if self.phase_timeout is not None:
+            return self.phase_timeout
+        return self.phase_timeouts.get(phase_num)
 
 
 def get_orchestrator_config() -> OrchestratorConfig:
@@ -878,19 +1144,49 @@ def get_phase4_output_dir(phase_dir: Path, pipeline_json: Path, file_id: str) ->
 
 
 def cleanup_partial_outputs(file_id: str, chunk_id: Optional[str], phase_dir: Path, pipeline_json: Path) -> None:
-    """Remove partial audio for a specific chunk and clear its pipeline entry."""
+    """Remove partial/corrupt audio for a specific chunk and clear its pipeline entry.
+
+    Only removes files that are empty or corrupt - preserves valid audio files.
+    """
     output_dir = get_phase4_output_dir(phase_dir, pipeline_json, file_id)
     patterns = [f"{chunk_id}*"] if chunk_id else ["chunk_*"]
     for pattern in patterns:
         for candidate in output_dir.glob(pattern):
             try:
-                candidate.unlink()
-                logger.info(
-                    "Removing partial outputs for chunk %s before retry.",
-                    chunk_id or candidate.name,
-                )
+                # Only delete if file is empty or corrupt
+                if candidate.stat().st_size == 0:
+                    candidate.unlink()
+                    logger.info(
+                        "Removing empty output for chunk %s before retry.",
+                        chunk_id or candidate.name,
+                    )
+                elif candidate.suffix.lower() in (".wav", ".mp3", ".flac"):
+                    # Try to validate audio file - only delete if corrupt
+                    try:
+                        import soundfile as sf
+                        info = sf.info(candidate)
+                        if info.frames <= 0 or info.duration <= 0:
+                            candidate.unlink()
+                            logger.info(
+                                "Removing corrupt audio for chunk %s before retry.",
+                                chunk_id or candidate.name,
+                            )
+                        else:
+                            logger.info(
+                                "Preserving valid audio for chunk %s (%.1fs, %d frames).",
+                                chunk_id or candidate.name,
+                                info.duration,
+                                info.frames,
+                            )
+                    except Exception:
+                        # Can't validate - assume corrupt and remove
+                        candidate.unlink()
+                        logger.info(
+                            "Removing unreadable audio for chunk %s before retry.",
+                            chunk_id or candidate.name,
+                        )
             except Exception as exc:
-                logger.warning("Could not remove partial output %s: %s", candidate, exc)
+                logger.warning("Could not process partial output %s: %s", candidate, exc)
 
     try:
         state = PipelineState(pipeline_json, validate_on_read=False)
@@ -1032,7 +1328,7 @@ def run_phase_with_retry(
     Run a phase with retry logic.
 
     Args:
-        phase_num: Phase number (1-5)
+        phase_num: Phase number (1-5, or optional 7/8 stubs)
         file_path: Input file path
         file_id: File identifier
         pipeline_json: Path to pipeline.json
@@ -1045,7 +1341,15 @@ def run_phase_with_retry(
         True if successful, False otherwise
     """
     phase_label = f"phase{phase_num}"
-    phase_label = f"phase{phase_num}"
+    # Track current engine/voice for policy-based switching
+    current_engine = tts_engine
+    current_voice = voice_id
+
+    if phase_num == 7:
+        return run_phase_autonomy_stub(file_id, pipeline_json, state)
+    if phase_num == 8:
+        return run_phase_reasoning_stub(file_id, pipeline_json, state)
+
     for attempt in range(max_retries + 1):
         if attempt > 0:
             logger.info(f"Retry attempt {attempt}/{max_retries} for Phase {phase_num}")
@@ -1059,6 +1363,31 @@ def run_phase_with_retry(
                 extra={"attempt": attempt},
             )
             _policy_call(policy_engine, "record_retry", retry_ctx)
+
+            # Apply policy recommendations on retry for Phase 4
+            if phase_num == 4 and policy_engine:
+                advice = policy_engine.advise({"phase": phase_label, "file_id": file_id})
+                cfg = get_orchestrator_config()
+                learning_mode = cfg.policy_engine.get("learning_mode", "observe")
+
+                if learning_mode in ("enforce", "tune"):
+                    # Auto-switch engine if recommended
+                    engine_rec = advice.get("engine", {})
+                    if engine_rec.get("action") == "switch_engine":
+                        new_engine = engine_rec.get("recommended_engine")
+                        if new_engine and new_engine != current_engine:
+                            logger.info(f"🤖 PolicyEngine: Auto-switching engine {current_engine} → {new_engine}")
+                            current_engine = new_engine
+
+                    # Auto-switch voice if recommended (switch to secondary)
+                    voice_rec = advice.get("voice_variant", {})
+                    if voice_rec.get("action") == "switch_voice_variant":
+                        # Switch to secondary engine as voice change proxy
+                        secondary = cfg.tts_engines.secondary
+                        if secondary and secondary != current_engine:
+                            logger.info(f"🤖 PolicyEngine: Auto-switching to secondary engine {secondary} (voice variant)")
+                            current_engine = secondary
+
             time.sleep(2)  # Brief pause before retry
             if phase_num == 4:
                 phase_dir = find_phase_dir(4)
@@ -1070,9 +1399,9 @@ def run_phase_with_retry(
             file_path,
             file_id,
             pipeline_json,
-            voice_id,
+            current_voice,
             pipeline_mode,
-            tts_engine,
+            current_engine,  # Use policy-adjusted engine
             state=state,
             runtime_overrides=runtime_overrides,
             policy_engine=policy_engine,
@@ -1082,6 +1411,10 @@ def run_phase_with_retry(
             return True
 
     logger.error(f"Phase {phase_num} failed after {max_retries + 1} attempts")
+
+    # Analyze failure with AI if available
+    _analyze_failure_with_llm(phase_num, file_id)
+
     return False
 
 
@@ -1248,14 +1581,17 @@ def run_phase_standard(
             if result.returncode != 0:
                 logger.error(f"Phase {phase_num} FAILED (exit {result.returncode}) in {duration:.1f}s")
                 logger.error(f"Error: {result.stderr[-500:]}")
+                _store_phase_error(result.stderr)
                 return False
             logger.info(f"Phase {phase_num} SUCCESS in {duration:.1f}s")
             return True
         except subprocess.TimeoutExpired:
             logger.error(f"Phase {phase_num} TIMEOUT (18000s)")
+            _store_phase_error(f"Phase {phase_num} timeout after 18000 seconds")
             return False
         except Exception as e:
             logger.error(f"Phase {phase_num} ERROR: {e}")
+            _store_phase_error(str(e))
             return False
 
     # Check for venv and install if needed
@@ -1417,6 +1753,7 @@ def run_phase_standard(
         if result.returncode != 0:
             logger.error(f"Phase {phase_num} FAILED (exit {result.returncode}) in {duration:.1f}s")
             logger.error(f"Error: {result.stderr[-500:]}")  # Last 500 chars
+            _store_phase_error(result.stderr)
             return False
 
         logger.info(f"Phase {phase_num} SUCCESS in {duration:.1f}s")
@@ -1424,9 +1761,11 @@ def run_phase_standard(
 
     except subprocess.TimeoutExpired:
         logger.error(f"Phase {phase_num} TIMEOUT (600s)")
+        _store_phase_error(f"Phase {phase_num} timeout after 600 seconds")
         return False
     except Exception as e:
         logger.error(f"Phase {phase_num} ERROR: {e}")
+        _store_phase_error(str(e))
         return False
 
 
@@ -1540,7 +1879,29 @@ def run_phase4_multi_engine(
                 # Return list of missing chunk ids (empty list => none missing)
                 return missing
 
-            # If chunk_audio_paths is empty but we expect some chunks, consider all failed
+            # If chunk_audio_paths is empty, scan output directory for existing audio files
+            output_dir = get_phase4_output_dir(phase_dir, pipeline_json, file_id)
+            if output_dir.exists():
+                existing_chunks = set()
+                for audio_file in output_dir.glob("chunk_*.wav"):
+                    if audio_file.stat().st_size > 0:
+                        existing_chunks.add(audio_file.stem)
+                        logger.debug("Found existing audio: %s", audio_file.stem)
+
+                if existing_chunks:
+                    # Only mark chunks as failed if they don't exist on disk
+                    if expected_chunks > 0:
+                        expected_ids = {f"chunk_{i:04d}" for i in range(1, int(expected_chunks) + 1)}
+                        missing = list(expected_ids - existing_chunks)
+                        if missing:
+                            logger.info("Found %d existing audio files, %d missing", len(existing_chunks), len(missing))
+                        return sorted(missing)
+                    else:
+                        # No expected count but we have files - assume success
+                        logger.info("Found %d audio files on disk (no expected count)", len(existing_chunks))
+                        return []
+
+            # If chunk_audio_paths is empty and no files on disk, consider all expected chunks as failed
             if expected_chunks > 0:
                 return [f"chunk_{i:04d}" for i in range(1, int(expected_chunks) + 1)]
 
@@ -1561,6 +1922,7 @@ def run_phase4_multi_engine(
         if existing_py:
             py_paths.append(existing_py)
         env["PYTHONPATH"] = os.pathsep.join(py_paths)
+        phase4_timeout = cfg.get_phase_timeout(4)
         result = subprocess.run(
             cmd,
             cwd=str(Path(phase_dir).resolve()),
@@ -1569,7 +1931,7 @@ def run_phase4_multi_engine(
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=1800,
+            timeout=phase4_timeout,
         )
         duration = time.perf_counter() - start_time
         if result.stdout:
@@ -1604,7 +1966,7 @@ def run_phase4_multi_engine(
             secondary_engine,
         )
         for chunk_id in failed_chunks:
-            match = re.search(r"(\\d+)", chunk_id)
+            match = re.search(r"(\d+)", chunk_id)
             if not match:
                 logger.warning("Cannot parse chunk id %s for fallback", chunk_id)
                 continue
@@ -1650,6 +2012,30 @@ def run_phase4_multi_engine(
         return True
 
     logger.error("Phase 4 failed; remaining failed chunks: %s", failed_chunks)
+    # Record failures to ErrorRegistry for tracking and future self-repair
+    if failed_chunks:
+        _record_chunk_failures(file_id, failed_chunks, engine, "TTS synthesis exhausted all fallbacks")
+
+        # Attempt self-repair strategies via DeadChunkRepair
+        repair = _get_dead_chunk_repair()
+        if repair:
+            logger.info("🔧 Attempting DeadChunkRepair strategies for %d failed chunks...", len(failed_chunks))
+            # Note: Full repair requires engine_manager integration; for now we just register the failures
+            # and log that repair was attempted. The next run can use the registry to try different strategies.
+            for chunk_id in failed_chunks:
+                registry = _get_error_registry()
+                if registry:
+                    # Add a repair attempt marker
+                    from self_repair.repair_loop import RepairAttempt
+                    attempt = RepairAttempt(
+                        strategy="orchestrator_fallback_exhausted",
+                        success=False,
+                        chunk_id=chunk_id,
+                        error="Primary and secondary engines both failed",
+                    )
+                    registry.add_attempt(chunk_id, attempt)
+            logger.info("🔧 Failures logged to ErrorRegistry for future analysis")
+
     return False
 
 
@@ -1737,6 +2123,634 @@ def mark_phase_skipped(pipeline_json: Path, phase_num: int) -> None:
             txn.data[phase_key] = entry
     except Exception as exc:
         logger.warning("Unable to mark Phase %s as skipped: %s", phase_num, exc)
+
+
+def _get_optional_phase_status(state: PipelineState, phase_key: str, file_id: str) -> str:
+    """Return status for optional phases (phaseG/phaseH), defaulting to 'pending'."""
+    snapshot = read_state_snapshot(state, warn=False)
+    phase_data = snapshot.get(phase_key, {}) if isinstance(snapshot, dict) else {}
+    files = phase_data.get("files", {}) if isinstance(phase_data, dict) else {}
+    if isinstance(files, dict) and file_id in files:
+        return str(files[file_id].get("status", "pending"))
+    return "pending"
+
+
+def _record_optional_phase_status(
+    state: PipelineState,
+    phase_key: str,
+    file_id: str,
+    status: str,
+    note: Optional[str] = None,
+) -> None:
+    """Persist status for optional phases without impacting core execution."""
+    try:
+        with state.transaction() as txn:
+            phase_block, file_entry = ensure_phase_and_file(txn.data, phase_key, file_id)
+            file_entry["status"] = status
+            now = datetime.utcnow().isoformat() + "Z"
+            ts = file_entry.get("timestamps") or {}
+            ts.setdefault("start", now)
+            ts["end"] = now
+            file_entry["timestamps"] = ts
+            if note:
+                file_entry["notes"] = note
+            phase_block.setdefault("files", {})[file_id] = file_entry
+    except Exception as exc:
+        logger.debug("Optional phase %s status not recorded: %s", phase_key, exc)
+
+
+def run_phase_autonomy_stub(file_id: str, pipeline_json: Path, state: PipelineState) -> bool:
+    """
+    Phase G (Autonomy) stub.
+
+    Skips unless pipeline.json marks phaseG status as "ready". When ready,
+    records a success marker without performing any work.
+    """
+    status = _get_optional_phase_status(state, "phaseG", file_id)
+    if status != "ready":
+        logger.info("Phase G (Autonomy) status '%s'; skipping stub execution.", status)
+        return True
+
+    logger.info("Phase G (Autonomy) ready; running stub (no-op).")
+    _record_optional_phase_status(
+        state,
+        "phaseG",
+        file_id,
+        "success",
+        note="Autonomy scaffolding stub executed (no-op).",
+    )
+    return True
+
+
+def run_phase_reasoning_stub(file_id: str, pipeline_json: Path, state: PipelineState) -> bool:
+    """
+    Phase H (Reasoning) stub.
+
+    Skips unless pipeline.json marks phaseH status as "ready". When ready,
+    records a success marker without performing any work.
+    """
+    status = _get_optional_phase_status(state, "phaseH", file_id)
+    if status != "ready":
+        logger.info("Phase H (Reasoning) status '%s'; skipping stub execution.", status)
+        return True
+
+    logger.info("Phase H (Reasoning) ready; running stub (no-op).")
+    _record_optional_phase_status(
+        state,
+        "phaseH",
+        file_id,
+        "success",
+        note="Reasoning scaffolding stub executed (no-op).",
+    )
+    return True
+
+
+def run_postrun_self_repair(
+    pipeline_json: Path,
+    file_id: str,
+    autonomy_cfg: AutonomyConfig,
+    self_repair_cfg: SelfRepairConfig,
+) -> None:
+    """Optional self-repair stage after pipeline completion (opt-in)."""
+    if not autonomy_cfg.enable_self_repair:
+        logger.info("Self-repair disabled; skipping post-run RepairLoop.")
+        return
+
+    try:
+        from self_repair.log_parser import LogParser
+        from self_repair.repair_loop import RepairLoop, DeadChunkRepair
+        from self_repair.patch_staging import PatchStaging
+    except Exception as exc:
+        logger.warning("Self-repair dependencies unavailable: %s", exc)
+        return
+
+    logs_dir = Path(".pipeline") / "policy_logs"
+    if not logs_dir.exists():
+        logger.info("Self-repair: no policy_logs directory found; skipping.")
+        return
+
+    log_files = sorted(
+        [p for p in logs_dir.glob("*.log") if p.is_file()],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not log_files:
+        logger.info("Self-repair: no log files found; skipping.")
+        return
+
+    latest_log = log_files[0]
+    logger.info("Self-repair: analyzing log %s", latest_log)
+
+    log_parser = LogParser()
+    dead_chunk_repair = _get_dead_chunk_repair(
+        enable_text_rewrite=self_repair_cfg.enable_text_rewrite,
+        rewrite_conf_threshold=self_repair_cfg.rewrite_confidence_threshold,
+        memory_enabled=autonomy_cfg.memory_enabled,
+    ) or DeadChunkRepair(
+        enable_text_rewrite=self_repair_cfg.enable_text_rewrite,
+        rewrite_confidence_threshold=self_repair_cfg.rewrite_confidence_threshold,
+        memory_enabled=autonomy_cfg.memory_enabled,
+    )
+    reasoner = _get_llama_reasoner() if autonomy_cfg.use_reasoner else None
+    stager = PatchStaging()
+
+    try:
+        events = log_parser.parse_file(latest_log, max_lines=1000)
+    except Exception as exc:
+        logger.warning("Self-repair: failed to parse log %s: %s", latest_log, exc)
+        return
+
+    try:
+        repair_loop = RepairLoop(
+            log_parser=log_parser,
+            dead_chunk_repair=dead_chunk_repair,
+            staging_dir=stager.staging_dir,
+        )
+        suggestions = repair_loop.analyze_and_suggest(events, reasoner=reasoner)
+        stager.stage_suggestions(suggestions, source="orchestrator")
+        logger.info("Self-repair: suggestions staged (if any).")
+    except Exception as exc:
+        logger.warning("Self-repair: RepairLoop failed: %s", exc)
+
+
+def run_reasoning_evaluator(
+    pipeline_json: Path,
+    file_id: str,
+    reasoning_cfg: ReasoningConfig,
+) -> None:
+    """Optional post-run evaluator (opt-in, non-destructive)."""
+    if not reasoning_cfg.enable_evaluator:
+        return
+
+    try:
+        from phaseH_reasoning.evaluator import ReasoningEvaluator
+    except Exception as exc:
+        logger.warning("Reasoning evaluator unavailable: %s", exc)
+        return
+
+    try:
+        evaluator = ReasoningEvaluator()
+        summary = evaluator.evaluate_run(
+            pipeline_json=pipeline_json,
+            file_id=file_id,
+        )
+        runtime_dir = Path(".pipeline") / "policy_runtime"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        summary_path = runtime_dir / "last_run_summary.json"
+        summary_path.write_text(json.dumps(summary, indent=2))
+        logger.info("Reasoning evaluator summary written to %s", summary_path)
+    except Exception as exc:
+        logger.warning("Reasoning evaluator failed: %s", exc)
+        return None
+
+
+def run_reasoning_diagnostics(
+    reasoning_cfg: ReasoningConfig,
+    autonomy_cfg: AutonomyConfig,
+) -> None:
+    """Optional diagnostics using Llama (opt-in, non-destructive)."""
+    if not reasoning_cfg.enable_diagnostics:
+        return
+
+    try:
+        from agents.llama_diagnostics import LlamaDiagnostics
+        from autonomy.memory_store import summarize_history, add_experience
+    except Exception as exc:
+        logger.warning("Diagnostics dependencies unavailable: %s", exc)
+        return
+
+    summary_path = Path(".pipeline") / "policy_runtime" / "last_run_summary.json"
+    if not summary_path.exists():
+        logger.info("Diagnostics skipped: no evaluator summary found.")
+        return
+
+    try:
+        evaluator_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("Diagnostics skipped: cannot read evaluator summary: %s", exc)
+        return
+
+    benchmarks = load_latest_benchmark()
+    try:
+        from policy_engine.policy_engine import get_benchmark_history
+
+        history = get_benchmark_history(limit=3)
+        if history:
+            benchmarks = history[0] if isinstance(history, list) else benchmarks
+    except Exception:
+        pass
+    memory_summary = summarize_history()
+
+    agent = LlamaDiagnostics()
+    try:
+        diagnostics = agent.analyze_runs(
+            evaluator_summary=evaluator_summary or {},
+            memory_summary=memory_summary or {},
+            benchmarks=benchmarks or {},
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Diagnostics agent failed: %s", exc)
+        return
+
+    diag_dir = Path(".pipeline") / "diagnostics"
+    diag_dir.mkdir(parents=True, exist_ok=True)
+    diag_path = diag_dir / f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+    try:
+        diag_path.write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
+        logger.info("Diagnostics written to %s", diag_path)
+        if autonomy_cfg.memory_enabled and add_experience:
+            add_experience("diagnostics", diagnostics)
+    except Exception as exc:
+        logger.warning("Failed to write diagnostics: %s", exc)
+
+
+def run_autonomy_planner(
+    autonomy_cfg: AutonomyConfig,
+    pipeline_json: Path,
+    genre_cfg: GenreConfig,
+    autonomy_mode: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Optional planner to emit recommendations (no auto-apply)."""
+    if autonomy_cfg.planner_mode == "disabled":
+        return
+
+    try:
+        from phaseG_autonomy.planner import AutonomyPlanner
+    except Exception as exc:
+        logger.warning("Autonomy planner unavailable: %s", exc)
+        return
+
+    try:
+        planner = AutonomyPlanner(
+            mode=autonomy_cfg.planner_mode,
+            policy_kernel_enabled=autonomy_cfg.policy_kernel_enabled,
+            autonomy_mode=autonomy_mode,
+        )
+        payload = planner.recommend(
+            pipeline_json=pipeline_json,
+            genre_config=genre_cfg,
+            experiments_cfg=orchestrator_config.experiments,
+            autonomy_cfg=autonomy_cfg,
+            autonomy_mode=autonomy_mode,
+        )
+        if payload.get("status") != "disabled":
+            logger.info("Autonomy planner generated recommendations in %s mode", autonomy_cfg.planner_mode)
+        return payload
+    except Exception as exc:
+        logger.warning("Autonomy planner failed: %s", exc)
+        return None
+
+
+def load_latest_staged_recommendation() -> Optional[Dict[str, Any]]:
+    """Load the most recent staged recommendation, if any."""
+    staged_dir = Path(".pipeline") / "staged_recommendations"
+    if not staged_dir.exists():
+        return None
+    candidates = sorted(staged_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not candidates:
+        return None
+    try:
+        return json.loads(candidates[0].read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def load_latest_benchmark() -> Optional[Dict[str, Any]]:
+    """Load the latest benchmark report if available."""
+    history_dir = Path(".pipeline") / "benchmark_history"
+    if not history_dir.exists():
+        return None
+    candidates = sorted(history_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not candidates:
+        return None
+    try:
+        return json.loads(candidates[0].read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _reset_experiment_state() -> None:
+    """Remove temporary experiment-related attributes to prevent leakage."""
+    global _ACTIVE_EXPERIMENT, _TEMP_EXPERIMENT_OVERRIDES, _EXPERIMENT_CONTEXT, _CURRENT_EXPERIMENT
+    _ACTIVE_EXPERIMENT = None
+    _CURRENT_EXPERIMENT = None
+    _TEMP_EXPERIMENT_OVERRIDES = {}
+    _EXPERIMENT_CONTEXT = {}
+
+
+def _reset_supervised_overrides() -> None:
+    """Clear supervised override state after each run."""
+    global _SUPERVISED_OVERRIDES, _AUTONOMOUS_OVERRIDES
+    _SUPERVISED_OVERRIDES = {}
+    _AUTONOMOUS_OVERRIDES = {}
+
+
+def _apply_experiments_if_enabled(
+    orchestrator_config: OrchestratorConfig,
+    runtime_overrides: Dict[str, Any],
+    file_id: str,
+) -> Dict[str, Any]:
+    """
+    Apply in-memory experiment overrides based on staged recommendations.
+
+    Experiments are opt-in and never persist to configs.
+    """
+    experiments_cfg = orchestrator_config.experiments
+    if not experiments_cfg.enable:
+        return runtime_overrides
+
+    recommendation = load_latest_staged_recommendation()
+    if not recommendation:
+        return runtime_overrides
+
+    experiments = recommendation.get("experiments") or []
+    if not experiments:
+        return runtime_overrides
+
+    applied = []
+    global _ACTIVE_EXPERIMENT, _TEMP_EXPERIMENT_OVERRIDES, _EXPERIMENT_CONTEXT, _CURRENT_EXPERIMENT
+    for exp in experiments:
+        if len(applied) >= experiments_cfg.limit_per_run:
+            break
+        if not isinstance(exp, str):
+            continue
+        if exp.startswith("chunk") and "chunk_size" in experiments_cfg.allowed:
+            runtime_overrides["experiment_chunk_size"] = exp
+            applied.append(exp)
+        elif "engine" in exp and "engine_preference" in experiments_cfg.allowed:
+            runtime_overrides["experiment_engine_pref"] = exp
+            applied.append(exp)
+        elif "rewrite" in exp and "rewrite_policy" in experiments_cfg.allowed:
+            runtime_overrides["experiment_rewrite_policy"] = exp
+            applied.append(exp)
+
+    if applied:
+        experiments_dir = Path(".pipeline") / "experiments"
+        experiments_dir.mkdir(parents=True, exist_ok=True)
+        exp_record = {
+            "file_id": file_id,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "applied": applied,
+            "dry_run": experiments_cfg.dry_run,
+            "runtime_overrides": runtime_overrides,
+        }
+        exp_path = experiments_dir / f"{file_id}_experiments.json"
+        exp_path.write_text(json.dumps(exp_record, indent=2), encoding="utf-8")
+
+        if orchestrator_config.autonomy.memory_enabled:
+            try:
+                from autonomy.memory_store import add_experience
+
+                add_experience("experiment", exp_record)
+            except Exception:
+                pass
+
+        _ACTIVE_EXPERIMENT = applied[:]
+        _CURRENT_EXPERIMENT = applied[:]
+        _TEMP_EXPERIMENT_OVERRIDES = dict(runtime_overrides) if not experiments_cfg.dry_run else {}
+        _EXPERIMENT_CONTEXT = {"file_id": file_id, "dry_run": experiments_cfg.dry_run}
+
+    # Respect dry-run: do not apply overrides to runtime if dry_run is true
+    if experiments_cfg.dry_run:
+        return runtime_overrides
+    return _TEMP_EXPERIMENT_OVERRIDES or runtime_overrides
+
+
+def _apply_supervised_overrides(
+    orchestrator_config: OrchestratorConfig,
+    runtime_overrides: Dict[str, Any],
+    file_id: str,
+) -> Dict[str, Any]:
+    """
+    Apply temporary in-memory overrides when autonomy.mode == supervised
+    and planner confidence meets threshold. Never persists changes.
+    """
+    if orchestrator_config.autonomy.mode != "supervised":
+        return runtime_overrides
+
+    recommendation = load_latest_staged_recommendation()
+    if not recommendation:
+        return runtime_overrides
+
+    confidence = float(recommendation.get("confidence", 0.0))
+    if confidence < orchestrator_config.autonomy.supervised_threshold:
+        return runtime_overrides
+
+    suggested = recommendation.get("suggested_changes") or {}
+    overrides = dict(runtime_overrides)
+
+    global _SUPERVISED_OVERRIDES
+
+    if "phase3.chunk_size" in suggested:
+        overrides.setdefault("phase3", {})
+        overrides["phase3"]["chunk_size_hint"] = suggested["phase3.chunk_size"]
+
+    if "phase4.engine_preference" in suggested:
+        overrides.setdefault("phase4", {})
+        overrides["phase4"]["engine"] = suggested["phase4.engine_preference"].get("preferred")
+
+    if "rewrite_policy" in suggested:
+        overrides.setdefault("phase4", {})
+        overrides["phase4"]["rewrite_policy"] = suggested["rewrite_policy"]
+
+    _SUPERVISED_OVERRIDES = {
+        "overrides": overrides,
+        "confidence": confidence,
+        "source": "supervised_mode",
+    }
+
+    # Record supervised application to memory if enabled
+    if orchestrator_config.autonomy.memory_enabled:
+        try:
+            from autonomy.memory_store import add_experience
+
+            add_experience(
+                "planner_action",
+                {
+                    "mode": "supervised",
+                    "file_id": file_id,
+                    "applied": True,
+                    "suggested_changes": suggested,
+                    "confidence": confidence,
+                },
+            )
+        except Exception:
+            pass
+
+    return overrides
+
+
+def _apply_autonomous_overrides(
+    orchestrator_config: OrchestratorConfig,
+    runtime_overrides: Dict[str, Any],
+    file_id: str,
+    autonomy_mode: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Apply temporary in-memory overrides when autonomy.mode == autonomous.
+    Overrides are filtered by policy and budget and never persist.
+    """
+    mode = autonomy_mode or orchestrator_config.autonomy.mode
+    if mode != "autonomous":
+        return runtime_overrides
+
+    recommendation = load_latest_staged_recommendation()
+    if not recommendation:
+        return runtime_overrides
+
+    autonomous_rec = recommendation.get("autonomous_recommendations") or {}
+    changes = autonomous_rec.get("changes") or recommendation.get("suggested_changes") or {}
+    confidence = float(autonomous_rec.get("confidence", recommendation.get("confidence", 0.0) or 0.0))
+    if not changes:
+        return runtime_overrides
+
+    safe_changes = dict(changes)
+    try:
+        from autonomy.autonomy_policy import check_policy
+
+        safe_changes = check_policy(safe_changes)
+    except Exception:
+        pass
+
+    # Persist attribution if present
+    try:
+        if planner_output and isinstance(planner_output, dict) and planner_output.get("attribution"):
+            try:
+                run_id = policy_engine.run_id if policy_engine else datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+            except Exception:
+                run_id = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+            _write_json_safely(
+                Path(".pipeline") / "attribution" / f"{run_id}_attribution.json",
+                planner_output["attribution"],
+            )
+            if _RUN_TRACE is not None:
+                record_event(
+                    _RUN_TRACE,
+                    "attribution_write",
+                    "Attribution written to disk",
+                    {"path": str(Path(".pipeline") / "attribution" / f"{run_id}_attribution.json")},
+                )
+    except Exception:
+        pass
+
+    try:
+        from autonomy.autonomy_budget import enforce_budget
+
+        packaged = enforce_budget(
+            {"suggested_changes": safe_changes, "confidence": confidence},
+            orchestrator_config.autonomy,
+        )
+        safe_changes = packaged.get("suggested_changes") or safe_changes
+        confidence = packaged.get("confidence", confidence)
+    except Exception:
+        pass
+
+    if not safe_changes:
+        return runtime_overrides
+
+    overrides = dict(runtime_overrides)
+    if "phase3.chunk_size" in safe_changes:
+        overrides.setdefault("phase3", {})["chunk_size_hint"] = safe_changes["phase3.chunk_size"]
+    if "phase4.engine_preference" in safe_changes:
+        pref_payload = safe_changes["phase4.engine_preference"]
+        if isinstance(pref_payload, dict):
+            overrides.setdefault("phase4", {})["engine"] = pref_payload
+    if "rewrite_policy" in safe_changes:
+        overrides.setdefault("phase4", {})["rewrite_policy"] = safe_changes["rewrite_policy"]
+
+    global _AUTONOMOUS_OVERRIDES
+    _AUTONOMOUS_OVERRIDES = {
+        "overrides": overrides,
+        "confidence": confidence,
+        "source": "autonomous_mode",
+    }
+
+    if orchestrator_config.autonomy.memory_enabled:
+        try:
+            from autonomy.memory_store import add_experience
+
+            add_experience(
+                "planner_action",
+                {
+                    "mode": "autonomous",
+                    "file_id": file_id,
+                    "applied": bool(safe_changes),
+                    "suggested_changes": safe_changes,
+                    "confidence": confidence,
+                },
+            )
+        except Exception:
+            pass
+
+    return overrides
+
+
+def run_postrun_repair_pipeline(
+    pipeline_json: Path,
+    file_id: str,
+    self_repair_cfg: SelfRepairConfig,
+) -> None:
+    """
+    Parse logs and run RepairLoop after a run (opt-in, non-destructive).
+    """
+    if not (self_repair_cfg.enable_log_parser or self_repair_cfg.enable_repair_loop):
+        return
+
+    try:
+        from self_repair.log_parser import LogParser
+        from self_repair.repair_loop import RepairLoop, DeadChunkRepair
+    except Exception as exc:
+        logger.warning("RepairLoop dependencies unavailable: %s", exc)
+        return
+
+    logs_dir = Path(".pipeline") / "policy_logs"
+    parser = LogParser()
+    events = []
+    if self_repair_cfg.enable_log_parser:
+        events = parser.parse_logs(logs_dir, max_files=3, max_lines=1000)
+
+    if not (events and self_repair_cfg.enable_repair_loop):
+        return
+
+    dead_chunk_repair = DeadChunkRepair()
+    repair_loop = RepairLoop(log_parser=parser, dead_chunk_repair=dead_chunk_repair)
+    repairs = repair_loop.run(
+        events,
+        confidence_threshold=self_repair_cfg.repair_confidence_threshold,
+    )
+
+    if not repairs:
+        return
+
+    run_id = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    repairs_dir = Path(".pipeline") / "repairs" / run_id
+    repairs_dir.mkdir(parents=True, exist_ok=True)
+
+    successful_repairs = []
+    for item in repairs:
+        result = item.get("result") or {}
+        audio = result.get("audio")
+        if audio is None:
+            continue
+        confidence = float(item.get("confidence", 0.0))
+        chunk_id = item.get("chunk_id") or "unknown_chunk"
+        try:
+            import soundfile as sf
+
+            out_path = repairs_dir / f"{chunk_id}.wav"
+            sf.write(out_path, audio, result.get("sample_rate", 24000))
+            logger.info(
+                "Repaired chunk %s written to %s (non-destructive, conf=%.2f).",
+                chunk_id,
+                out_path,
+                confidence,
+            )
+            successful_repairs.append(
+                {"chunk": chunk_id, "path": str(out_path), "confidence": confidence}
+            )
+        except Exception as exc:
+            logger.warning("Failed to write repaired audio for %s: %s", chunk_id, exc)
+    return successful_repairs
 
 
 def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: Path) -> bool:
@@ -1907,6 +2921,7 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
         if result.returncode != 0:
             logger.error(f"Phase 5 FAILED (exit {result.returncode}) in {duration:.1f}s")
             logger.error(f"Error: {result.stderr[-1000:]}")
+            _store_phase_error(result.stderr)
             return False
 
         logger.info(f"Phase 5 SUCCESS in {duration:.1f}s")
@@ -1914,9 +2929,11 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
 
     except subprocess.TimeoutExpired:
         logger.error("Phase 5 TIMEOUT (1800s)")
+        _store_phase_error("Phase 5 timeout after 1800 seconds")
         return False
     except Exception as e:
         logger.error(f"Phase 5 ERROR: {e}")
+        _store_phase_error(str(e))
         return False
 
 
@@ -2401,6 +3418,7 @@ def run_pipeline(
         policy_engine = PolicyEngine(
             logging_enabled=bool(policy_config.get("logging", False)),
             learning_mode=str(policy_config.get("learning_mode", "observe")),
+            autonomy_mode=orchestrator_config.autonomy.mode,
         )
 
     if policy_engine:
@@ -2408,6 +3426,79 @@ def run_pipeline(
         runtime_overrides = policy_engine.prepare_run_overrides(file_id=file_id)
     else:
         runtime_overrides = {}
+    current_run_id = getattr(policy_engine, "run_id", None) if policy_engine else None
+    if not current_run_id:
+        current_run_id = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+
+    # Memory feedback (opt-in)
+    if orchestrator_config.autonomy.enable_memory_feedback:
+        try:
+            from autonomy import memory_store
+
+            runtime_overrides.setdefault("run_context", {})
+            runtime_overrides["run_context"]["memory_recent"] = memory_store.load_recent_events()
+            runtime_overrides["run_context"]["run_history"] = memory_store.load_recent_runs()
+        except Exception:
+            pass
+
+    # Determine effective autonomy mode with readiness gating (in-memory only)
+    effective_autonomy_mode = orchestrator_config.autonomy.mode
+    if effective_autonomy_mode == "autonomous" and orchestrator_config.autonomy.readiness_checks.get("enable", False):
+        try:
+            from autonomy import readiness, reinforcement
+            from policy_engine.policy_engine import get_benchmark_history
+
+            summary_path = Path(".pipeline") / "policy_runtime" / "last_run_summary.json"
+            evaluator_summary = {}
+            if summary_path.exists():
+                evaluator_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            diagnostics_output = {}
+            diag_dir = Path(".pipeline") / "diagnostics"
+            latest_diag = sorted(diag_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if latest_diag:
+                diagnostics_output = json.loads(latest_diag[0].read_text(encoding="utf-8"))
+            bench = get_benchmark_history()
+            recent_rewards = reinforcement.load_recent_rewards()
+            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            readiness_report = readiness.check_readiness(
+                evaluator_summary,
+                diagnostics_output,
+                recent_rewards,
+                bench,
+                orchestrator_config.autonomy.readiness_checks,
+            )
+            out_dir = Path(".pipeline") / "policy_runtime"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / f"autonomy_readiness_{ts}.json").write_text(
+                json.dumps(readiness_report, indent=2), encoding="utf-8"
+            )
+            if not readiness_report.get("ready"):
+                effective_autonomy_mode = "supervised"
+        except Exception:
+            pass
+    # Apply effective mode in-memory only for this run
+    orchestrator_config.autonomy.mode = effective_autonomy_mode
+
+    # Apply opt-in experiments (in-memory only)
+    runtime_overrides = _apply_experiments_if_enabled(
+        orchestrator_config,
+        runtime_overrides,
+        file_id,
+    )
+
+    # Apply supervised autonomy overrides (in-memory only)
+    runtime_overrides = _apply_supervised_overrides(
+        orchestrator_config,
+        runtime_overrides,
+        file_id,
+    )
+    # Apply autonomous overrides (in-memory only)
+    runtime_overrides = _apply_autonomous_overrides(
+        orchestrator_config,
+        runtime_overrides,
+        file_id,
+        autonomy_mode=effective_autonomy_mode,
+    )
     phase4_overrides = runtime_overrides.get("phase4") or {}
     phase_retry_overrides = runtime_overrides.get("retry_policy") or {}
     engine_override = phase4_overrides.get("engine")
@@ -2630,6 +3721,80 @@ def run_pipeline(
 
     # Build per-file metadata view from canonical state
     file_phase_view = build_file_phase_view(state, file_id)
+
+    # Phase M: profile logging (opt-in, additive-only, reporting)
+    try:
+        auto_cfg = orchestrator_config.autonomy
+    except Exception:
+        auto_cfg = None
+
+    enable_profile_learning = bool(getattr(auto_cfg, "enable_profile_learning", False)) if auto_cfg else False
+    enable_genre_learning = bool(getattr(auto_cfg, "enable_genre_learning", False)) if auto_cfg else False
+    enable_profile_fusion = bool(getattr(auto_cfg, "enable_profile_fusion", False)) if auto_cfg else False
+
+    if enable_profile_learning or enable_genre_learning or enable_profile_fusion:
+        try:
+            from autonomy import memory_store
+            from autonomy import profiles as profile_utils
+            from autonomy import profile_manager
+            from autonomy import reinforcement
+        except Exception:
+            memory_store = None
+            profile_utils = None
+            profile_manager = None
+            reinforcement = None
+
+        if memory_store and profile_utils:
+            run_history = memory_store.load_run_history(limit=100) if hasattr(memory_store, "load_run_history") else []
+            metadata_history = (
+                memory_store.load_metadata_history(limit=50) if hasattr(memory_store, "load_metadata_history") else []
+            )
+            memory_summary = memory_store.summarize_history(max_events=200) if hasattr(memory_store, "summarize_history") else None
+            reward_history = (
+                reinforcement.load_reward_history(limit=20) if reinforcement and hasattr(reinforcement, "load_reward_history") else []
+            )
+            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+            stable_profiles: Dict[str, Any] = {}
+            genre_profile: Dict[str, Any] = {}
+
+            if enable_profile_learning:
+                stable_profiles = {
+                    "engine": profile_utils.compute_engine_stability_profile(run_history),
+                    "chunking": profile_utils.compute_chunking_stability_profile(run_history),
+                }
+                _write_json_safely(Path(".pipeline") / "profiles" / f"stable_profiles_{ts}.json", stable_profiles)
+
+            if enable_genre_learning:
+                genre_profile = profile_utils.compute_genre_profile(run_history, metadata_history)
+                _write_json_safely(Path(".pipeline") / "profiles" / f"genre_profile_{ts}.json", genre_profile)
+
+            if enable_profile_fusion and profile_manager:
+                fused_profile = profile_manager.fuse_profiles(
+                    stable_profiles,
+                    genre_profile,
+                    memory_summary,
+                    reward_history,
+                )
+                _write_json_safely(Path(".pipeline") / "profile_history" / f"fused_profile_{ts}.json", fused_profile)
+
+    # Optional export/reset safeguards (manual intent only)
+    profiles_cfg = getattr(auto_cfg, "profiles", None) if auto_cfg else None
+    if profiles_cfg:
+        export_on_shutdown = bool(getattr(profiles_cfg, "export_on_shutdown", False))
+        allow_reset = bool(getattr(profiles_cfg, "allow_reset_via_flag", False))
+        reset_now = bool(getattr(profiles_cfg, "reset_now", False))
+
+        if export_on_shutdown:
+            export_profiles(str(Path(".pipeline") / "profiles" / "exports"))
+
+        if allow_reset and reset_now:
+            reset_profiles()
+            try:
+                profiles_cfg.reset_now = False
+            except Exception:
+                pass
+
     return {
         "success": True,
         "audiobook_path": str(audiobook_path) if audiobook_path else None,
@@ -2647,6 +3812,7 @@ def run_pipeline(
 
 def main():
     """Main orchestrator entry point."""
+    global _SUPERVISED_OVERRIDES, _AUTONOMOUS_OVERRIDES, _RUN_TRACE
     parser = argparse.ArgumentParser(
         description="Phase 6: Production Orchestrator for Audiobook Pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -2951,6 +4117,610 @@ Pipeline Mode: {pipeline_mode}
                     subtitle_phase_label,
                     file_id,
                 )
+
+    # Optional self-repair stage (post-run)
+    try:
+        run_postrun_self_repair(
+            pipeline_json,
+            file_id,
+            orchestrator_config.autonomy,
+            orchestrator_config.self_repair,
+        )
+    except Exception as exc:
+        logger.warning("Post-run self-repair skipped due to error: %s", exc)
+
+    # Optional reasoning evaluator (post-run summary)
+    try:
+        run_reasoning_evaluator(
+            pipeline_json,
+            file_id,
+            orchestrator_config.reasoning,
+        )
+    except Exception as exc:
+        logger.warning("Reasoning evaluator skipped: %s", exc)
+
+    # Optional diagnostics (Llama, opt-in)
+    try:
+        run_reasoning_diagnostics(
+            orchestrator_config.reasoning,
+            orchestrator_config.autonomy,
+        )
+    except Exception as exc:
+        logger.warning("Diagnostics skipped: %s", exc)
+
+    planner_output: Optional[Dict[str, Any]] = None
+    run_trace = _RUN_TRACE
+    # Optional autonomy planner (recommend-only)
+    try:
+        introspection_cfg = orchestrator_config.introspection if hasattr(orchestrator_config, "introspection") else {}
+        if not isinstance(introspection_cfg, dict):
+            introspection_cfg = {}
+        if introspection_cfg.get("enable_reasoning_trace", False) and run_trace is None:
+            trace_id = policy_engine.run_id if policy_engine else datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+            run_trace = begin_run_trace(trace_id)
+            _RUN_TRACE = run_trace
+            record_event(run_trace, "run_start", "Run trace initialized", {"run_id": trace_id})
+
+        planner_output = run_autonomy_planner(
+            orchestrator_config.autonomy,
+            pipeline_json,
+            orchestrator_config.genre,
+            autonomy_mode=orchestrator_config.autonomy.mode,
+        )
+        if run_trace is not None:
+            record_event(
+                run_trace,
+                stage="planner",
+                message="Planner produced recommendations",
+                payload={"recommendations": planner_output},
+            )
+        autonomy_mode = orchestrator_config.autonomy.mode
+        readiness_report = {}
+        if (
+            autonomy_mode == "autonomous"
+            and orchestrator_config.autonomy.readiness_checks.get("enable", False)
+        ):
+            try:
+                from autonomy import readiness
+                from autonomy import reinforcement
+                from policy_engine.policy_engine import get_benchmark_history
+
+                summary_path = Path(".pipeline") / "policy_runtime" / "last_run_summary.json"
+                evaluator_summary = {}
+                if summary_path.exists():
+                    evaluator_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                diagnostics_output = {}
+                diag_dir = Path(".pipeline") / "diagnostics"
+                latest_diag = sorted(diag_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+                if latest_diag:
+                    diagnostics_output = json.loads(latest_diag[0].read_text(encoding="utf-8"))
+                bench = get_benchmark_history()
+                recent_rewards = reinforcement.load_recent_rewards()
+                ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                readiness_report = readiness.check_readiness(
+                    evaluator_summary,
+                    diagnostics_output,
+                    recent_rewards,
+                    bench,
+                    orchestrator_config.autonomy.readiness_checks,
+                )
+                out_dir = Path(".pipeline") / "policy_runtime"
+                out_dir.mkdir(parents=True, exist_ok=True)
+                (out_dir / f"autonomy_readiness_{ts}.json").write_text(
+                    json.dumps(readiness_report, indent=2), encoding="utf-8"
+                )
+                if not readiness_report.get("ready"):
+                    autonomy_mode = "supervised"
+            except Exception:
+                pass
+
+        # Phase J safety sequence: readiness -> stability -> drift -> escalation -> envelope -> policy/budget
+        safety_block_overrides = False
+        safety_state_path = Path(".pipeline") / "policy_runtime" / "safety_state.json"
+        stability_result: Dict[str, Any] = {}
+        drift_info: Dict[str, Any] = {}
+        escalation_result: Dict[str, Any] = {}
+        try:
+            # Stability bounds
+            if orchestrator_config.autonomy.stability_bounds.get("enable", False) and planner_output:
+                recs = planner_output.get("suggested_changes") or planner_output.get("autonomous_recommendations", {}).get("changes", {})
+                stability_result = check_stability_bounds(recs, {}, orchestrator_config.autonomy)
+                if stability_result.get("violations"):
+                    log_safety_event("stability_violation", {"violations": stability_result.get("violations")})
+                if recs and stability_result.get("filtered_overrides") and stability_result.get("filtered_overrides") != recs:
+                    if "suggested_changes" in planner_output:
+                        planner_output["suggested_changes"] = stability_result.get("filtered_overrides")
+                    if "autonomous_recommendations" in planner_output:
+                        planner_output["autonomous_recommendations"]["changes"] = stability_result.get("filtered_overrides")
+
+            # Drift detection
+            try:
+                from autonomy import memory_store
+            except Exception:
+                memory_store = None
+            run_history = memory_store.load_run_history(limit=50) if memory_store and hasattr(memory_store, "load_run_history") else []
+            drift_info = detect_drift(run_history, {})
+            if drift_info.get("drift_detected"):
+                log_safety_event("drift_detected", drift_info)
+
+            # Escalation
+            state = load_safety_state(safety_state_path)
+            escalation_result = evaluate_escalation(state, drift_info, stability_result, orchestrator_config.autonomy)
+            if escalation_result.get("updated_state") is not None:
+                write_safety_state(safety_state_path, escalation_result["updated_state"])
+            if escalation_result.get("lockout"):
+                autonomy_mode = "supervised"
+                safety_block_overrides = True
+                log_safety_event("escalation_lockout", escalation_result)
+
+            # Safety envelope
+            safety_eval = apply_safety_envelope(readiness_report or {}, stability_result, drift_info, orchestrator_config.autonomy)
+            if not safety_eval.get("safe", True):
+                autonomy_mode = "supervised"
+                safety_block_overrides = True
+                log_safety_event("safety_downgrade", {"reasons": safety_eval.get("blocked_reasons", [])})
+        except Exception:
+            pass
+        if safety_block_overrides:
+            _SUPERVISED_OVERRIDES.clear()
+            _AUTONOMOUS_OVERRIDES.clear()
+        # Supervised autonomy budget enforcement (in-memory only)
+        if (
+            autonomy_mode == "supervised"
+            and planner_output
+            and planner_output.get("confidence", 0.0) >= orchestrator_config.autonomy.supervised_threshold
+        ):
+            try:
+                from autonomy.autonomy_budget import enforce_budget
+
+                budgeted = enforce_budget(planner_output, orchestrator_config.autonomy)
+                if not safety_block_overrides:
+                    _SUPERVISED_OVERRIDES = {
+                        "overrides": budgeted.get("suggested_changes"),
+                        "confidence": budgeted.get("confidence", planner_output.get("confidence")),
+                        "source": "supervised_mode",
+                    }
+            except Exception:
+                pass
+        # Autonomous mode temporary overrides (opt-in, in-memory only)
+        elif (
+            autonomy_mode == "autonomous"
+            and planner_output
+        ):
+            try:
+                from autonomy.autonomy_policy import check_policy
+                from autonomy.autonomy_budget import enforce_budget
+
+                safe_overrides = check_policy(planner_output.get("autonomous_recommendations", {}).get("changes", {}))
+                safe_overrides = enforce_budget(
+                    {"suggested_changes": safe_overrides, "confidence": planner_output.get("confidence", 0.0)},
+                    orchestrator_config.autonomy,
+                )
+                if not safety_block_overrides:
+                    _SUPERVISED_OVERRIDES = {
+                        "overrides": safe_overrides.get("suggested_changes"),
+                        "confidence": safe_overrides.get("confidence", planner_output.get("confidence")),
+                        "source": "autonomous_mode",
+                    }
+            except Exception:
+                pass
+        # Policy limits (opt-in) filter supervised overrides
+        if (
+            orchestrator_config.autonomy.enable_policy_limits
+            and planner_output
+            and _SUPERVISED_OVERRIDES.get("overrides")
+        ):
+            try:
+                from autonomy.autonomy_policy import check_policy
+
+                filtered = check_policy(_SUPERVISED_OVERRIDES.get("overrides"))
+                _SUPERVISED_OVERRIDES["overrides"] = filtered
+            except Exception:
+                pass
+        journal_recorded = False
+        # Readiness assessment (opt-in reporting only)
+        if orchestrator_config.autonomy.readiness_checks.get("enable", False):
+            try:
+                from autonomy import readiness
+                from autonomy import reinforcement
+
+                summary_path = Path(".pipeline") / "policy_runtime" / "last_run_summary.json"
+                evaluator_summary = {}
+                if summary_path.exists():
+                    evaluator_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                diagnostics_output = {}
+                diag_dir = Path(".pipeline") / "diagnostics"
+                latest_diag = sorted(diag_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+                if latest_diag:
+                    diagnostics_output = json.loads(latest_diag[0].read_text(encoding="utf-8"))
+                from policy_engine.policy_engine import get_benchmark_history
+
+                bench = get_benchmark_history()
+                recent_rewards = reinforcement.load_recent_rewards()
+                ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                readiness_report = readiness.assess_readiness(
+                    evaluator_summary,
+                    diagnostics_output,
+                    bench,
+                    recent_rewards,
+                    orchestrator_config.autonomy.readiness_checks,
+                )
+                out_dir = Path(".pipeline") / "policy_runtime"
+                out_dir.mkdir(parents=True, exist_ok=True)
+                (out_dir / f"autonomy_readiness_{ts}.json").write_text(
+                    json.dumps(readiness_report, indent=2), encoding="utf-8"
+                )
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.warning("Autonomy planner skipped: %s", exc)
+
+    # Optional feature attribution for planner output (opt-in)
+    try:
+        introspection_cfg = orchestrator_config.introspection if hasattr(orchestrator_config, "introspection") else {}
+        if not isinstance(introspection_cfg, dict):
+            introspection_cfg = {}
+        if introspection_cfg.get("enable_feature_attribution", False) and planner_output:
+            summary_path = Path(".pipeline") / "policy_runtime" / "last_run_summary.json"
+            evaluator_summary = {}
+            if summary_path.exists():
+                try:
+                    evaluator_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                except Exception:
+                    evaluator_summary = {}
+            diagnostics_output = {}
+            diag_dir = Path(".pipeline") / "diagnostics"
+            latest_diag = sorted(diag_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if latest_diag:
+                try:
+                    diagnostics_output = json.loads(latest_diag[0].read_text(encoding="utf-8"))
+                except Exception:
+                    diagnostics_output = {}
+            attribution = explain_recommendations(
+                planner_output,
+                {},
+                evaluator_summary,
+                diagnostics_output,
+            )
+            planner_output["attribution"] = attribution
+            if _RUN_TRACE is not None:
+                record_event(_RUN_TRACE, "attribution", "Feature attribution generated", {"attribution": attribution})
+    except Exception:
+        pass
+
+    # Optional benchmark auto-run (non-blocking, opt-in)
+    try:
+        if orchestrator_config.benchmark.enable and orchestrator_config.benchmark.auto_run:
+            from phaseE_benchmark.benchmark_runner import BenchmarkRunner
+
+            BenchmarkRunner().run_all_engines()
+    except Exception as exc:
+        logger.warning("Benchmark auto-run skipped due to error: %s", exc)
+
+    # Optional post-run log parsing and repair loop (non-destructive)
+    try:
+        repairs_applied = run_postrun_repair_pipeline(
+            pipeline_json,
+            file_id,
+            orchestrator_config.self_repair,
+        )
+        if (
+            orchestrator_config.self_repair.enable_engine_retry
+            and repairs_applied
+            and isinstance(repairs_applied, list)
+        ):
+            from phase4_tts.engines.engine_manager import EngineManager
+
+            manager = EngineManager()
+            filtered = [
+                r for r in repairs_applied if r.get("confidence", 0.0) >= orchestrator_config.self_repair.retry_confidence_threshold
+            ]
+            for repair in filtered:
+                manager.try_repaired_chunk(repair.get("chunk"), repair)
+        # Update run summary with repairs applied (non-destructive)
+        try:
+            summary_path = Path(".pipeline") / "policy_runtime" / "last_run_summary.json"
+            evaluator_summary = {}
+            if summary_path.exists():
+                evaluator_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            diagnostics_output = {}
+            diag_dir = Path(".pipeline") / "diagnostics"
+            latest_diag = sorted(diag_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if latest_diag:
+                diagnostics_output = json.loads(latest_diag[0].read_text(encoding="utf-8"))
+            if repairs_applied and summary_path.exists():
+                summary = evaluator_summary or {}
+                summary["repairs_applied"] = [
+                    {
+                        "chunk_id": r.get("chunk"),
+                        "audio_path": r.get("path"),
+                        "confidence": r.get("confidence"),
+                        "notes": r.get("notes", ""),
+                    }
+                    for r in repairs_applied
+                ]
+                summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+            reward_for_memory: Optional[float] = None
+            # Rewards (opt-in)
+            if orchestrator_config.autonomy.enable_rewards:
+                try:
+                    from autonomy import reinforcement, memory_store
+
+                    prev = memory_store.load_previous_run()
+                    reward = reinforcement.compute_reward(evaluator_summary, diagnostics_output, prev)
+                    reward_for_memory = reward.get("reward")
+                    reinforcement.save_reward(reward)
+                    # Record autonomy change journal (informational)
+                    try:
+                        from autonomy.rollback import record_changes
+
+                        run_id = policy_engine.run_id if policy_engine else current_run_id
+                        applied_overrides = (
+                            _AUTONOMOUS_OVERRIDES.get("overrides")
+                            or _SUPERVISED_OVERRIDES.get("overrides", {})
+                        )
+                        record_changes(run_id, applied_overrides or {}, reward.get("reward", 0.0))
+                        journal_recorded = True
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            # Self-review (opt-in, reflective only)
+            if orchestrator_config.autonomy.enable_self_review:
+                try:
+                    from agents.llama_self_review import LlamaSelfReview
+                    from autonomy import memory_store
+
+                    run_history = memory_store.load_run_history(limit=5)
+
+                    reflection = (
+                        LlamaSelfReview()
+                        .analyze_run(
+                            evaluator_summary or {},
+                            diagnostics_output or {},
+                            {"history": run_history},
+                            planner_output or {},
+                        )
+                        or {}
+                    )
+                    refl_dir = Path(".pipeline") / "reflections"
+                    refl_dir.mkdir(parents=True, exist_ok=True)
+                    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                    (refl_dir / f"{ts}.json").write_text(json.dumps(reflection, indent=2), encoding="utf-8")
+                    policy_refl_dir = Path(".pipeline") / "policy_runtime" / "reflections"
+                    policy_refl_dir.mkdir(parents=True, exist_ok=True)
+                    (policy_refl_dir / f"{ts}.json").write_text(json.dumps(reflection, indent=2), encoding="utf-8")
+                except Exception:
+                    pass
+            # Memory feedback: persist run performance (opt-in, always run at end, after reward/review)
+            if orchestrator_config.autonomy.enable_memory_feedback:
+                try:
+                    from autonomy import memory_store
+
+                    phase_failures = evaluator_summary.get("phase_failures", {}) if isinstance(evaluator_summary, dict) else {}
+                    engine_used = evaluator_summary.get("engine_used") if isinstance(evaluator_summary, dict) else None
+                    chunk_settings = evaluator_summary.get("chunk_settings") if isinstance(evaluator_summary, dict) else {}
+                    duration_seconds = evaluator_summary.get("duration_seconds") if isinstance(evaluator_summary, dict) else None
+                    memory_store.record_run_performance(
+                        current_run_id,
+                        file_id,
+                        evaluator_summary or {},
+                        diagnostics_output or {},
+                        reward=reward_for_memory,
+                        engine_used=engine_used,
+                        chunk_settings=chunk_settings,
+                        duration_seconds=duration_seconds,
+                        phase_failures=phase_failures,
+                    )
+                except Exception:
+                    pass
+            # Stability profiles (opt-in)
+            if orchestrator_config.autonomy.enable_stability_profiles:
+                try:
+                    from autonomy import memory_store
+
+                    run_history = memory_store.load_run_history(limit=50)
+                    profiles = {
+                        "engine_stability": memory_store.extract_engine_stability_patterns(run_history),
+                        "genre_stability": memory_store.extract_genre_stability(run_history),
+                        "chunk_size_stability": memory_store.extract_chunk_size_stability(run_history),
+                        "summary": "Stability snapshot derived from recent runs.",
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                    }
+                    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                    out_dir = Path(".pipeline") / "stability_profiles"
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                    (out_dir / f"stability_{ts}.json").write_text(json.dumps(profiles, indent=2), encoding="utf-8")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # Record journal for autonomous overrides even if rewards are disabled
+        if not journal_recorded and _AUTONOMOUS_OVERRIDES:
+            try:
+                from autonomy.rollback import record_changes
+
+                run_id = policy_engine.run_id if policy_engine else "unknown"
+                record_changes(run_id, _AUTONOMOUS_OVERRIDES.get("overrides", {}), 0.0)
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.warning("Post-run repair loop skipped: %s", exc)
+
+    # Record experiment result (if any)
+    try:
+        if orchestrator_config.experiments.enable and orchestrator_config.autonomy.memory_enabled:
+            from autonomy.memory_store import add_experience
+
+            add_experience(
+                "experiment_result",
+                {
+                    "file_id": file_id,
+                    "status": "completed",
+                },
+            )
+        if orchestrator_config.experiments.enable:
+            _reset_experiment_state()
+        # Persist supervised actions (if any) then reset
+        combined_overrides = _AUTONOMOUS_OVERRIDES or _SUPERVISED_OVERRIDES
+        if combined_overrides:
+            run_id = policy_engine.run_id if policy_engine else datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+            out_dir = Path(".pipeline") / "policy_runtime" / "supervised_actions"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = out_dir / f"{run_id}.json"
+            payload = {
+                "overrides": combined_overrides.get("overrides"),
+                "confidence": combined_overrides.get("confidence"),
+                "notes": "Temporary overrides only; no changes persisted.",
+                "source": combined_overrides.get("source"),
+            }
+            out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            _reset_supervised_overrides()
+    except Exception:
+        pass
+
+    # Phase I introspection (opt-in, additive-only)
+    try:
+        introspection_cfg = orchestrator_config.introspection if hasattr(orchestrator_config, "introspection") else {}
+        if not isinstance(introspection_cfg, dict):
+            introspection_cfg = {}
+
+        if any(
+            introspection_cfg.get(flag, False)
+            for flag in ("enable_clustering", "enable_narratives", "enable_self_critique", "enable_summary")
+        ):
+            try:
+                from autonomy import memory_store
+            except Exception:
+                memory_store = None
+
+            summary_path = Path(".pipeline") / "policy_runtime" / "last_run_summary.json"
+            evaluator_summary = {}
+            if summary_path.exists():
+                try:
+                    evaluator_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                except Exception:
+                    evaluator_summary = {}
+            diagnostics_output = {}
+            diag_dir = Path(".pipeline") / "diagnostics"
+            latest_diag = sorted(diag_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if latest_diag:
+                try:
+                    diagnostics_output = json.loads(latest_diag[0].read_text(encoding="utf-8"))
+                except Exception:
+                    diagnostics_output = {}
+            planner_recommendations = planner_output or {}
+            run_history = memory_store.load_run_history(limit=5) if memory_store and hasattr(memory_store, "load_run_history") else []
+
+            clusters = None
+            narrative = None
+            critique = None
+
+            if introspection_cfg.get("enable_clustering", False):
+                try:
+                    clusters = cluster_anomalies(evaluator_summary, diagnostics_output, run_history)
+                except Exception:
+                    clusters = {}
+            if introspection_cfg.get("enable_narratives", False):
+                try:
+                    narrative = generate_narrative(clusters, evaluator_summary, diagnostics_output)
+                except Exception:
+                    narrative = {}
+            if introspection_cfg.get("enable_self_critique", False):
+                try:
+                    critique = self_critique(evaluator_summary, diagnostics_output, planner_recommendations, clusters)
+                except Exception:
+                    critique = {}
+            if introspection_cfg.get("enable_summary", False):
+                try:
+                    run_id = policy_engine.run_id if policy_engine else datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+                except Exception:
+                    run_id = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+                bundle = auto_introspection.build_introspection_summary(
+                    planner_recommendations,
+                    evaluator_summary,
+                    diagnostics_output,
+                    None,
+                )
+                _write_json_safely(Path(".pipeline") / "introspection" / f"{run_id}_introspection.json", bundle)
+                if _RUN_TRACE is not None:
+                    record_event(
+                        _RUN_TRACE,
+                        "introspection_summary",
+                        "Introspection summary written",
+                        {"path": str(Path(".pipeline") / "introspection" / f"{run_id}_introspection.json")},
+                    )
+    except Exception:
+        pass
+
+    # Finalize reasoning trace (if enabled)
+    try:
+        if _RUN_TRACE is not None:
+            try:
+                trace_run_id = _RUN_TRACE.get("run_id") if isinstance(_RUN_TRACE, dict) else None
+                if not trace_run_id:
+                    trace_run_id = policy_engine.run_id if policy_engine else datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+            except Exception:
+                trace_run_id = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+            finalize_trace(_RUN_TRACE, str(Path(".pipeline") / "traces" / f"{trace_run_id}_trace.json"))
+    except Exception:
+        pass
+
+    # Long-horizon aggregation and forecasting (opt-in, informational only)
+    try:
+        auto_cfg = orchestrator_config.autonomy
+    except Exception:
+        auto_cfg = None
+    try:
+        enable_long_horizon = bool(getattr(auto_cfg, "enable_long_horizon", False)) if auto_cfg else False
+        enable_forecasting = bool(getattr(auto_cfg, "enable_forecasting", False)) if auto_cfg else False
+        enable_long_profiles = bool(getattr(auto_cfg, "enable_long_horizon_profiles", False)) if auto_cfg else False
+        enable_trend_modeling = bool(getattr(auto_cfg, "enable_trend_modeling", False)) if auto_cfg else False
+        long_horizon_snapshot = None
+        patterns_path = None
+        forecast_path = None
+        snapshot_path = None
+        pointer_data = {}
+        if enable_long_horizon or enable_forecasting or enable_long_profiles or enable_trend_modeling:
+            summaries = lh_aggregator.load_all_runs()
+            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            patterns_result = None
+            if enable_long_horizon:
+                long_horizon_snapshot = lh_aggregator.aggregate_long_horizon_history(summaries)
+                snapshot_path = lh_aggregator.write_long_horizon_snapshot(long_horizon_snapshot, ts)
+                patterns_result = lh_patterns.build_cross_run_patterns(summaries)
+                if patterns_result:
+                    patterns_out = Path(".pipeline") / "long_horizon" / f"patterns_{ts}.json"
+                    _write_json_safely(patterns_out, patterns_result)
+                    patterns_path = patterns_out
+            if enable_long_profiles:
+                profile = auto_long_horizon.aggregate_multi_run_history(summaries)
+                auto_long_horizon.write_long_horizon_profile(profile, ts)
+            trend_info = None
+            if enable_trend_modeling:
+                trend_info = auto_trends.build_combined_trends(summaries)
+                trends_out = Path(".pipeline") / "policy_runtime" / f"trends_{ts}.json"
+                _write_json_safely(trends_out, trend_info)
+            if enable_forecasting:
+                if trend_info is None:
+                    trend_info = auto_trends.build_combined_trends(summaries)
+                forecast = auto_predictive.forecast_outcomes(summaries, trend_info or {})
+                forecast_out = Path(".pipeline") / "policy_runtime" / f"forecast_{ts}.json"
+                _write_json_safely(forecast_out, forecast)
+                forecast_path = forecast_out
+                if planner_output and isinstance(planner_output, dict):
+                    planner_output["forecast"] = forecast
+            if enable_long_horizon or enable_forecasting or enable_long_profiles or enable_trend_modeling:
+                pointer_data = {
+                    "snapshot_file": str(snapshot_path) if snapshot_path else None,
+                    "patterns_file": str(patterns_path) if patterns_path else None,
+                    "forecast_file": str(forecast_path) if forecast_path else None,
+                    "timestamp": ts,
+                }
+                pointer_out = Path(".pipeline") / "policy_runtime" / f"long_horizon_summary_{ts}.json"
+                _write_json_safely(pointer_out, pointer_data)
+    except Exception:
+        pass
 
     # Calculate duration
     duration = time.perf_counter() - overall_start
