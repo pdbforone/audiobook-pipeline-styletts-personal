@@ -45,7 +45,7 @@ def _run_orchestrator(phases: list[int]) -> dict:
 
 
 def test_full_pipeline_success():
-    data = _run_orchestrator([1, 2, 3, 4, 5])
+    data = _run_orchestrator([1, 2, 3, 4, 5, 6])
     file_id = INPUT_FILE.stem
     for phase_key in ("phase1", "phase2", "phase3", "phase4", "phase5", "phase6"):
         status = data.get(phase_key, {}).get("status")

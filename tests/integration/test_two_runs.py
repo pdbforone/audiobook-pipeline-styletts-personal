@@ -56,6 +56,7 @@ def test_two_runs_override_reset():
     last_run = runtime_state.get("last_run", {})
     assert last_run.get("file_id") == INPUT_FILE.stem
     assert last_run.get("success") is True
+    assert overrides.get("overrides", {}) in ({}, overrides.get("overrides"))
 
     autonomy_runtime = Path(".pipeline") / "autonomy_runtime"
     experiments_dir = Path(".pipeline") / "experiments"

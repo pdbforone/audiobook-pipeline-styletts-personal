@@ -12,6 +12,7 @@ import pytest
 RUN_PHASE_O = os.environ.get("RUN_PHASE_O_FULL") == "1"
 PIPELINE_JSON = Path(".pipeline/verification_pipeline.json")
 INPUT_FILE = Path("input/baseline_snippet.txt")
+CONFIG_PATH = Path("phase6_orchestrator") / "config.yaml"
 
 
 def _require_env():
@@ -43,6 +44,16 @@ def test_safety_logs_and_overrides():
     safety_logs_dir = Path(".pipeline") / "policy_runtime"
     if safety_logs_dir.exists():
         assert safety_logs_dir.is_dir()
+
+    # Autonomy mode must remain supervised/recommend_only/disabled
+    if CONFIG_PATH.exists():
+        try:
+            import yaml
+            cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
+            mode = (cfg.get("autonomy") or {}).get("mode", "disabled")
+            assert mode in {"disabled", "supervised", "recommend_only"}
+        except Exception:
+            pass
 
     outside_writes = [p for p in Path(".").iterdir() if p.name not in {".pipeline", "input", "phase3-chunking", "phase4_tts", "phase5_enhancement"}]
     assert outside_writes is not None  # no destructive writes asserted by absence

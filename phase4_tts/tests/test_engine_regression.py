@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 import pytest
+
 yaml = pytest.importorskip("yaml", reason="PyYAML required for registry validation")
 
 
@@ -27,6 +28,8 @@ def test_piper_disabled_in_registry():
 
 def test_xtts_and_kokoro_synthesis(tmp_path):
     _require_env()
+    numpy = pytest.importorskip("numpy", reason="numpy required for regression smoke")
+    sf = pytest.importorskip("soundfile", reason="soundfile required to persist audio")
     try:
         from phase4_tts.engines.engine_manager import EngineManager
         from phase4_tts.engines.xtts_engine import XTTSEngine
@@ -54,3 +57,11 @@ def test_xtts_and_kokoro_synthesis(tmp_path):
             pytest.skip(f"{engine_key} synthesis unavailable: {exc}")
         assert used_engine == engine_key
         assert audio is not None
+        assert audio.size > 0
+        sample_rate = manager.get_engine(engine_key).get_sample_rate()
+        out_path = tmp_path / f"{engine_key}.wav"
+        sf.write(out_path, audio, sample_rate)
+        assert out_path.exists()
+        assert out_path.stat().st_size > 0
+        duration = len(audio) / float(sample_rate)
+        assert duration >= 0

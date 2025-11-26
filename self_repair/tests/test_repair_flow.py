@@ -20,7 +20,11 @@ def _require_env():
 
 def test_repair_registry_updates(tmp_path):
     _require_env()
-    registry_path = tmp_path / "error_registry.json"
+    pipeline_dir = tmp_path / ".pipeline"
+    pipeline_dir.mkdir(parents=True, exist_ok=True)
+    registry_path = pipeline_dir / "error_registry.json"
+    repairs_dir = pipeline_dir / "repairs"
+    repairs_dir.mkdir(parents=True, exist_ok=True)
     registry = ErrorRegistry(path=registry_path)
 
     chunk_id = "chunk_test"
@@ -42,5 +46,23 @@ def test_repair_registry_updates(tmp_path):
     original_size = chunk_path.stat().st_size
 
     repair = DeadChunkRepair(error_registry=registry)
-    assert repair.registry is registry
+    # Avoid real strategies; patch to no-op to ensure registry write only
+    repair._try_smaller_splits = lambda **_: None
+    repair._try_different_engine = lambda **_: None
+    repair._try_text_rewrite = lambda **_: None
+    repair._try_simplify_text = lambda **_: None
+
+    repair.repair(
+        chunk_id=chunk_id,
+        file_id=file_id,
+        text="bad chunk",
+        original_engine="xtts",
+        reference_audio=None,
+        max_attempts=1,
+        auto_repair=False,
+    )
+
+    assert registry_path.exists()
+    content = registry_path.read_text(encoding="utf-8")
+    assert '"chunk_id": "chunk_test"' in content
     assert chunk_path.stat().st_size == original_size
