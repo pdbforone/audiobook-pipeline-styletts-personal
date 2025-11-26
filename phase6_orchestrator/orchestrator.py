@@ -4768,6 +4768,102 @@ Next Steps:
             metadata={"file_id": file_id, "phases": completed_phases},
         )
 
+    # Optional Phase P research hook (opt-in, non-blocking)
+    try:
+        research_cfg = getattr(orchestrator_config, "research", None)
+        research_enabled = False
+        if isinstance(research_cfg, dict):
+            research_enabled = bool(research_cfg.get("enable"))
+        else:
+            research_enabled = bool(getattr(research_cfg, "enable", False))
+        if research_enabled:
+            from phaseP_research.research_config import ResearchConfig
+            from phaseP_research.research_collector import ResearchCollector
+            from phaseP_research.research_analyzer import ResearchAnalyzer
+            from phaseP_research.research_reporter import ResearchReporter
+
+            cfg_kwargs = {
+                "enable_research": research_enabled,
+                "collect_phase_metrics": bool(getattr(research_cfg, "collect_phase_metrics", False))
+                if not isinstance(research_cfg, dict)
+                else bool(research_cfg.get("collect_phase_metrics")),
+                "collect_failure_patterns": bool(getattr(research_cfg, "collect_failure_patterns", False))
+                if not isinstance(research_cfg, dict)
+                else bool(research_cfg.get("collect_failure_patterns")),
+                "collect_engine_stats": bool(getattr(research_cfg, "collect_engine_stats", False))
+                if not isinstance(research_cfg, dict)
+                else bool(research_cfg.get("collect_engine_stats")),
+                "collect_chunk_stats": bool(getattr(research_cfg, "collect_chunk_stats", False))
+                if not isinstance(research_cfg, dict)
+                else bool(research_cfg.get("collect_chunk_stats")),
+                "collect_memory_signals": bool(getattr(research_cfg, "collect_memory_signals", False))
+                if not isinstance(research_cfg, dict)
+                else bool(research_cfg.get("collect_memory_signals")),
+                "collect_policy_signals": bool(getattr(research_cfg, "collect_policy_signals", False))
+                if not isinstance(research_cfg, dict)
+                else bool(research_cfg.get("collect_policy_signals")),
+            }
+            rcfg = ResearchConfig(**cfg_kwargs)
+            try:
+                state = PipelineState(pipeline_json, validate_on_read=False)
+                run_state = state.read(validate=False)
+            except Exception:
+                run_state = {}
+            raw = ResearchCollector(rcfg).collect(run_state)
+            analysis = ResearchAnalyzer().analyze(raw)
+            ResearchReporter().write_report(analysis)
+
+            research_signals = {"raw": raw, "analysis": analysis}
+            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+            # Quality gate (informational only)
+            try:
+                enable_qg = False
+                if isinstance(research_cfg, dict):
+                    enable_qg = bool(research_cfg.get("enable_quality_gate"))
+                else:
+                    enable_qg = bool(getattr(research_cfg, "enable_quality_gate", False))
+                if enable_qg:
+                    from phaseP_research.quality_gate import (
+                        evaluate_quality_gate,
+                        write_quality_gate,
+                    )
+
+                    qg_result = evaluate_quality_gate(research_signals, run_state)
+                    write_quality_gate(qg_result)
+            except Exception:
+                pass
+
+            # Research feedback loop (append-only)
+            try:
+                enable_feedback = False
+                if isinstance(research_cfg, dict):
+                    enable_feedback = bool(research_cfg.get("enable_feedback_loop"))
+                else:
+                    enable_feedback = bool(getattr(research_cfg, "enable_feedback_loop", False))
+                if enable_feedback:
+                    from phaseP_research.feedback_loop import update_research_feedback
+
+                    update_research_feedback({}, research_signals)
+            except Exception:
+                pass
+
+            # Safety verification (informational)
+            try:
+                enable_safety = False
+                if isinstance(research_cfg, dict):
+                    enable_safety = bool(research_cfg.get("enable_safety_verification"))
+                else:
+                    enable_safety = bool(getattr(research_cfg, "enable_safety_verification", False))
+                if enable_safety:
+                    from phaseP_research.safety_verification import verify_research_outputs
+
+                    verify_research_outputs(research_signals)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     return 0
 
 

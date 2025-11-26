@@ -136,6 +136,18 @@ patches:
 
 dashboard:
   enable_data_api: false
+# Research (Phase P - opt-in)
+research:
+  enable: false
+  collect_phase_metrics: false
+  collect_failure_patterns: false
+  collect_engine_stats: false
+  collect_chunk_stats: false
+  collect_memory_signals: false
+  collect_policy_signals: false
+  enable_quality_gate: false
+  enable_feedback_loop: false
+  enable_safety_verification: false
 # Introspection (Phase I - opt-in)
 introspection:
   enable_clustering: false
