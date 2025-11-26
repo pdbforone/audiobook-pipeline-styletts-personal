@@ -43,6 +43,7 @@
 | Engine regression smoke | `phase4_tts/tests/test_engine_regression.py` | ✅ Added | XTTS/Kokoro synth stubs, Piper disabled check (skips if heavy deps missing) |
 | Repair integration | `self_repair/tests/test_repair_flow.py` | ✅ Added | Synthetic failure updates `error_registry.json`, no destructive overwrites |
 | Safety invariants | `tests/integration/test_safety_invariants.py` | ✅ Added | Confirms supervised/recommend-only/disabled autonomy leaves no overrides outside `.pipeline` |
+| Phase P research layer | `phaseP_research/*` | ✅ Opt-in | Registry, observations, lifecycle, evidence, patterns, safety verification; writes to `.pipeline/research/` only |
 
 ### Memory/Learning Infrastructure
 
