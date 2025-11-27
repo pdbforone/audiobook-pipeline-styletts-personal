@@ -11,6 +11,11 @@ try:
 except Exception:  # pragma: no cover - optional
     choose_chunk_size = None  # type: ignore
 
+try:
+    from policy_engine.safety_gates import SafetyGates
+except Exception:  # pragma: no cover - optional
+    SafetyGates = None  # type: ignore
+
 # Optional: map autonomy mode to learning mode without altering defaults
 def _map_autonomy_to_learning(autonomy_mode: str) -> str:
     """
@@ -312,6 +317,38 @@ class TuningOverridesStore:
         entry["source"] = "self_driving"
         entry["updated_at"] = timestamp
         self.mark_dirty()
+
+    def check_safety_gates(
+        self, run_summary: Dict[str, Any], learning_mode: str = "observe"
+    ) -> Dict[str, Any]:
+        """
+        Check safety gates before allowing autonomous adjustments.
+
+        Distilled from Phase AA/AB: Prevents unsafe autonomous decisions.
+
+        Args:
+            run_summary: Summary of pipeline runs (total, failures, performance)
+            learning_mode: Current learning mode ("observe", "enforce", "tune")
+
+        Returns:
+            {
+                "allow_autonomy": bool,
+                "blocked_reasons": list[str],
+                "downgrade_to_supervised": bool,
+                "warnings": list[str]
+            }
+        """
+        if SafetyGates is None:
+            # Safety gates not available, default to allow (backwards compat)
+            return {
+                "allow_autonomy": True,
+                "blocked_reasons": [],
+                "downgrade_to_supervised": False,
+                "warnings": ["SafetyGates module not available"]
+            }
+
+        gates = SafetyGates()
+        return gates.check_gates(run_summary, learning_mode)
 
 
 # --------------------------------------------------------------------------- #

@@ -46,6 +46,12 @@ from pipeline_common.astromech_notify import play_alert_beep, play_success_beep
 from pipeline_common.state_manager import StateTransaction
 from io_helpers import validate_audio_file
 
+# ASR validation (opt-in)
+try:
+    from asr_validator import ASRValidator
+except ImportError:
+    ASRValidator = None  # type: ignore
+
 MODULE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = MODULE_ROOT.parent.parent
 DEFAULT_CHARS_PER_MINUTE = 1050  # Shared speaking cadence assumption
@@ -1166,6 +1172,104 @@ def synthesize_chunk_with_engine(
                     "PASS" if tier2_result.is_valid else "FAIL",
                     tier2_result.reason,
                 )
+
+        # Tier 3: ASR Validation (opt-in)
+        if (
+            validation_config.enable_asr_validation
+            if hasattr(validation_config, "enable_asr_validation")
+            else False
+        ) and ASRValidator is not None:
+            logger.info("Chunk %s running ASR validation (Tier 3)", chunk.chunk_id)
+            try:
+                asr_validator = ASRValidator(model_size="base")
+                asr_result = asr_validator.validate_audio(
+                    output_path, chunk.text, chunk.chunk_id
+                )
+
+                collected_validation_details["asr"] = asr_result
+
+                if not asr_result["valid"]:
+                    validation_tier = 3
+                    validation_reason = f"asr_{asr_result['recommendation']}"
+                    validation_success = False
+
+                    logger.warning(
+                        "Chunk %s ASR validation FAILED: WER=%.1f%%, recommendation=%s",
+                        chunk.chunk_id,
+                        asr_result["wer"] * 100,
+                        asr_result["recommendation"]
+                    )
+
+                    # If ASR recommends engine switch and fallback available
+                    if (
+                        asr_result["recommendation"] == "switch_engine"
+                        and allow_fallback
+                        and kokoro_available
+                        and used_engine != "kokoro"
+                    ):
+                        logger.warning(
+                            "Chunk %s ASR recommends engine switch; retrying with Kokoro",
+                            chunk.chunk_id
+                        )
+                        try:
+                            (
+                                fallback_audio,
+                                fallback_engine,
+                                fallback_sr,
+                                fallback_dur,
+                                fallback_rt,
+                            ) = attempt_synthesis("kokoro", False, None)
+
+                            # Re-validate with ASR
+                            temp_path = output_dir / f"{chunk.chunk_id}_asr_retry.wav"
+                            sf.write(temp_path, fallback_audio, fallback_sr)
+
+                            retry_asr_result = asr_validator.validate_audio(
+                                temp_path, chunk.text, chunk.chunk_id
+                            )
+
+                            if retry_asr_result["valid"] or retry_asr_result["wer"] < asr_result["wer"]:
+                                # Kokoro version is better
+                                audio = fallback_audio
+                                sample_rate = fallback_sr
+                                used_engine = fallback_engine
+                                rt_factor = fallback_rt
+                                audio_duration = fallback_dur
+                                sf.write(output_path, audio, sample_rate)
+                                validation_success = True
+                                collected_validation_details["asr"] = retry_asr_result
+                                logger.info(
+                                    "Chunk %s ASR retry with Kokoro SUCCESS: WER improved from %.1f%% to %.1f%%",
+                                    chunk.chunk_id,
+                                    asr_result["wer"] * 100,
+                                    retry_asr_result["wer"] * 100
+                                )
+                            temp_path.unlink(missing_ok=True)
+
+                        except Exception as asr_retry_exc:  # pylint: disable=broad-except
+                            logger.warning(
+                                "Chunk %s ASR-driven Kokoro retry failed: %s",
+                                chunk.chunk_id,
+                                asr_retry_exc
+                            )
+                else:
+                    logger.info(
+                        "Chunk %s ASR validation PASSED: WER=%.1f%%",
+                        chunk.chunk_id,
+                        asr_result["wer"] * 100
+                    )
+
+            except Exception as asr_exc:  # pylint: disable=broad-except
+                logger.warning(
+                    "Chunk %s ASR validation error (continuing): %s",
+                    chunk.chunk_id,
+                    asr_exc
+                )
+                collected_validation_details["asr"] = {
+                    "error": str(asr_exc),
+                    "valid": True  # Fail open
+                }
+
     if collected_validation_details and (
         validation_details is None
         or validation_details != collected_validation_details
