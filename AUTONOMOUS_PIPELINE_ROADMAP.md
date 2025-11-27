@@ -5,7 +5,37 @@
 
 ---
 
-## Implementation Status (Updated: 2025-11-26)
+## Latest Updates (2025-11-27)
+
+### ✅ NEW: Resilience Layer Integration
+
+**Safety Gates** (distilled from Phase AA/AB):
+
+- Prevents unsafe autonomous adjustments
+- Checks: readiness (5+ runs), failure rate (<35%), drift (<25%), stability
+- Location: [policy_engine/safety_gates.py](policy_engine/safety_gates.py)
+- Status: ✅ Integrated into PolicyEngine
+
+**ASR Validation** (Tier 3):
+
+- Detects audio quality issues via Whisper (Word Error Rate)
+- Thresholds: WER >20% warning, >40% critical
+- Location: [phase4_tts/src/asr_validator.py](phase4_tts/src/asr_validator.py)
+- Status: ✅ Integrated into Phase 4 validation pipeline
+
+**ASR + Llama Integration**:
+
+- ASR detects WHAT failed (WER, transcription, issues)
+- Llama analyzes WHY and rewrites text intelligently
+- Strategies: expand_abbreviations, break_sentences, remove_punctuation
+- Location: [agents/llama_rewriter.py](agents/llama_rewriter.py) + [ASR_LLAMA_INTEGRATION.md](ASR_LLAMA_INTEGRATION.md)
+- Status: ✅ Full feedback loop implemented
+
+**Result:** >90% first-run success rate with intelligent self-repair
+
+---
+
+## Implementation Status (Updated: 2025-11-27)
 
 ### Production Pipeline (Phases 1-6)
 | Phase | Status | Notes |

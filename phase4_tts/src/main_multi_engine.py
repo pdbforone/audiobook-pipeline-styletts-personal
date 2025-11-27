@@ -52,6 +52,13 @@ try:
 except ImportError:
     ASRValidator = None  # type: ignore
 
+# Llama rewriter for ASR-driven fixes (opt-in)
+try:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from agents.llama_rewriter import LlamaRewriter
+except ImportError:
+    LlamaRewriter = None  # type: ignore
+
 MODULE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = MODULE_ROOT.parent.parent
 DEFAULT_CHARS_PER_MINUTE = 1050  # Shared speaking cadence assumption
@@ -1200,9 +1207,109 @@ def synthesize_chunk_with_engine(
                         asr_result["recommendation"]
                     )
 
-                    # If ASR recommends engine switch and fallback available
+                    # Strategy 1: Try Llama rewrite first (if recommendation is "rewrite")
                     if (
-                        asr_result["recommendation"] == "switch_engine"
+                        asr_result["recommendation"] == "rewrite"
+                        and LlamaRewriter is not None
+                        and (
+                            validation_config.enable_llama_asr_rewrite
+                            if hasattr(validation_config, "enable_llama_asr_rewrite")
+                            else False
+                        )
+                    ):
+                        logger.info(
+                            "Chunk %s attempting Llama rewrite based on ASR feedback",
+                            chunk.chunk_id
+                        )
+                        try:
+                            llama_rewriter = LlamaRewriter()
+                            rewrite_result = llama_rewriter.rewrite_from_asr_feedback(
+                                original_text=chunk.text,
+                                asr_transcription=asr_result["transcription"],
+                                asr_issues=asr_result["issues"],
+                                wer=asr_result["wer"],
+                                max_chars=max_len or len(chunk.text)
+                            )
+
+                            if rewrite_result["confidence"] > 0.7:
+                                # High confidence rewrite, try synthesizing again
+                                logger.info(
+                                    "Chunk %s Llama rewrite (confidence=%.2f, strategy=%s): %s",
+                                    chunk.chunk_id,
+                                    rewrite_result["confidence"],
+                                    rewrite_result["strategy"],
+                                    rewrite_result["notes"]
+                                )
+
+                                # Retry synthesis with rewritten text
+                                try:
+                                    (
+                                        rewrite_audio,
+                                        rewrite_engine,
+                                        rewrite_sr,
+                                        rewrite_dur,
+                                        rewrite_rt,
+                                    ) = attempt_synthesis(
+                                        effective_engine,
+                                        False,
+                                        None,
+                                        text_override=rewrite_result["rewritten"]
+                                    )
+
+                                    # Validate the rewritten version with ASR
+                                    temp_rewrite_path = output_dir / f"{chunk.chunk_id}_llama_retry.wav"
+                                    sf.write(temp_rewrite_path, rewrite_audio, rewrite_sr)
+
+                                    retry_asr_result = asr_validator.validate_audio(
+                                        temp_rewrite_path,
+                                        rewrite_result["rewritten"],
+                                        chunk.chunk_id
+                                    )
+
+                                    if retry_asr_result["valid"] or retry_asr_result["wer"] < asr_result["wer"]:
+                                        # Llama rewrite worked!
+                                        audio = rewrite_audio
+                                        sample_rate = rewrite_sr
+                                        used_engine = rewrite_engine
+                                        rt_factor = rewrite_rt
+                                        audio_duration = rewrite_dur
+                                        sf.write(output_path, audio, sample_rate)
+                                        validation_success = True
+                                        collected_validation_details["asr"] = retry_asr_result
+                                        collected_validation_details["llama_rewrite"] = rewrite_result
+                                        logger.info(
+                                            "Chunk %s Llama+ASR SUCCESS: WER improved from %.1f%% to %.1f%%",
+                                            chunk.chunk_id,
+                                            asr_result["wer"] * 100,
+                                            retry_asr_result["wer"] * 100
+                                        )
+                                    else:
+                                        logger.warning(
+                                            "Chunk %s Llama rewrite did not improve WER (%.1f%% → %.1f%%), trying engine switch",
+                                            chunk.chunk_id,
+                                            asr_result["wer"] * 100,
+                                            retry_asr_result["wer"] * 100
+                                        )
+
+                                    temp_rewrite_path.unlink(missing_ok=True)
+
+                                except Exception as llama_retry_exc:  # pylint: disable=broad-except
+                                    logger.warning(
+                                        "Chunk %s Llama rewrite retry synthesis failed: %s",
+                                        chunk.chunk_id,
+                                        llama_retry_exc
+                                    )
+
+                        except Exception as llama_exc:  # pylint: disable=broad-except
+                            logger.warning(
+                                "Chunk %s Llama rewrite failed: %s",
+                                chunk.chunk_id,
+                                llama_exc
+                            )
+
+                    # Strategy 2: Engine switch (if Llama didn't fix it, or recommendation is "switch_engine")
+                    if (
+                        not validation_success  # Llama didn't fix it
                         and allow_fallback
                         and kokoro_available
                         and used_engine != "kokoro"
