@@ -37,17 +37,18 @@ try:
 except ImportError:
     tqdm = None
 
-MODULE_ROOT = Path(__file__).resolve().parent
-PROJECT_ROOT = MODULE_ROOT.parent.parent
-DEFAULT_CHARS_PER_MINUTE = 1050  # Shared speaking cadence assumption
 from pipeline_common import (
     PipelineState,
     ensure_phase_and_file,
     ensure_phase_block,
 )
+from pipeline_common.astromech_notify import play_alert_beep, play_success_beep
 from pipeline_common.state_manager import StateTransaction
-from pipeline_common.astromech_notify import play_success_beep, play_alert_beep
 from io_helpers import validate_audio_file
+
+MODULE_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = MODULE_ROOT.parent.parent
+DEFAULT_CHARS_PER_MINUTE = 1050  # Shared speaking cadence assumption
 
 
 if not hasattr(StateTransaction, "update_phase"):
@@ -96,7 +97,7 @@ if not hasattr(StateTransaction, "update_phase"):
 # Add engines + shared utils to path
 sys.path.insert(0, str(MODULE_ROOT.parent))
 
-from engines.engine_manager import EngineManager
+from engines.engine_manager import EngineManager  # noqa: E402
 
 try:  # Import as package when executed via `python -m`
     from .utils import (
@@ -750,6 +751,37 @@ def synthesize_chunk_with_engine(
     sentence_split_enabled = os.getenv("TTS_SENTENCE_SPLIT", "0") == "1"
     sentence_regen_enabled = os.getenv("TTS_SENTENCE_REGEN", "0") == "1"
 
+    def attempt_synthesis(
+        target_engine: str,
+        allow_fb: bool,
+        rtf_threshold: Optional[float],
+        *,
+        text_override: Optional[str] = None,
+    ) -> Tuple[np.ndarray, str, int, float, float]:
+        synth_start = time.time()
+        audio_out, selected_engine = engine_manager.synthesize(
+            text=text_override or chunk.text,
+            reference_audio=reference,
+            engine=target_engine,
+            language=language,
+            fallback=allow_fb,
+            return_engine=True,
+            est_dur_sec=est_dur_sec,
+            rtf_fallback_threshold=rtf_threshold,
+            **chunk_kwargs,
+        )
+        elapsed = time.time() - synth_start
+        standardized, sample_rate, audio_duration, rt_factor = (
+            standardize_audio(audio_out, selected_engine, elapsed)
+        )
+        return (
+            standardized,
+            selected_engine,
+            sample_rate,
+            audio_duration,
+            rt_factor,
+        )
+
     if max_len and len(chunk.text) > max_len:
         if sentence_split_enabled:
             sentences = split_into_sentences(chunk.text, max_len)
@@ -826,37 +858,6 @@ def synthesize_chunk_with_engine(
                 "max_length": max_len,
                 "text_length": len(chunk.text),
             },
-        )
-
-    def attempt_synthesis(
-        target_engine: str,
-        allow_fb: bool,
-        rtf_threshold: Optional[float],
-        *,
-        text_override: Optional[str] = None,
-    ) -> Tuple[np.ndarray, str, int, float, float]:
-        synth_start = time.time()
-        audio_out, selected_engine = engine_manager.synthesize(
-            text=text_override or chunk.text,
-            reference_audio=reference,
-            engine=target_engine,
-            language=language,
-            fallback=allow_fb,
-            return_engine=True,
-            est_dur_sec=est_dur_sec,
-            rtf_fallback_threshold=rtf_threshold,
-            **chunk_kwargs,
-        )
-        elapsed = time.time() - synth_start
-        standardized, sample_rate, audio_duration, rt_factor = (
-            standardize_audio(audio_out, selected_engine, elapsed)
-        )
-        return (
-            standardized,
-            selected_engine,
-            sample_rate,
-            audio_duration,
-            rt_factor,
         )
 
     try:

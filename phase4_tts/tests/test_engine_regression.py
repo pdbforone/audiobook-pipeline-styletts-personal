@@ -28,7 +28,7 @@ def test_piper_disabled_in_registry():
 
 def test_xtts_and_kokoro_synthesis(tmp_path):
     _require_env()
-    numpy = pytest.importorskip("numpy", reason="numpy required for regression smoke")
+    pytest.importorskip("numpy", reason="numpy required for regression smoke")
     sf = pytest.importorskip("soundfile", reason="soundfile required to persist audio")
     try:
         from phase4_tts.engines.engine_manager import EngineManager

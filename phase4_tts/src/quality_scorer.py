@@ -453,7 +453,7 @@ if __name__ == "__main__":
 
     print(f"\nQuality Score: {result.overall_score:.2f}")
     print(f"Acceptable: {result.is_acceptable}")
-    print(f"\nMetrics:")
+    print("\nMetrics:")
     print(f"  SNR: {result.snr_db:.1f} dB" if result.snr_db else "  SNR: N/A")
     print(f"  Silence Ratio: {result.silence_ratio:.1%}")
     print(f"  Clipping Ratio: {result.clipping_ratio:.2%}")
@@ -462,11 +462,11 @@ if __name__ == "__main__":
     print(f"  Amplitude: {result.amplitude_db:.1f} dB")
 
     if result.issues:
-        print(f"\nIssues:")
+        print("\nIssues:")
         for issue in result.issues:
             print(f"  - {issue}")
 
     if result.recommendations:
-        print(f"\nRecommendations:")
+        print("\nRecommendations:")
         for rec in result.recommendations:
             print(f"  - {rec}")

@@ -808,6 +808,7 @@ class OrchestratorConfig(BaseModel):
     genre: GenreConfig = Field(default_factory=GenreConfig)
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
     introspection: Dict[str, Any] = Field(default_factory=dict)
+    phaseAD: Dict[str, Any] = Field(default_factory=dict)
     model_config = ConfigDict(populate_by_name=True)
 
     def get_phase_timeout(self, phase_num: int) -> int:
@@ -5538,6 +5539,56 @@ Next Steps:
             except Exception:
                 pass
 
+            # Phase AC policy compiler (opt-in, read-only)
+            try:
+                phase_ac_cfg = getattr(orchestrator_config, "phaseAC", None)
+                if isinstance(phase_ac_cfg, dict):
+                    phase_ac_enabled = bool(phase_ac_cfg.get("enable"))
+                else:
+                    phase_ac_enabled = bool(getattr(phase_ac_cfg, "enable", False))
+                if phase_ac_enabled:
+                    from phaseAC_policy_compiler import compiler, merger, conflict_resolver, profile_writer
+
+                    base_profile = compiler.compile_policy_profile(orchestrator_config, base_dir=Path(".pipeline"))
+                    merged = merger.merge_policies([base_profile])
+                    resolved = conflict_resolver.resolve_conflicts(merged)
+                    profile_writer.write_policy_profile(resolved, base_dir=Path(".pipeline/policy_profiles"))
+            except Exception:
+                pass
+
+            # Phase AD capability catalog (opt-in, read-only)
+            try:
+                phase_ad_cfg = getattr(orchestrator_config, "phaseAD", None)
+                if isinstance(phase_ad_cfg, dict):
+                    phase_ad_enabled = bool(phase_ad_cfg.get("enable"))
+                else:
+                    phase_ad_enabled = bool(getattr(phase_ad_cfg, "enable", False))
+                if phase_ad_enabled:
+                    from phaseAD_catalog import capability_scanner, catalog_builder, catalog_reporter
+
+                    scanned = capability_scanner.scan_capabilities()
+                    catalog = catalog_builder.build_catalog(scanned)
+                    catalog_reporter.write_catalog(catalog, base_dir=Path(".pipeline/capability_catalog"))
+            except Exception:
+                pass
+
+            # Phase AC policy compiler (opt-in, read-only)
+            try:
+                phase_ac_cfg = getattr(orchestrator_config, "phaseAC", None)
+                if isinstance(phase_ac_cfg, dict):
+                    phase_ac_enabled = bool(phase_ac_cfg.get("enable"))
+                else:
+                    phase_ac_enabled = bool(getattr(phase_ac_cfg, "enable", False))
+                if phase_ac_enabled:
+                    from phaseAC_policy_compiler import compiler, merger, conflict_resolver, profile_writer
+
+                    base_profile = compiler.compile_policy_profile(orchestrator_config, base_dir=Path(".pipeline"))
+                    merged = merger.merge_policies([base_profile])
+                    resolved = conflict_resolver.resolve_conflicts(merged)
+                    profile_writer.write_policy_profile(resolved, base_dir=Path(".pipeline/policy_profiles"))
+            except Exception:
+                pass
+
             # Phase AB Adaptive Brain (opt-in, read-only, no auto-apply)
             try:
                 phase_ab_cfg = getattr(orchestrator_config, "phaseAB", None)
@@ -5584,6 +5635,24 @@ Next Steps:
                     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
                     cap_path = cap_dir / f"capabilities_{ts}.json"
                     cap_path.write_text(json.dumps(capabilities_report, indent=2), encoding="utf-8")
+            except Exception:
+                pass
+
+            # Phase AD: Capability Catalog (opt-in, read-only)
+            try:
+                phase_ad_cfg = getattr(orchestrator_config, "phaseAD", None)
+                if isinstance(phase_ad_cfg, dict):
+                    phase_ad_enabled = bool(phase_ad_cfg.get("enable"))
+                else:
+                    phase_ad_enabled = bool(getattr(phase_ad_cfg, "enable", False))
+                if phase_ad_enabled:
+                    from phaseAD_catalog.capability_scanner import scan_capabilities
+                    from phaseAD_catalog.catalog_builder import build_catalog
+                    from phaseAD_catalog.catalog_reporter import write_catalog
+
+                    raw = scan_capabilities()
+                    catalog = build_catalog(raw)
+                    write_catalog(catalog)
             except Exception:
                 pass
 

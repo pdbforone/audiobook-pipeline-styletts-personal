@@ -5,7 +5,6 @@
 
 import os
 import json
-import time
 import logging
 import librosa
 import requests
@@ -20,7 +19,7 @@ import unicodedata
 import difflib
 
 try:
-    from .models import TTSConfig, TTSRecord
+    from .models import TTSConfig
 except ImportError:
     from models import TTSConfig
 
@@ -384,7 +383,7 @@ def prepare_reference_audio(
             y, sr = librosa.load(output_path, sr=None)
             if 10 <= len(y) / sr <= 20:  # Valid length
                 return output_path
-        except:
+        except Exception:
             pass
 
     # Download MP3
@@ -525,7 +524,6 @@ def synthesize_chunk(
     chunk_id: str,
 ) -> Tuple[bool, Dict]:
     """Synthesize audio for a chunk with optional splitting. Why: Fork/original handles cloning via audio_prompt; split long text."""
-    start = time.perf_counter()
 
     # 🔧 NEW: Sanitize text before processing to prevent TTS artifacts
     text = sanitize_text_for_tts(text)

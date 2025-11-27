@@ -256,6 +256,14 @@ phaseY:
 phaseZ:
   enable: false
   version: "phaseZ"
+phaseAC:
+  enable: false
+  include_all_phases: true
+  annotate_conflicts: true
+phaseAD:
+  enable: false
+  include_hidden: false
+  ui_safe_only: true
   include_phase_summaries: true
   include_dependency_scan: true
   include_invariants: true
@@ -334,6 +342,10 @@ capabilities:
   enable_phaseZ: true
 phaseAB:
   enable: false
+phaseAD:
+  enable: false
+  include_hidden: false
+  ui_safe_only: true
 
 ui:
   show_autonomy_features: true
