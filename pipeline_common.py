@@ -21,6 +21,8 @@ PHASE_KEYS: List[str] = [
     "phase4",
     "phase5",
     "phase5_5",
+    "phase6",
+    "phase7",
 ]
 
 

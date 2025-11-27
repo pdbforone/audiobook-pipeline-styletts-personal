@@ -807,9 +807,43 @@ class OrchestratorConfig(BaseModel):
     experiments: ExperimentsConfig = Field(default_factory=ExperimentsConfig)
     genre: GenreConfig = Field(default_factory=GenreConfig)
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
+    rewriter: Dict[str, Any] = Field(default_factory=dict)
+    adaptive_chunking: Dict[str, Any] = Field(default_factory=dict)
+    patches: Dict[str, Any] = Field(default_factory=dict)
     introspection: Dict[str, Any] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    benchmark: Dict[str, Any] = Field(default_factory=dict)
+    ui: Dict[str, Any] = Field(default_factory=dict)
+    phaseA: Dict[str, Any] = Field(default_factory=dict)
+    phaseB: Dict[str, Any] = Field(default_factory=dict)
+    phaseC: Dict[str, Any] = Field(default_factory=dict)
+    phaseAA: Dict[str, Any] = Field(default_factory=dict)
+    phaseQ_self_eval: Dict[str, Any] = Field(default_factory=dict)
+    phaseQ_self_evaluation: Dict[str, Any] = Field(default_factory=dict)
+    phaseR: Dict[str, Any] = Field(default_factory=dict)
+    phaseS: Dict[str, Any] = Field(default_factory=dict)
+    phaseT: Dict[str, Any] = Field(default_factory=dict)
+    consistency: Dict[str, Any] = Field(default_factory=dict)
+    phaseU: Dict[str, Any] = Field(default_factory=dict)
+    phaseV: Dict[str, Any] = Field(default_factory=dict)
+    phaseW: Dict[str, Any] = Field(default_factory=dict)
+    phaseX: Dict[str, Any] = Field(default_factory=dict)
+    phaseY: Dict[str, Any] = Field(default_factory=dict)
+    phaseZ: Dict[str, Any] = Field(default_factory=dict)
+    phaseAB: Dict[str, Any] = Field(default_factory=dict)
+    phaseAC: Dict[str, Any] = Field(default_factory=dict)
     phaseAD: Dict[str, Any] = Field(default_factory=dict)
-    model_config = ConfigDict(populate_by_name=True)
+    phaseAE: Dict[str, Any] = Field(default_factory=dict)
+    phaseAF: Dict[str, Any] = Field(default_factory=dict)
+    capabilities: Dict[str, Any] = Field(default_factory=dict)
+    phaseJ: Dict[str, Any] = Field(default_factory=dict)
+    phaseK: Dict[str, Any] = Field(default_factory=dict)
+    phaseL: Dict[str, Any] = Field(default_factory=dict)
+    phaseM: Dict[str, Any] = Field(default_factory=dict)
+    phaseN: Dict[str, Any] = Field(default_factory=dict)
+    phaseO: Dict[str, Any] = Field(default_factory=dict)
+    research: Dict[str, Any] = Field(default_factory=dict)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     def get_phase_timeout(self, phase_num: int) -> int:
         """Get timeout for a phase, respecting legacy global override."""
@@ -5572,23 +5606,6 @@ Next Steps:
             except Exception:
                 pass
 
-            # Phase AC policy compiler (opt-in, read-only)
-            try:
-                phase_ac_cfg = getattr(orchestrator_config, "phaseAC", None)
-                if isinstance(phase_ac_cfg, dict):
-                    phase_ac_enabled = bool(phase_ac_cfg.get("enable"))
-                else:
-                    phase_ac_enabled = bool(getattr(phase_ac_cfg, "enable", False))
-                if phase_ac_enabled:
-                    from phaseAC_policy_compiler import compiler, merger, conflict_resolver, profile_writer
-
-                    base_profile = compiler.compile_policy_profile(orchestrator_config, base_dir=Path(".pipeline"))
-                    merged = merger.merge_policies([base_profile])
-                    resolved = conflict_resolver.resolve_conflicts(merged)
-                    profile_writer.write_policy_profile(resolved, base_dir=Path(".pipeline/policy_profiles"))
-            except Exception:
-                pass
-
             # Phase AB Adaptive Brain (opt-in, read-only, no auto-apply)
             try:
                 phase_ab_cfg = getattr(orchestrator_config, "phaseAB", None)
@@ -5638,21 +5655,25 @@ Next Steps:
             except Exception:
                 pass
 
-            # Phase AD: Capability Catalog (opt-in, read-only)
+            # Placeholder notices for phases A, B, C, AE, and AF (no implemented modules yet)
             try:
-                phase_ad_cfg = getattr(orchestrator_config, "phaseAD", None)
-                if isinstance(phase_ad_cfg, dict):
-                    phase_ad_enabled = bool(phase_ad_cfg.get("enable"))
-                else:
-                    phase_ad_enabled = bool(getattr(phase_ad_cfg, "enable", False))
-                if phase_ad_enabled:
-                    from phaseAD_catalog.capability_scanner import scan_capabilities
-                    from phaseAD_catalog.catalog_builder import build_catalog
-                    from phaseAD_catalog.catalog_reporter import write_catalog
-
-                    raw = scan_capabilities()
-                    catalog = build_catalog(raw)
-                    write_catalog(catalog)
+                phase_placeholders = [
+                    ("phaseA", getattr(orchestrator_config, "phaseA", None)),
+                    ("phaseB", getattr(orchestrator_config, "phaseB", None)),
+                    ("phaseC", getattr(orchestrator_config, "phaseC", None)),
+                    ("phaseAE", getattr(orchestrator_config, "phaseAE", None)),
+                    ("phaseAF", getattr(orchestrator_config, "phaseAF", None)),
+                ]
+                for phase_name, cfg in phase_placeholders:
+                    if isinstance(cfg, dict):
+                        enabled = bool(cfg.get("enable"))
+                    else:
+                        enabled = bool(getattr(cfg, "enable", False))
+                    if enabled:
+                        logger.warning(
+                            "%s is enabled in config but no orchestrator hook is registered; skipping.",
+                            phase_name,
+                        )
             except Exception:
                 pass
 

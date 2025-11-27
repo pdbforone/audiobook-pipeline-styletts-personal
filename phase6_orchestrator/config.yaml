@@ -175,6 +175,9 @@ phaseB:
 phaseC:
   enable: false
   version: "phaseC"
+phaseAA:
+  enable: false
+  version: "phaseAA"
 # Research (Phase P - opt-in)
 research:
   enable: false
@@ -340,12 +343,14 @@ capabilities:
   enable_phaseX: true
   enable_phaseY: true
   enable_phaseZ: true
+phaseAE:
+  enable: false
+  version: "phaseAE"
+phaseAF:
+  enable: false
+  version: "phaseAF"
 phaseAB:
   enable: false
-phaseAD:
-  enable: false
-  include_hidden: false
-  ui_safe_only: true
 
 ui:
   show_autonomy_features: true
