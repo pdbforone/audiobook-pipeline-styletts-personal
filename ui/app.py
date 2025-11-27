@@ -55,13 +55,19 @@ PHASE_DEFINITIONS: List[tuple[str, float, str]] = [
     ("phase4", 4, "Phase 4 – Text-to-Speech"),
     ("phase5", 5, "Phase 5 – Enhancement"),
     ("phase5_5", 5.5, "Phase 5.5 – Subtitles"),
+    ("phase6", 6, "Phase 6 – Orchestration"),
+    ("phase7", 7, "Phase 7 – Batch Runner"),
 ]
 PHASE_TITLE_MAP = {key: label for key, _, label in PHASE_DEFINITIONS}
 PHASE_ORDER_MAP = {key: order for key, order, _ in PHASE_DEFINITIONS}
 AVAILABLE_PHASE_KEYS = [key for key, _, _ in PHASE_DEFINITIONS if key in PHASE_KEYS]
 PHASE_CHOICE_LOOKUP = {key: f"{key}: {PHASE_TITLE_MAP[key]}" for key in AVAILABLE_PHASE_KEYS}
 PHASE_CHOICE_VALUES = [PHASE_CHOICE_LOOKUP[key] for key in AVAILABLE_PHASE_KEYS]
-DEFAULT_PHASE_SELECTION = [PHASE_CHOICE_LOOKUP[key] for key in AVAILABLE_PHASE_KEYS if key != "phase5_5"]
+DEFAULT_PHASE_SELECTION = [
+    PHASE_CHOICE_LOOKUP[key]
+    for key in AVAILABLE_PHASE_KEYS
+    if key not in {"phase5_5", "phase6", "phase7"}
+]
 RUNNABLE_PHASES = []
 for phase_key in AVAILABLE_PHASE_KEYS:
     if phase_key == "phase5_5":
