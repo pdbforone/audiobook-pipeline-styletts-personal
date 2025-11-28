@@ -534,15 +534,83 @@
       }
     },
     "kokoro": {
+      "af_heart": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American female voice",
+        "preferred_profiles": ["fiction", "general"],
+        "gender": "female",
+        "accent": "American",
+        "quality_score": 4.5
+      },
+      "af_alloy": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American female voice",
+        "preferred_profiles": ["fiction", "general"],
+        "gender": "female",
+        "accent": "American",
+        "quality_score": 4.5
+      },
+      "af_aoede": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American female voice",
+        "preferred_profiles": ["fiction", "general"],
+        "gender": "female",
+        "accent": "American",
+        "quality_score": 4.5
+      },
       "af_bella": {
         "engine": "kokoro",
         "built_in": true,
-        "description": "Kokoro - Female, warm and expressive",
-        "preferred_profiles": [
-          "fiction",
-          "memoir",
-          "general"
-        ],
+        "description": "Kokoro - American female, warm and expressive",
+        "preferred_profiles": ["fiction", "memoir", "general"],
+        "gender": "female",
+        "accent": "American",
+        "quality_score": 4.5
+      },
+      "af_jessica": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American female voice",
+        "preferred_profiles": ["fiction", "general"],
+        "gender": "female",
+        "accent": "American",
+        "quality_score": 4.5
+      },
+      "af_kore": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American female voice",
+        "preferred_profiles": ["fiction", "general"],
+        "gender": "female",
+        "accent": "American",
+        "quality_score": 4.5
+      },
+      "af_nicole": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American female voice",
+        "preferred_profiles": ["fiction", "general"],
+        "gender": "female",
+        "accent": "American",
+        "quality_score": 4.5
+      },
+      "af_nova": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American female voice",
+        "preferred_profiles": ["fiction", "general"],
+        "gender": "female",
+        "accent": "American",
+        "quality_score": 4.5
+      },
+      "af_river": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American female voice",
+        "preferred_profiles": ["fiction", "general"],
         "gender": "female",
         "accent": "American",
         "quality_score": 4.5
@@ -550,41 +618,433 @@
       "af_sarah": {
         "engine": "kokoro",
         "built_in": true,
-        "description": "Kokoro - Female, clear and professional",
-        "preferred_profiles": [
-          "academic",
-          "philosophy",
-          "technical"
-        ],
+        "description": "Kokoro - American female, clear and professional",
+        "preferred_profiles": ["academic", "philosophy", "technical"],
         "gender": "female",
         "accent": "American",
         "quality_score": 4.6
       },
+      "af_sky": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American female voice",
+        "preferred_profiles": ["fiction", "general"],
+        "gender": "female",
+        "accent": "American",
+        "quality_score": 4.5
+      },
       "am_adam": {
         "engine": "kokoro",
         "built_in": true,
-        "description": "Kokoro - Male, deep and authoritative",
-        "preferred_profiles": [
-          "philosophy",
-          "theology",
-          "academic"
-        ],
+        "description": "Kokoro - American male, deep and authoritative",
+        "preferred_profiles": ["philosophy", "theology", "academic"],
         "gender": "male",
         "accent": "American",
         "quality_score": 4.5
       },
-      "am_michael": {
+      "am_echo": {
         "engine": "kokoro",
         "built_in": true,
-        "description": "Kokoro - Male, neutral and measured",
-        "preferred_profiles": [
-          "academic",
-          "technical",
-          "general"
-        ],
+        "description": "Kokoro - American male voice",
+        "preferred_profiles": ["fiction", "general"],
         "gender": "male",
         "accent": "American",
         "quality_score": 4.4
+      },
+      "am_eric": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American male voice",
+        "preferred_profiles": ["fiction", "general"],
+        "gender": "male",
+        "accent": "American",
+        "quality_score": 4.4
+      },
+      "am_fenrir": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American male voice",
+        "preferred_profiles": ["fiction", "general"],
+        "gender": "male",
+        "accent": "American",
+        "quality_score": 4.4
+      },
+      "am_liam": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American male voice",
+        "preferred_profiles": ["fiction", "general"],
+        "gender": "male",
+        "accent": "American",
+        "quality_score": 4.4
+      },
+      "am_michael": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American male, neutral and measured",
+        "preferred_profiles": ["academic", "technical", "general"],
+        "gender": "male",
+        "accent": "American",
+        "quality_score": 4.4
+      },
+      "am_onyx": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American male voice",
+        "preferred_profiles": ["fiction", "general"],
+        "gender": "male",
+        "accent": "American",
+        "quality_score": 4.4
+      },
+      "am_puck": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American male voice",
+        "preferred_profiles": ["fiction", "general"],
+        "gender": "male",
+        "accent": "American",
+        "quality_score": 4.4
+      },
+      "am_santa": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - American male voice",
+        "preferred_profiles": ["fiction", "general"],
+        "gender": "male",
+        "accent": "American",
+        "quality_score": 4.4
+      },
+      "bf_alice": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - British female voice",
+        "preferred_profiles": ["fiction", "classic literature"],
+        "gender": "female",
+        "accent": "British",
+        "quality_score": 4.5
+      },
+      "bf_emma": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - British female voice",
+        "preferred_profiles": ["fiction", "classic literature"],
+        "gender": "female",
+        "accent": "British",
+        "quality_score": 4.5
+      },
+      "bf_isabella": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - British female voice",
+        "preferred_profiles": ["fiction", "classic literature"],
+        "gender": "female",
+        "accent": "British",
+        "quality_score": 4.5
+      },
+      "bf_lily": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - British female voice",
+        "preferred_profiles": ["fiction", "classic literature"],
+        "gender": "female",
+        "accent": "British",
+        "quality_score": 4.5
+      },
+      "bm_daniel": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - British male voice",
+        "preferred_profiles": ["academic", "philosophy"],
+        "gender": "male",
+        "accent": "British",
+        "quality_score": 4.5
+      },
+      "bm_fable": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - British male voice",
+        "preferred_profiles": ["fiction", "classic literature"],
+        "gender": "male",
+        "accent": "British",
+        "quality_score": 4.5
+      },
+      "bm_george": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - British male voice",
+        "preferred_profiles": ["academic", "philosophy"],
+        "gender": "male",
+        "accent": "British",
+        "quality_score": 4.5
+      },
+      "bm_lewis": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - British male voice",
+        "preferred_profiles": ["fiction", "classic literature"],
+        "gender": "male",
+        "accent": "British",
+        "quality_score": 4.5
+      },
+      "jf_alpha": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Japanese female voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "female",
+        "accent": "Japanese",
+        "language": "ja",
+        "quality_score": 4.3
+      },
+      "jf_gongitsune": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Japanese female voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "female",
+        "accent": "Japanese",
+        "language": "ja",
+        "quality_score": 4.3
+      },
+      "jf_nezumi": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Japanese female voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "female",
+        "accent": "Japanese",
+        "language": "ja",
+        "quality_score": 4.3
+      },
+      "jf_tebukuro": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Japanese female voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "female",
+        "accent": "Japanese",
+        "language": "ja",
+        "quality_score": 4.3
+      },
+      "jm_kumo": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Japanese male voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "male",
+        "accent": "Japanese",
+        "language": "ja",
+        "quality_score": 4.3
+      },
+      "zf_xiaobei": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Mandarin Chinese female voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "female",
+        "accent": "Chinese",
+        "language": "zh",
+        "quality_score": 4.3
+      },
+      "zf_xiaoni": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Mandarin Chinese female voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "female",
+        "accent": "Chinese",
+        "language": "zh",
+        "quality_score": 4.3
+      },
+      "zf_xiaoxiao": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Mandarin Chinese female voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "female",
+        "accent": "Chinese",
+        "language": "zh",
+        "quality_score": 4.3
+      },
+      "zf_xiaoyi": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Mandarin Chinese female voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "female",
+        "accent": "Chinese",
+        "language": "zh",
+        "quality_score": 4.3
+      },
+      "zm_yunjian": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Mandarin Chinese male voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "male",
+        "accent": "Chinese",
+        "language": "zh",
+        "quality_score": 4.3
+      },
+      "zm_yunxi": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Mandarin Chinese male voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "male",
+        "accent": "Chinese",
+        "language": "zh",
+        "quality_score": 4.3
+      },
+      "zm_yunxia": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Mandarin Chinese male voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "male",
+        "accent": "Chinese",
+        "language": "zh",
+        "quality_score": 4.3
+      },
+      "zm_yunyang": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Mandarin Chinese male voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "male",
+        "accent": "Chinese",
+        "language": "zh",
+        "quality_score": 4.3
+      },
+      "ef_dora": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Spanish female voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "female",
+        "accent": "Spanish",
+        "language": "es",
+        "quality_score": 4.3
+      },
+      "em_alex": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Spanish male voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "male",
+        "accent": "Spanish",
+        "language": "es",
+        "quality_score": 4.3
+      },
+      "em_santa": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Spanish male voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "male",
+        "accent": "Spanish",
+        "language": "es",
+        "quality_score": 4.3
+      },
+      "ff_siwis": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - French female voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "female",
+        "accent": "French",
+        "language": "fr",
+        "quality_score": 4.3
+      },
+      "hf_alpha": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Hindi female voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "female",
+        "accent": "Hindi",
+        "language": "hi",
+        "quality_score": 4.3
+      },
+      "hf_beta": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Hindi female voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "female",
+        "accent": "Hindi",
+        "language": "hi",
+        "quality_score": 4.3
+      },
+      "hm_omega": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Hindi male voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "male",
+        "accent": "Hindi",
+        "language": "hi",
+        "quality_score": 4.3
+      },
+      "hm_psi": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Hindi male voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "male",
+        "accent": "Hindi",
+        "language": "hi",
+        "quality_score": 4.3
+      },
+      "if_sara": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Italian female voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "female",
+        "accent": "Italian",
+        "language": "it",
+        "quality_score": 4.3
+      },
+      "im_nicola": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Italian male voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "male",
+        "accent": "Italian",
+        "language": "it",
+        "quality_score": 4.3
+      },
+      "pf_dora": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Brazilian Portuguese female voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "female",
+        "accent": "Brazilian Portuguese",
+        "language": "pt-BR",
+        "quality_score": 4.3
+      },
+      "pm_alex": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Brazilian Portuguese male voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "male",
+        "accent": "Brazilian Portuguese",
+        "language": "pt-BR",
+        "quality_score": 4.3
+      },
+      "pm_santa": {
+        "engine": "kokoro",
+        "built_in": true,
+        "description": "Kokoro - Brazilian Portuguese male voice",
+        "preferred_profiles": ["general", "international"],
+        "gender": "male",
+        "accent": "Brazilian Portuguese",
+        "language": "pt-BR",
+        "quality_score": 4.3
       }
     }
   },

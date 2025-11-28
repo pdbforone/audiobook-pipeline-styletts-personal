@@ -100,102 +100,476 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 CUSTOM_CSS = """
-/* Modern palette: navy base with orange accents */
+/* ============================================================================
+   MODERN AUDIOBOOK STUDIO THEME
+   Deep blue palette with vibrant accents and glassmorphism
+   ============================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 :root {
-    --primary-color: #0b1d3a;
-    --secondary-color: #f97316;
-    --success-color: #10b981;
-    --warning-color: #f59e0b;
-    --danger-color: #ef4444;
-    --bg-gradient: linear-gradient(135deg, #0b1d3a 0%, #10294f 50%, #1f3f6b 100%);
+    /* Color palette */
+    --primary-bg: #0a0e27;
+    --secondary-bg: #151935;
+    --tertiary-bg: #1e2749;
+    --accent-primary: #00d4ff;
+    --accent-secondary: #7c3aed;
+    --accent-success: #10b981;
+    --accent-warning: #f59e0b;
+    --accent-error: #ef4444;
+    --text-primary: #ffffff;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --gradient-accent: linear-gradient(135deg, #00d4ff 0%, #7c3aed 100%);
+    --gradient-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    --gradient-warning: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    --gradient-error: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+
+    /* Shadows */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.12);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.18);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.24);
+    --shadow-glow: 0 0 20px rgba(0, 212, 255, 0.3);
+
+    /* Border radius */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+
+    /* Spacing */
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 1rem;
+    --space-lg: 1.5rem;
+    --space-xl: 2rem;
 }
+
+/* ============================================================================
+   BASE STYLES
+   ============================================================================ */
 
 .gradio-container {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    max-width: 1400px;
-    margin: 0 auto;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+    background: var(--primary-bg) !important;
+    color: var(--text-primary) !important;
+    max-width: 1600px !important;
+    margin: 0 auto !important;
+    padding: var(--space-lg) !important;
 }
 
-/* Header styling */
+body {
+    background: var(--primary-bg) !important;
+}
+
+/* ============================================================================
+   HEADER
+   ============================================================================ */
+
 .header {
-    background: var(--bg-gradient);
+    background: var(--gradient-primary);
     color: white;
-    padding: 2rem;
-    border-radius: 12px;
-    margin-bottom: 2rem;
+    padding: var(--space-xl) var(--space-lg);
+    border-radius: var(--radius-xl);
+    margin-bottom: var(--space-xl);
     text-align: center;
-    box-shadow: 0 15px 35px rgba(0,0,0,0.25);
+    box-shadow: var(--shadow-lg), var(--shadow-glow);
+    position: relative;
+    overflow: hidden;
+}
+
+.header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+    animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
 }
 
 .header h1 {
     margin: 0;
-    font-size: 2.5rem;
+    font-size: 3rem;
     font-weight: 800;
-    letter-spacing: -0.5px;
+    letter-spacing: -1px;
+    text-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    position: relative;
+    z-index: 1;
 }
 
 .header p {
-    margin: 0.5rem 0 0 0;
-    opacity: 0.9;
-    font-size: 1.05rem;
+    margin: var(--space-sm) 0 0 0;
+    opacity: 0.95;
+    font-size: 1.125rem;
+    font-weight: 500;
+    position: relative;
+    z-index: 1;
 }
 
-/* Tab styling */
-.tab-nav {
-    border-bottom: 2px solid #e5e7eb;
-    margin-bottom: 1.5rem;
+/* ============================================================================
+   TABS
+   ============================================================================ */
+
+.tab-nav button {
+    background: var(--secondary-bg) !important;
+    color: var(--text-secondary) !important;
+    border: none !important;
+    padding: var(--space-md) var(--space-lg) !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+    border-radius: var(--radius-md) var(--radius-md) 0 0 !important;
 }
 
-/* Buttons */
-.primary-button {
-    background: var(--bg-gradient) !important;
+.tab-nav button:hover {
+    background: var(--tertiary-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+.tab-nav button[aria-selected="true"] {
+    background: var(--gradient-accent) !important;
+    color: white !important;
+    box-shadow: var(--shadow-md);
+}
+
+/* ============================================================================
+   BUTTONS
+   ============================================================================ */
+
+button {
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 600 !important;
+    border-radius: var(--radius-md) !important;
+    transition: all 0.2s ease !important;
+    cursor: pointer !important;
+}
+
+.primary-button, button[variant="primary"] {
+    background: var(--gradient-accent) !important;
     color: white !important;
     border: none !important;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-    transition: all 0.2s;
+    padding: var(--space-md) var(--space-xl) !important;
+    font-size: 1.05rem !important;
+    box-shadow: var(--shadow-md) !important;
 }
 
-.primary-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.35);
+.primary-button:hover, button[variant="primary"]:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: var(--shadow-lg), var(--shadow-glow) !important;
 }
 
-.secondary-button {
-    background: white !important;
-    color: var(--primary-color) !important;
-    border: 1px solid var(--primary-color) !important;
+.secondary-button, button[variant="secondary"] {
+    background: var(--secondary-bg) !important;
+    color: var(--accent-primary) !important;
+    border: 2px solid var(--accent-primary) !important;
+    padding: var(--space-sm) var(--space-lg) !important;
+}
+
+.secondary-button:hover, button[variant="secondary"]:hover {
+    background: var(--tertiary-bg) !important;
+    border-color: var(--accent-secondary) !important;
+    color: var(--accent-secondary) !important;
+}
+
+button[variant="stop"] {
+    background: var(--gradient-error) !important;
+    color: white !important;
+    border: none !important;
+}
+
+/* ============================================================================
+   PROGRESS BARS - ENHANCED
+   ============================================================================ */
+
+.progress-container {
+    background: var(--secondary-bg);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    margin: var(--space-md) 0;
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--tertiary-bg);
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-md);
+}
+
+.progress-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--accent-primary);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.progress-stats {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.progress-bar-wrapper {
+    position: relative;
+    height: 32px;
+    background: var(--primary-bg);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: 2px solid var(--tertiary-bg);
+}
+
+.progress-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: var(--gradient-accent);
+    border-radius: var(--radius-md);
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: inset 0 2px 8px rgba(255, 255, 255, 0.2);
+}
+
+.progress-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.3) 50%, transparent 100%);
+    animation: progress-shine 2s infinite;
+}
+
+@keyframes progress-shine {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-weight: 700;
+    font-size: 0.875rem;
+    color: white;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    z-index: 2;
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+}
+
+.progress-details {
+    margin-top: var(--space-md);
+    padding: var(--space-md);
+    background: var(--primary-bg);
+    border-radius: var(--radius-sm);
+    border-left: 4px solid var(--accent-primary);
+}
+
+.progress-detail-line {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--space-xs) 0;
+    font-size: 0.875rem;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.progress-detail-label {
+    color: var(--text-secondary);
+}
+
+.progress-detail-value {
+    color: var(--accent-primary);
     font-weight: 600;
 }
 
-/* Card styling */
+/* ============================================================================
+   CARDS
+   ============================================================================ */
+
 .card {
-    background: white;
-    border-radius: 12px;
-    padding: 1.5rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    margin-bottom: 1rem;
+    background: var(--secondary-bg);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    box-shadow: var(--shadow-md);
+    margin-bottom: var(--space-md);
+    border: 1px solid var(--tertiary-bg);
+    transition: all 0.2s ease;
 }
 
-/* Progress bar styling */
-.progress-bar {
-    background: var(--bg-gradient);
-    height: 8px;
-    border-radius: 4px;
-    transition: width 0.3s;
+.card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
 }
 
-/* Voice card styling */
+/* ============================================================================
+   VOICE CARDS
+   ============================================================================ */
+
 .voice-card {
-    border: 2px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 1rem;
-    margin: 0.5rem 0;
-    transition: all 0.2s;
+    background: var(--secondary-bg);
+    border: 2px solid var(--tertiary-bg);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    margin: var(--space-sm) 0;
+    transition: all 0.2s ease;
 }
 
 .voice-card:hover {
-    border-color: var(--secondary-color);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border-color: var(--accent-primary);
+    box-shadow: var(--shadow-md), 0 0 16px rgba(0, 212, 255, 0.2);
+    transform: translateX(4px);
+}
+
+/* ============================================================================
+   INPUT FIELDS
+   ============================================================================ */
+
+input, textarea, select {
+    background: var(--secondary-bg) !important;
+    color: var(--text-primary) !important;
+    border: 2px solid var(--tertiary-bg) !important;
+    border-radius: var(--radius-md) !important;
+    padding: var(--space-md) !important;
+    font-family: 'Inter', sans-serif !important;
+    transition: all 0.2s ease !important;
+}
+
+input:focus, textarea:focus, select:focus {
+    border-color: var(--accent-primary) !important;
+    box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1) !important;
+    outline: none !important;
+}
+
+/* ============================================================================
+   LABELS
+   ============================================================================ */
+
+label {
+    color: var(--text-secondary) !important;
+    font-weight: 600 !important;
+    font-size: 0.875rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    margin-bottom: var(--space-sm) !important;
+}
+
+/* ============================================================================
+   STATUS BADGES
+   ============================================================================ */
+
+.status-success {
+    color: var(--accent-success);
+    font-weight: 700;
+}
+
+.status-warning {
+    color: var(--accent-warning);
+    font-weight: 700;
+}
+
+.status-error {
+    color: var(--accent-error);
+    font-weight: 700;
+}
+
+.status-running {
+    color: var(--accent-primary);
+    font-weight: 700;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* ============================================================================
+   SCROLLBAR
+   ============================================================================ */
+
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+    background: var(--primary-bg);
+}
+
+*::-webkit-scrollbar-thumb {
+    background: var(--tertiary-bg);
+    border-radius: var(--radius-sm);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-primary);
+}
+
+/* ============================================================================
+   MARKDOWN CONTENT
+   ============================================================================ */
+
+.markdown-text {
+    color: var(--text-primary) !important;
+    line-height: 1.6 !important;
+}
+
+.markdown-text code {
+    background: var(--primary-bg) !important;
+    color: var(--accent-primary) !important;
+    padding: 2px 6px !important;
+    border-radius: var(--radius-sm) !important;
+    font-family: 'JetBrains Mono', monospace !important;
+}
+
+.markdown-text strong {
+    color: var(--accent-primary) !important;
+}
+
+/* ============================================================================
+   AUDIO PLAYER (for feedback)
+   ============================================================================ */
+
+audio {
+    display: none;
+}
+
+.audio-feedback-indicator {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--gradient-accent);
+    color: white;
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    font-size: 0.875rem;
+    font-weight: 600;
+    animation: slideIn 0.3s ease;
+    z-index: 9999;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
 }
 
 """

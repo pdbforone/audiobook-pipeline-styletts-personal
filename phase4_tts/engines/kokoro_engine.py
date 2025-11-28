@@ -166,10 +166,42 @@ class KokoroEngine(TTSEngine):
 
     def get_available_voices(self) -> List[str]:
         """Get list of available Kokoro voices"""
-        # Kokoro has multiple voices available
+        # Kokoro 82M v1.0 has 46 voices across 9 languages
         return [
-            "af_bella",  # Female, warm
-            "af_sarah",  # Female, clear
-            "am_adam",  # Male, deep
-            "am_michael",  # Male, neutral
+            # American English Female (11)
+            "af_heart", "af_alloy", "af_aoede", "af_bella", "af_jessica",
+            "af_kore", "af_nicole", "af_nova", "af_river", "af_sarah", "af_sky",
+            # American English Male (9)
+            "am_adam", "am_echo", "am_eric", "am_fenrir", "am_liam",
+            "am_michael", "am_onyx", "am_puck", "am_santa",
+            # British English Female (4)
+            "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
+            # British English Male (4)
+            "bm_daniel", "bm_fable", "bm_george", "bm_lewis",
+            # Japanese Female (4)
+            "jf_alpha", "jf_gongitsune", "jf_nezumi", "jf_tebukuro",
+            # Japanese Male (1)
+            "jm_kumo",
+            # Mandarin Chinese Female (4)
+            "zf_xiaobei", "zf_xiaoni", "zf_xiaoxiao", "zf_xiaoyi",
+            # Mandarin Chinese Male (4)
+            "zm_yunjian", "zm_yunxi", "zm_yunxia", "zm_yunyang",
+            # Spanish Female (1)
+            "ef_dora",
+            # Spanish Male (2)
+            "em_alex", "em_santa",
+            # French Female (1)
+            "ff_siwis",
+            # Hindi Female (2)
+            "hf_alpha", "hf_beta",
+            # Hindi Male (2)
+            "hm_omega", "hm_psi",
+            # Italian Female (1)
+            "if_sara",
+            # Italian Male (1)
+            "im_nicola",
+            # Brazilian Portuguese Female (1)
+            "pf_dora",
+            # Brazilian Portuguese Male (2)
+            "pm_alex", "pm_santa",
         ]
