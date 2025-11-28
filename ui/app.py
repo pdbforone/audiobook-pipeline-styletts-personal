@@ -912,7 +912,22 @@ You can:
             return None, "❌ Please select at least one phase to run.", ui_state
 
         engine = ENGINE_MAP.get(engine_selection, "xtts")
-        file_path = Path(book_file)
+
+        # Copy uploaded file to input directory for stable path (enables resume)
+        uploaded_path = Path(book_file)
+        input_dir = PROJECT_ROOT / "input"
+        input_dir.mkdir(exist_ok=True)
+        stable_path = input_dir / uploaded_path.name
+
+        # Only copy if it's a temp file (from Gradio upload)
+        if "gradio" in str(uploaded_path) or "tmp" in str(uploaded_path).lower():
+            import shutil
+            shutil.copy2(uploaded_path, stable_path)
+            file_path = stable_path
+            logger.info(f"Copied uploaded file to stable location: {stable_path}")
+        else:
+            file_path = uploaded_path
+
         retries = int(max_retries)
         no_resume = not bool(enable_resume)
         subtitles_requested = bool(generate_subtitles) or subtitles_selected
