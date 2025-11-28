@@ -142,9 +142,13 @@ class PipelineAPI:
             phase_block = data.get(phase_key, {}) or {}
             files = phase_block.get("files", {}) or {}
             entry = files.get(file_id, {}) if isinstance(files, dict) else {}
-            return (
-                entry.get("status") or phase_block.get("status") or "missing"
-            )
+
+            # If there's no entry for this file, the phase hasn't run for it
+            if not entry or not isinstance(entry, dict):
+                return "N/A"
+
+            # Return the file-specific status (don't fall back to block-level)
+            return entry.get("status") or "unknown"
         except Exception:
             return "unknown"
 
