@@ -2209,25 +2209,25 @@ def run_phase4_multi_engine(
             py_paths.append(existing_py)
         env["PYTHONPATH"] = os.pathsep.join(py_paths)
         phase4_timeout = cfg.get_phase_timeout(4)
+
+        # Stream output to console in real-time so we can see "Skipping chunk_XXXX" logs
+        logger.info("Phase 4 command: %s", " ".join(cmd))
         result = subprocess.run(
             cmd,
             cwd=str(Path(phase_dir).resolve()),
             env=env,
-            capture_output=True,
+            capture_output=False,  # Don't capture - let it stream to console
             text=True,
             encoding="utf-8",
             errors="replace",
             timeout=phase4_timeout,
         )
         duration = time.perf_counter() - start_time
-        if result.stdout:
-            logger.info("Phase 4 output (%s):\n%s", cmd[0], result.stdout[-1000:])
         if result.returncode != 0:
             logger.error(
-                "Phase 4 command failed (exit %s) in %.1fs\nstderr tail:\n%s",
+                "Phase 4 command failed (exit %s) in %.1fs",
                 result.returncode,
                 duration,
-                result.stderr[-500:],
             )
         else:
             logger.info("Phase 4 command finished in %.1fs", duration)
