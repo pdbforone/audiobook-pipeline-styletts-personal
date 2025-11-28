@@ -929,8 +929,12 @@ You can:
             file_path = uploaded_path
 
         retries = int(max_retries)
-        no_resume = not bool(enable_resume)
+        # Convert radio button choice to boolean
+        resume_enabled = "Resume" in str(enable_resume)
+        no_resume = not resume_enabled
         subtitles_requested = bool(generate_subtitles) or subtitles_selected
+
+        logger.info(f"Resume setting: enable_resume={enable_resume}, resume_enabled={resume_enabled}, no_resume={no_resume}")
 
         async def runner(cancel_event, update_progress):
             def progress_hook(value: float, desc: Optional[str] = None):
@@ -1029,7 +1033,9 @@ You can:
 
         engine = ENGINE_MAP.get(engine_selection, "xtts")
         retries = int(max_retries)
-        no_resume = not bool(enable_resume)
+        # Convert radio button choice to boolean
+        resume_enabled = "Resume" in str(enable_resume)
+        no_resume = not resume_enabled
         subtitles_requested = bool(generate_subtitles) or subtitles_selected
 
         async def runner(cancel_event, update_progress):
@@ -1390,10 +1396,11 @@ You can:
 
                         with gr.Accordion("⚙️ Advanced Options", open=False):
                             with gr.Row():
-                                enable_resume = gr.Checkbox(
-                                    label="Enable Resume",
-                                    value=True,
-                                    info="Resume from checkpoint if interrupted",
+                                enable_resume = gr.Radio(
+                                    choices=["Resume (skip completed phases)", "Fresh run (start from beginning)"],
+                                    value="Resume (skip completed phases)",
+                                    label="Run Mode",
+                                    info="Choose whether to resume from previous run or start fresh",
                                 )
 
                                 max_retries = gr.Slider(
@@ -1507,10 +1514,11 @@ You can:
                         )
 
                         with gr.Accordion("⚙️ Batch Options", open=False):
-                            batch_enable_resume = gr.Checkbox(
-                                label="Enable Resume",
-                                value=True,
-                                info="Resume from checkpoint if interrupted",
+                            batch_enable_resume = gr.Radio(
+                                choices=["Resume (skip completed phases)", "Fresh run (start from beginning)"],
+                                value="Resume (skip completed phases)",
+                                label="Run Mode",
+                                info="Choose whether to resume from previous run or start fresh",
                             )
                             batch_max_retries = gr.Slider(
                                 minimum=0,
