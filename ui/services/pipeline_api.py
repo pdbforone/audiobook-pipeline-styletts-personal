@@ -230,7 +230,7 @@ class PipelineAPI:
             chunk_txt=self._count_files(
                 f"phase3-chunking/chunks/{file_id}_chunk_*.txt"
             ),
-            phase4_wav=self._count_files("phase4_tts/audio_chunks/*.wav"),
+            phase4_wav=self._count_files("phase4_tts/audio_chunks/**/*.wav"),
             phase5_wav=self._count_files(
                 "phase5_enhancement/processed/enhanced_*.wav"
             ),
