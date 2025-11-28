@@ -2103,7 +2103,8 @@ def run_phase4_multi_engine(
             cmd.append("--disable_fallback")
         if chunk_index is not None:
             cmd.append(f"--chunk_id={chunk_index}")
-            cmd.append("--resume")
+        # Always enable resume to skip existing chunks
+        cmd.append("--resume")
         return cmd
 
     def collect_failed_chunks() -> List[str]:
