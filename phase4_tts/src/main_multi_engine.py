@@ -1934,7 +1934,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         ),
         duration_tolerance_sec=float(
-            tier1_settings.get("duration_tolerance_sec", 5.0)
+            tier1_settings.get("duration_tolerance_sec", 120.0)
         ),
         silence_threshold_sec=float(
             tier1_settings.get("silence_threshold_sec", 2.0)

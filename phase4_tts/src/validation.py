@@ -35,7 +35,7 @@ class ValidationConfig:
 
     # Tier 1: Quick checks (always enabled)
     enable_tier1: bool = True
-    duration_tolerance_sec: float = 8.0  # Allow ±8s difference
+    duration_tolerance_sec: float = 120.0  # Allow ±120s difference (handles title pages, indexes, etc.)
     silence_threshold_sec: float = 2.0  # Flag gaps >2s
     min_amplitude_db: float = -40.0  # Flag audio quieter than -40dB
     min_chars_for_duration_check: int = (
