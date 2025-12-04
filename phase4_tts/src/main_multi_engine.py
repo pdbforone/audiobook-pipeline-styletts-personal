@@ -436,23 +436,40 @@ def select_voice(
     built_in_voices = voices_config.get("built_in_voices", {})
     default_voice = voices_config.get("default_voice")
 
-    # Determine which voice to use
-    selected_voice = voice_override or get_selected_voice_from_phase3(
+    # Track original request for logging
+    originally_requested = voice_override or get_selected_voice_from_phase3(
         str(pipeline_json), file_id
     )
+    selected_voice = originally_requested
+
+    # Preferred high-quality Kokoro voices for fallback
+    preferred_kokoro = ["am_adam", "af_sarah", "bm_daniel", "bf_emma"]
+
+    def get_best_kokoro_fallback() -> Optional[str]:
+        """Get best available Kokoro voice, preferring high-quality options."""
+        kokoro_voices = built_in_voices.get("kokoro", {})
+        if not kokoro_voices:
+            return None
+        # Try preferred voices first
+        for voice in preferred_kokoro:
+            if voice in kokoro_voices:
+                return voice
+        # Fall back to first available
+        return next(iter(kokoro_voices.keys()))
 
     if not selected_voice:
-        # Default to first built-in Kokoro voice or first prepared ref
-        if built_in_voices.get("kokoro"):
-            selected_voice = next(iter(built_in_voices["kokoro"].keys()))
+        # Default to best built-in Kokoro voice or first prepared ref
+        fallback = get_best_kokoro_fallback()
+        if fallback:
+            selected_voice = fallback
             logger.info(
-                "No voice selection. Using default built-in: '%s'",
+                "No voice selection from Phase 3. Using default built-in: '%s'",
                 selected_voice,
             )
         elif prepared_refs:
             selected_voice = default_voice or next(iter(prepared_refs.keys()))
             logger.info(
-                "No voice selection. Using default custom: '%s'",
+                "No voice selection from Phase 3. Using default custom: '%s'",
                 selected_voice,
             )
         else:
@@ -496,29 +513,50 @@ def select_voice(
 
     # Custom voice clone - needs reference audio
     if not prepared_refs:
+        # No custom references prepared - fall back to built-in
+        fallback = get_best_kokoro_fallback()
+        if fallback:
+            logger.warning(
+                "VOICE FALLBACK: '%s' requires reference audio but none prepared. "
+                "Using built-in '%s' instead. "
+                "To use custom voices, add audio files to phase4_tts/voice_references/",
+                selected_voice,
+                fallback,
+            )
+            return select_voice(
+                pipeline_json,
+                file_id,
+                fallback,
+                prepared_refs,
+                voices_config_path,
+                voices_config=voices_config,
+            )
         raise RuntimeError(
             f"Voice '{selected_voice}' is not a built-in voice and no custom references are prepared."
         )
 
     if selected_voice not in prepared_refs:
-        # Try to fall back to a built-in voice first
-        if built_in_voices.get("kokoro"):
-            fallback_voice = next(iter(built_in_voices["kokoro"].keys()))
+        # Try to fall back to a built-in voice first (preferred)
+        fallback = get_best_kokoro_fallback()
+        if fallback:
             logger.warning(
-                "Custom voice '%s' not found. Falling back to built-in: '%s'",
+                "VOICE FALLBACK: Custom voice '%s' not found in prepared references. "
+                "Using built-in '%s' instead. "
+                "Available custom voices: %s",
                 selected_voice,
-                fallback_voice,
+                fallback,
+                list(prepared_refs.keys())[:5],
             )
             return select_voice(
                 pipeline_json,
                 file_id,
-                fallback_voice,
+                fallback,
                 prepared_refs,
                 voices_config_path,
                 voices_config=voices_config,
             )
 
-        # Otherwise fall back to custom voice
+        # No built-in available - fall back to another custom voice
         fallback_voice = None
         if "neutral_narrator" in prepared_refs:
             fallback_voice = "neutral_narrator"
@@ -527,9 +565,12 @@ def select_voice(
         else:
             fallback_voice = next(iter(prepared_refs.keys()))
         logger.warning(
-            "Voice '%s' missing from prepared references. Falling back to '%s'.",
+            "VOICE FALLBACK: '%s' not found in prepared references. "
+            "Falling back to custom voice '%s'. "
+            "Original request was: '%s'",
             selected_voice,
             fallback_voice,
+            originally_requested or "none",
         )
         selected_voice = fallback_voice
 
