@@ -8,13 +8,6 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, Dict, List, Optional, Tuple
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-if str(PACKAGE_ROOT) not in sys.path:
-    sys.path.insert(0, str(PACKAGE_ROOT))
-
 import chardet
 import ebooklib
 import ftfy
@@ -25,20 +18,54 @@ import pymupdf as fitz  # PyMuPDF
 from docx import Document
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from pipeline_common import (
+
+def _configure_sys_path() -> None:
+    """Ensure imports can resolve both the repo root and local package when run as a script."""
+    project_root = Path(__file__).resolve().parents[3]
+    package_root = Path(__file__).resolve().parents[1]
+    for path in (project_root, package_root):
+        if str(path) not in sys.path:
+            sys.path.insert(0, str(path))
+
+
+def _load_pipeline_common() -> Tuple[Any, Any, Any, Any, Any]:
+    _configure_sys_path()
+    from pipeline_common import (
+        PipelineState,
+        StateError,
+        ensure_phase_and_file,
+        ensure_phase_block,
+    )
+    from pipeline_common.state_manager import StateTransaction
+
+    return (
+        PipelineState,
+        StateError,
+        ensure_phase_and_file,
+        ensure_phase_block,
+        StateTransaction,
+    )
+
+
+def _load_utils() -> Tuple[Any, Any]:
+    _configure_sys_path()
+    try:
+        from .utils import compute_sha256 as utils_compute_sha256
+        from .utils import log_error
+    except ImportError:
+        from phase1_validation.utils import compute_sha256 as utils_compute_sha256  # type: ignore
+        from phase1_validation.utils import log_error  # type: ignore
+    return utils_compute_sha256, log_error
+
+
+(
     PipelineState,
     StateError,
     ensure_phase_and_file,
     ensure_phase_block,
-)
-from pipeline_common.state_manager import StateTransaction
-
-try:
-    from .utils import compute_sha256 as utils_compute_sha256
-    from .utils import log_error
-except ImportError:
-    from phase1_validation.utils import compute_sha256 as utils_compute_sha256  # type: ignore
-    from phase1_validation.utils import log_error  # type: ignore
+    StateTransaction,
+) = _load_pipeline_common()
+utils_compute_sha256, log_error = _load_utils()
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"

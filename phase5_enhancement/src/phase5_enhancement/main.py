@@ -888,7 +888,8 @@ def get_audio_chunks_from_json(
             file_key = _normalize_file_key(file_id)
             if target_key and file_key != target_key:
                 continue
-            chunk_audio_paths = data.get("chunk_audio_paths") or data.get("artifacts", {}).get("chunk_audio_paths", [])
+            # BUGFIX: Prefer artifacts (authoritative) over direct field (may be incomplete)
+            chunk_audio_paths = data.get("artifacts", {}).get("chunk_audio_paths", []) or data.get("chunk_audio_paths", [])
 
             logger.info(f"File ID '{file_id}': {len(chunk_audio_paths)} audio paths")
 
@@ -1145,6 +1146,13 @@ def main(argv: Optional[list[str]] = None):
                     len(chunks),
                 )
 
+            # ===== CHECK CONCAT-ONLY MODE =====
+            concat_only_mode = os.environ.get("PHASE5_CONCAT_ONLY") == "1"
+            if concat_only_mode:
+                logger.info("=" * 60)
+                logger.info("CONCAT-ONLY MODE: Skipping enhancement, reusing existing enhanced WAVs")
+                logger.info("=" * 60)
+
             # ===== ADAPTIVE WORKER SELECTION =====
             physical_cores = psutil.cpu_count(logical=False) or psutil.cpu_count() or 1
             if not config.is_user_override("max_workers"):
@@ -1171,70 +1179,96 @@ def main(argv: Optional[list[str]] = None):
             cleanup_operations = 0
             final_cleanup_meta = None
 
-            logger.info(f"Processing {len(chunks)} audio chunks...")
+            # Skip enhancement if concat-only mode is enabled
+            if concat_only_mode:
+                logger.info("Skipping chunk processing (concat-only mode)")
+                # Load existing enhanced WAVs directly
+                output_dir = Path(config.output_dir).resolve()
+                enhanced_paths = sorted(output_dir.glob("enhanced_*.wav"))
 
-            with ThreadPoolExecutor(max_workers=config.max_workers) as executor:
-                # Submit all chunks with phrase_cleaner
-                futures = {
-                    executor.submit(
-                        enhance_chunk,
-                        chunk,
-                        config,
-                        temp_dir,
-                        phrase_cleaner,
-                        throttle_event,
-                        idx,
-                    ): chunk
-                    for idx, chunk in enumerate(chunks, start=1)
-                }
+                if not enhanced_paths:
+                    logger.error("No enhanced WAV files found in concat-only mode!")
+                    if not args.silence_notifications:
+                        play_alert_beep(silence_mode=False)
+                    return 1
 
-                for future in as_completed(futures):
+                logger.info(f"Found {len(enhanced_paths)} existing enhanced WAV files")
+
+                # Build metadata for existing files
+                for p in enhanced_paths:
                     try:
-                        metadata, enhanced_audio = future.result(timeout=config.processing_timeout)
-                    except TimeoutError:
-                        metadata = futures[future]
-                        metadata.status = "failed"
-                        metadata.error_message = "Processing timeout"
-                        enhanced_audio = np.array([], dtype=np.float32)
-                        logger.error(f"Timeout for chunk {metadata.chunk_id}")
+                        cid = int(p.stem.split("_")[-1])
+                    except Exception:
+                        continue
+                    m = AudioMetadata(chunk_id=cid, wav_path=str(p))
+                    m.enhanced_path = str(p)
+                    m.status = "complete"
+                    processed_metadata.append(m)
+            else:
+                logger.info(f"Processing {len(chunks)} audio chunks...")
 
-                    processed_metadata.append(metadata)
-                    if metadata.cleanup_status and metadata.cleanup_status not in {
-                        "disabled",
-                        "skipped",
-                    }:
-                        cleanup_operations += 1
+                with ThreadPoolExecutor(max_workers=config.max_workers) as executor:
+                    # Submit all chunks with phrase_cleaner
+                    futures = {
+                        executor.submit(
+                            enhance_chunk,
+                            chunk,
+                            config,
+                            temp_dir,
+                            phrase_cleaner,
+                            throttle_event,
+                            idx,
+                        ): chunk
+                        for idx, chunk in enumerate(chunks, start=1)
+                    }
 
-                    # Log cleanup results if applicable
-                    if metadata.cleanup_status:
-                        if metadata.cleanup_status == "cleaned":
+                    for future in as_completed(futures):
+                        try:
+                            metadata, enhanced_audio = future.result(timeout=config.processing_timeout)
+                        except TimeoutError:
+                            metadata = futures[future]
+                            metadata.status = "failed"
+                            metadata.error_message = "Processing timeout"
+                            enhanced_audio = np.array([], dtype=np.float32)
+                            logger.error(f"Timeout for chunk {metadata.chunk_id}")
+
+                        processed_metadata.append(metadata)
+                        if metadata.cleanup_status and metadata.cleanup_status not in {
+                            "disabled",
+                            "skipped",
+                        }:
+                            cleanup_operations += 1
+
+                        # Log cleanup results if applicable
+                        if metadata.cleanup_status:
+                            if metadata.cleanup_status == "cleaned":
+                                logger.info(
+                                    f"[CLEANUP] Chunk {metadata.chunk_id}: "
+                                    f"Removed {metadata.phrases_removed} phrase(s) "
+                                    f"in {metadata.cleanup_processing_time:.1f}s"
+                                )
+                            elif metadata.cleanup_status == "error":
+                                logger.warning(
+                                    "[WARNING] Chunk %s: Cleanup error, continuing",
+                                    metadata.chunk_id,
+                                )
+
+                        if metadata.status.startswith("complete") and len(enhanced_audio) > 0:
+                            enhanced_path = Path(config.output_dir) / f"enhanced_{metadata.chunk_id:04d}.wav"
+                            sf.write(
+                                enhanced_path,
+                                enhanced_audio,
+                                config.sample_rate,
+                                format="WAV",
+                                subtype="PCM_24",
+                            )
+                            metadata.enhanced_path = str(enhanced_path)
+                            enhanced_paths.append(enhanced_path)
                             logger.info(
-                                f"[CLEANUP] Chunk {metadata.chunk_id}: "
-                                f"Removed {metadata.phrases_removed} phrase(s) "
-                                f"in {metadata.cleanup_processing_time:.1f}s"
-                            )
-                        elif metadata.cleanup_status == "error":
-                            logger.warning(
-                                "[WARNING] Chunk %s: Cleanup error, continuing",
+                                "[OK] Saved enhanced chunk %s: %s",
                                 metadata.chunk_id,
+                                enhanced_path,
                             )
-
-                    if metadata.status.startswith("complete") and len(enhanced_audio) > 0:
-                        enhanced_path = Path(config.output_dir) / f"enhanced_{metadata.chunk_id:04d}.wav"
-                        sf.write(
-                            enhanced_path,
-                            enhanced_audio,
-                            config.sample_rate,
-                            format="WAV",
-                            subtype="PCM_24",
-                        )
-                        metadata.enhanced_path = str(enhanced_path)
-                        enhanced_paths.append(enhanced_path)
-                        logger.info(
-                            "[OK] Saved enhanced chunk %s: %s",
-                            metadata.chunk_id,
-                            enhanced_path,
-                        )
 
             # If nothing was processed this run but resume is enabled, fall back to cached enhanced files
             if not enhanced_paths and config.resume_on_failure:

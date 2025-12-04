@@ -125,10 +125,15 @@ class XTTSEngine(TTSEngine):
         # Avoid passing the speaker flag if the model does not support it to prevent ValueError.
         speaker_supported = getattr(self.model, "is_multi_speaker", True)
         active_speaker = speaker if speaker_supported else None
+
+        # BUGFIX: Only use fallback_reference if no speaker was explicitly requested
+        # When speaker param is provided (built-in voice), don't override with fallback
+        speaker_explicitly_requested = "speaker" in kwargs
         fallback_reference = None
         if (
             not speaker_supported
             and not reference_audio
+            and not speaker_explicitly_requested  # NEW: Don't fallback if speaker was requested
             and self.default_reference.exists()
         ):
             fallback_reference = self.default_reference

@@ -24,8 +24,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+# Resolve project roots for cross-phase imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PHASE1_SRC = PROJECT_ROOT / "phase1-validation" / "src"
+
+for _path in (PROJECT_ROOT, PHASE1_SRC):
+    if _path.exists() and str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
+
 # Add parent directory to path for pipeline_common
-sys.path.insert(0, str(Path(__file__).parent.parent))
 from pipeline_common import PipelineState, StateError, ensure_phase_and_file
 from pipeline_common.policy_engine import PolicyEngine
 from pydantic import BaseModel, Field, ValidationError, ConfigDict
@@ -226,7 +233,12 @@ logger = logging.getLogger(__name__)
 # Initialize Rich console
 console = Console() if RICH_AVAILABLE else None
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Prefer Phase 1 hashing helper for reuse decisions when available
+try:
+    from phase1_validation.utils import compute_sha256 as _phase1_compute_sha256
+except Exception:
+    _phase1_compute_sha256 = None
+
 ARCHIVE_ROOT = PROJECT_ROOT / "audiobooks"
 PHASE4_AUDIO_DIR: Optional[Path] = None
 _ORCHESTRATOR_CONFIG: Optional["OrchestratorConfig"] = None
@@ -913,6 +925,8 @@ def print_panel(content: str, title: str = "", style: str = ""):
 
 def compute_sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
     """Compute SHA256 for reuse decisions."""
+    if _phase1_compute_sha256:
+        return _phase1_compute_sha256(path)
     sha = hashlib.sha256()
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(chunk_size), b""):
@@ -1754,6 +1768,7 @@ def run_phase(
             state,
             phase_overrides=phase_overrides,
             policy_engine=policy_engine,
+            voice_id=voice_id,
         )
 
     # Standard phase directory lookup
@@ -1821,6 +1836,7 @@ def run_phase_standard(
     state: PipelineState,
     phase_overrides: Optional[Dict[str, Any]] = None,
     policy_engine: Optional[PolicyEngine] = None,
+    voice_id: Optional[str] = None,
 ) -> bool:
     """Run a standard phase using Poetry."""
 
@@ -2006,6 +2022,9 @@ def run_phase_standard(
                 f"--config={config_path}",
             ]
         )
+        # BUGFIX: Pass voice selection to Phase 3 so chunk voice_overrides are set correctly
+        if voice_id:
+            cmd.append(f"--voice={voice_id}")
 
     logger.info(f"Command: {' '.join(cmd)}")
 
@@ -3688,6 +3707,7 @@ def run_pipeline(
     no_resume: bool = False,
     progress_callback=None,
     concat_only: bool = False,
+    auto_mode: bool = False,
     policy_engine: Optional[PolicyEngine] = None,
 ) -> Dict:
     """
@@ -3695,7 +3715,7 @@ def run_pipeline(
 
     Args:
         file_path: Path to input book file (EPUB, PDF, etc.)
-        voice_id: Voice ID to use for TTS
+        voice_id: Voice ID to use for TTS (ignored if auto_mode=True)
         tts_engine: TTS engine to use ("chatterbox", "f5", "xtts")
         mastering_preset: Audio mastering preset name
         phases: List of phases to run (default: [1,2,3,4,5])
@@ -3704,6 +3724,8 @@ def run_pipeline(
         max_retries: Max retries per phase
         no_resume: Disable resume from checkpoint (run all phases fresh)
         progress_callback: Optional callback(phase_num, percentage, message)
+        concat_only: Reuse existing enhanced WAVs in Phase 5 (skip re-enhancement)
+        auto_mode: Let AI select voice based on genre detection (overrides voice_id)
 
     Returns:
         Dict with:
@@ -3900,6 +3922,13 @@ def run_pipeline(
         os.environ["PHASE5_CONCAT_ONLY"] = "1"
     else:
         os.environ.pop("PHASE5_CONCAT_ONLY", None)
+
+    # Auto mode: Let AI select voice based on genre detection (Phase 3)
+    if auto_mode:
+        logger.info("🤖 Auto mode enabled: AI will select voice based on detected genre")
+        voice_id = None  # Don't pass --voice to Phase 3; let genre detection choose
+    elif voice_id:
+        logger.info(f"Using manual voice selection: {voice_id}")
 
     # Run phases
     policy_phase_timers: Dict[str, float] = {}

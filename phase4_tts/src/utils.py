@@ -163,7 +163,7 @@ def get_selected_voice_from_phase3(
         Voice ID or None if not found
     """
     try:
-        with open(json_path, "r") as f:
+        with open(json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         resolved_key, phase3_data = resolve_pipeline_file(
@@ -216,7 +216,7 @@ def prepare_voice_references(
     cache_path.mkdir(exist_ok=True)
 
     try:
-        with open(voice_config_path, "r") as f:
+        with open(voice_config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
     except FileNotFoundError:
         logger.error(f"Voice references config not found: {voice_config_path}")
@@ -434,9 +434,9 @@ def sanitize_text_for_tts(
 
             text = expand_numbers(text)
         except ImportError:
-            logger.warning("g2p_en not installed; skipping number expansion")
+            logger.debug("g2p_en not installed; skipping number expansion")
         except Exception as exc:
-            logger.warning(f"g2p_en normalization failed: {exc}")
+            logger.debug(f"g2p_en normalization failed: {exc}")
 
     # Optional heuristic overrides for common abbreviations
     if enable_g2p:

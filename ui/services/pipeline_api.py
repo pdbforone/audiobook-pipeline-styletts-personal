@@ -387,7 +387,7 @@ class PipelineAPI:
         self,
         *,
         file_path: Path,
-        voice_id: str,
+        voice_id: Optional[str],
         tts_engine: str,
         mastering_preset: str,
         phases: List[int],
@@ -395,6 +395,7 @@ class PipelineAPI:
         max_retries: int,
         no_resume: bool,
         concat_only: bool,
+        auto_mode: bool,
         progress_callback: Any = None,
         cancel_event: Optional[threading.Event] = None,
     ) -> Dict[str, Any]:
@@ -413,6 +414,7 @@ class PipelineAPI:
                 max_retries,
                 no_resume,
                 concat_only,
+                auto_mode,
                 progress_callback,
                 cancel_handle,
             )
@@ -423,7 +425,7 @@ class PipelineAPI:
     def _run_pipeline_sync(
         self,
         file_path: Path,
-        voice_id: str,
+        voice_id: Optional[str],
         tts_engine: str,
         mastering_preset: str,
         phases: List[int],
@@ -431,6 +433,7 @@ class PipelineAPI:
         max_retries: int,
         no_resume: bool,
         concat_only: bool,
+        auto_mode: bool,
         progress_callback: Any,
         cancel_handle: threading.Event,
     ) -> Dict[str, Any]:
@@ -462,6 +465,7 @@ class PipelineAPI:
                 no_resume=no_resume,
                 progress_callback=wrapped_progress,
                 concat_only=concat_only,
+                auto_mode=auto_mode,
             )
         except KeyboardInterrupt:
             logger.info("Pipeline run cancelled by user")

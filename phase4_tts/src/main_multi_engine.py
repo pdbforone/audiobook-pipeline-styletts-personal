@@ -150,6 +150,16 @@ logging.basicConfig(
 )
 
 
+def normalize_voice_id(voice_id: str) -> str:
+    """
+    Normalize voice ID to match Phase 3 format.
+
+    Converts "Baldur Sanjin" -> "baldur_sanjin"
+    This ensures consistency across the pipeline.
+    """
+    return voice_id.lower().replace(' ', '_')
+
+
 @dataclass(slots=True)
 class ChunkPayload:
     chunk_id: str
@@ -432,44 +442,39 @@ def select_voice(
     """
     voices_config = voices_config or load_voices_config(voices_config_path)
 
-    voice_entries = voices_config.get("voice_references", {})
-    built_in_voices = voices_config.get("built_in_voices", {})
+    # Modern voices.json structure: all voices under "voices" key with "built_in" flag
+    all_voices = voices_config.get("voices", {}) or {}
     default_voice = voices_config.get("default_voice")
 
-    # Track original request for logging
-    originally_requested = voice_override or get_selected_voice_from_phase3(
-        str(pipeline_json), file_id
-    )
-    selected_voice = originally_requested
-
-    # Preferred high-quality Kokoro voices for fallback
-    preferred_kokoro = ["am_adam", "af_sarah", "bm_daniel", "bf_emma"]
-
-    def get_best_kokoro_fallback() -> Optional[str]:
-        """Get best available Kokoro voice, preferring high-quality options."""
-        kokoro_voices = built_in_voices.get("kokoro", {})
-        if not kokoro_voices:
-            return None
-        # Try preferred voices first
-        for voice in preferred_kokoro:
-            if voice in kokoro_voices:
-                return voice
-        # Fall back to first available
-        return next(iter(kokoro_voices.keys()))
+    # Determine which voice to use
+    # Priority: CLI override > Phase 3 stored voice > default
+    if voice_override:
+        selected_voice = voice_override
+        logger.info(f"Using CLI voice override: {selected_voice}")
+    else:
+        selected_voice = get_selected_voice_from_phase3(str(pipeline_json), file_id)
+        if selected_voice:
+            logger.info(f"Using Phase 3 selected voice: {selected_voice}")
 
     if not selected_voice:
-        # Default to best built-in Kokoro voice or first prepared ref
-        fallback = get_best_kokoro_fallback()
-        if fallback:
-            selected_voice = fallback
+        # Default to first built-in Kokoro voice or first prepared ref
+        # Find first built-in Kokoro voice
+        kokoro_built_in = None
+        for voice_name, voice_data in all_voices.items():
+            if voice_data.get("built_in") and voice_data.get("engine") == "kokoro":
+                kokoro_built_in = voice_name
+                break
+
+        if kokoro_built_in:
+            selected_voice = kokoro_built_in
             logger.info(
-                "No voice selection from Phase 3. Using default built-in: '%s'",
+                "No voice selection. Using default built-in: '%s'",
                 selected_voice,
             )
         elif prepared_refs:
             selected_voice = default_voice or next(iter(prepared_refs.keys()))
             logger.info(
-                "No voice selection from Phase 3. Using default custom: '%s'",
+                "No voice selection. Using default custom: '%s'",
                 selected_voice,
             )
         else:
@@ -477,17 +482,23 @@ def select_voice(
                 "No voices available (neither built-in nor custom)"
             )
 
-    # Check if this is a built-in voice (across all engines)
+    # Check if this is a built-in voice
+    # BUGFIX: Normalize voice ID for comparison and read from "voices" key
     is_built_in = False
     built_in_engine = None
     built_in_data = None
+    normalized_selected = normalize_voice_id(selected_voice)
 
-    for engine_name, engine_voices in built_in_voices.items():
-        if selected_voice in engine_voices:
-            is_built_in = True
-            built_in_engine = engine_name
-            built_in_data = engine_voices[selected_voice]
-            break
+    # Check if selected voice is in "voices" with built_in=true
+    for voice_name, voice_data in all_voices.items():
+        if voice_data.get("built_in"):
+            # Check both original and normalized names
+            if voice_name == selected_voice or normalize_voice_id(voice_name) == normalized_selected:
+                is_built_in = True
+                built_in_engine = voice_data.get("engine")
+                built_in_data = voice_data
+                selected_voice = voice_name  # Use original name for engine params
+                break
 
     if is_built_in:
         # Built-in voice - no reference audio needed
@@ -513,50 +524,36 @@ def select_voice(
 
     # Custom voice clone - needs reference audio
     if not prepared_refs:
-        # No custom references prepared - fall back to built-in
-        fallback = get_best_kokoro_fallback()
-        if fallback:
-            logger.warning(
-                "VOICE FALLBACK: '%s' requires reference audio but none prepared. "
-                "Using built-in '%s' instead. "
-                "To use custom voices, add audio files to phase4_tts/voice_references/",
-                selected_voice,
-                fallback,
-            )
-            return select_voice(
-                pipeline_json,
-                file_id,
-                fallback,
-                prepared_refs,
-                voices_config_path,
-                voices_config=voices_config,
-            )
         raise RuntimeError(
             f"Voice '{selected_voice}' is not a built-in voice and no custom references are prepared."
         )
 
-    if selected_voice not in prepared_refs:
-        # Try to fall back to a built-in voice first (preferred)
-        fallback = get_best_kokoro_fallback()
-        if fallback:
+    # BUGFIX: Check with normalized comparison for custom voices
+    if selected_voice not in prepared_refs and normalized_selected not in prepared_refs:
+        # Try to fall back to a built-in voice first
+        # Find first built-in Kokoro voice
+        kokoro_built_in = None
+        for voice_name, voice_data in all_voices.items():
+            if voice_data.get("built_in") and voice_data.get("engine") == "kokoro":
+                kokoro_built_in = voice_name
+                break
+
+        if kokoro_built_in:
             logger.warning(
-                "VOICE FALLBACK: Custom voice '%s' not found in prepared references. "
-                "Using built-in '%s' instead. "
-                "Available custom voices: %s",
+                "Custom voice '%s' not found. Falling back to built-in: '%s'",
                 selected_voice,
-                fallback,
-                list(prepared_refs.keys())[:5],
+                kokoro_built_in,
             )
             return select_voice(
                 pipeline_json,
                 file_id,
-                fallback,
+                kokoro_built_in,
                 prepared_refs,
                 voices_config_path,
                 voices_config=voices_config,
             )
 
-        # No built-in available - fall back to another custom voice
+        # Otherwise fall back to custom voice
         fallback_voice = None
         if "neutral_narrator" in prepared_refs:
             fallback_voice = "neutral_narrator"
@@ -565,22 +562,24 @@ def select_voice(
         else:
             fallback_voice = next(iter(prepared_refs.keys()))
         logger.warning(
-            "VOICE FALLBACK: '%s' not found in prepared references. "
-            "Falling back to custom voice '%s'. "
-            "Original request was: '%s'",
+            "Voice '%s' missing from prepared references. Falling back to '%s'.",
             selected_voice,
             fallback_voice,
-            originally_requested or "none",
         )
         selected_voice = fallback_voice
 
     logger.info(
         "Using custom voice clone '%s' with reference audio", selected_voice
     )
-    reference_path = Path(prepared_refs[selected_voice]).resolve()
-    engine_params = voice_entries.get(selected_voice, {}).get(
-        "tts_engine_params", {}
-    )
+    # BUGFIX: Try both original and normalized keys for prepared_refs lookup
+    ref_audio = prepared_refs.get(selected_voice) or prepared_refs.get(normalized_selected)
+    if not ref_audio:
+        raise RuntimeError(f"No reference audio found for voice '{selected_voice}'")
+    reference_path = Path(ref_audio).resolve()
+
+    # Get engine params from voice data in all_voices
+    voice_data = all_voices.get(selected_voice, {})
+    engine_params = voice_data.get("tts_engine_params", {})
 
     return selected_voice, reference_path, engine_params
 
@@ -591,37 +590,43 @@ def build_voice_assets(
 ) -> Dict[str, VoiceAsset]:
     """Precompute per-voice assets for fast lookup (used for per-chunk overrides)."""
     assets: Dict[str, VoiceAsset] = {}
-    voice_entries = voices_config.get("voice_references", {}) or {}
-    built_in_voices = voices_config.get("built_in_voices", {}) or {}
 
-    for engine_name, engine_voices in built_in_voices.items():
-        for voice_name, voice_data in engine_voices.items():
+    # Modern voices.json structure: all voices under "voices" key with "built_in" flag
+    all_voices = voices_config.get("voices", {}) or {}
+
+    for voice_name, voice_data in all_voices.items():
+        # Check if this is a built-in voice (XTTS/Kokoro default speakers)
+        is_built_in = voice_data.get("built_in", False)
+        engine = voice_data.get("engine")
+
+        if is_built_in and engine:
+            # Built-in voice: use speaker/voice parameter, no reference_audio
             params = {}
-            if engine_name == "xtts":
+            if engine == "xtts":
                 params["speaker"] = voice_name
-            elif engine_name == "kokoro":
+            elif engine == "kokoro":
                 params["voice"] = voice_name
             params.update(voice_data.get("tts_engine_params", {}))
-            assets[voice_name] = VoiceAsset(
-                voice_id=voice_name,
-                reference_audio=None,
-                engine_params=params,
-                preferred_engine=engine_name,
-            )
 
-    for voice_name, voice_data in voice_entries.items():
-        ref_path = prepared_refs.get(voice_name)
-        params = dict(voice_data.get("tts_engine_params", {}))
-        if voice_name in assets:
-            if ref_path:
-                assets[voice_name].reference_audio = Path(ref_path)
-            continue
-        assets[voice_name] = VoiceAsset(
-            voice_id=voice_name,
-            reference_audio=Path(ref_path).resolve() if ref_path else None,
-            engine_params=params,
-            preferred_engine=None,
-        )
+            normalized_key = normalize_voice_id(voice_name)
+            assets[normalized_key] = VoiceAsset(
+                voice_id=voice_name,
+                reference_audio=None,  # Built-in voices don't use reference audio
+                engine_params=params,
+                preferred_engine=engine,
+            )
+        else:
+            # Custom voice cloning: use reference_audio
+            ref_path = prepared_refs.get(voice_name)
+            params = dict(voice_data.get("tts_engine_params", {}))
+            normalized_key = normalize_voice_id(voice_name)
+
+            assets[normalized_key] = VoiceAsset(
+                voice_id=voice_name,
+                reference_audio=Path(ref_path).resolve() if ref_path else None,
+                engine_params=params,
+                preferred_engine=voice_data.get("engine"),
+            )
 
     return assets
 
@@ -658,12 +663,19 @@ def synthesize_chunk_with_engine(
     text_len = len(chunk.text)
 
     if chunk.voice_override and voice_assets:
-        voice_asset = voice_assets.get(chunk.voice_override)
+        # BUGFIX: Normalize voice override for lookup (voice_assets uses normalized keys)
+        normalized_override = normalize_voice_id(chunk.voice_override)
+        voice_asset = voice_assets.get(normalized_override)
         if voice_asset:
             if voice_asset.engine_params:
                 chunk_kwargs.update(voice_asset.engine_params)
+            # For built-in voices: reference_audio is None, use speaker param from engine_params
+            # For custom voices: use reference_audio for voice cloning
             if voice_asset.reference_audio:
                 reference = voice_asset.reference_audio
+            else:
+                # Built-in voice: don't use reference audio (speaker param is in chunk_kwargs)
+                reference = None
             if (
                 voice_asset.preferred_engine
                 and voice_asset.preferred_engine in engine_manager.engines
@@ -2146,7 +2158,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     base_output = Path(
         config.get("audio_chunks_dir", "audio_chunks")
     ).resolve()
-    output_dir = base_output / resolved_file_id
+    # Windows will choke on trailing spaces/dots in path components; sanitize for FS safety.
+    sanitized_id = resolved_file_id.rstrip(" .")
+    if sanitized_id != resolved_file_id:
+        logger.warning(
+            "File ID '%s' contains trailing whitespace; using sanitized folder name '%s' for audio outputs.",
+            resolved_file_id,
+            sanitized_id,
+        )
+    output_dir = base_output / sanitized_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Lazy-load only needed engines for isolation

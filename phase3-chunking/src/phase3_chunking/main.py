@@ -667,6 +667,31 @@ def run_phase3(
             )
         record.text_hash = text_hash
         ensure_chunk_metadata(record, existing_paths)
+
+        # BUGFIX: Regenerate voice overrides if CLI voice provided (even in resume mode)
+        cli_voice = getattr(config, "voice_override", None)
+        if cli_voice or pipeline_data.get("tts_voice") or (
+            file_id and pipeline_data.get("voice_overrides", {}).get(file_id)
+        ):
+            selected_voice = select_voice(
+                profile_name=record.applied_profile or "general",
+                file_id=file_id,
+                pipeline_data=pipeline_data,
+                cli_override=cli_voice,
+            )
+            if selected_voice:
+                chunk_voice_overrides = {}
+                for idx, chunk_path_str in enumerate(record.chunk_paths):
+                    try:
+                        cid = derive_chunk_id_from_path(Path(chunk_path_str), idx)
+                        chunk_voice_overrides[cid] = selected_voice
+                    except Exception as exc:
+                        logger.warning(
+                            "Failed to derive chunk_id for %s: %s", chunk_path_str, exc
+                        )
+                record.chunk_voice_overrides = chunk_voice_overrides
+                logger.info(f"Resume mode: Updated voice overrides to '{selected_voice}' for {len(chunk_voice_overrides)} chunks")
+
         chunk_ids = [
             derive_chunk_id_from_path(Path(p), idx)
             for idx, p in enumerate(existing_paths)

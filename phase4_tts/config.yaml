@@ -48,3 +48,5 @@ validation:
   whisper_first_n: 10
   whisper_last_n: 10
   max_wer: 0.10
+  # AI-powered text rewriting for ASR-detected issues (requires Ollama + agents)
+  enable_llama_asr_rewrite: true  # Use LlamaRewriter to fix text when ASR detects problems

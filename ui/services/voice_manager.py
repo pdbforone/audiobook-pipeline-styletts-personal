@@ -67,13 +67,13 @@ class VoiceManager:
             if not isinstance(engine_voices, dict):
                 continue
             for voice_name, voice_data in engine_voices.items():
-                # Use voice name as ID for built-in voices
-                voice_id = voice_name
+                # Normalize voice ID to match Phase 3 format (lowercase with underscores)
+                voice_id = self._normalize_voice_id(voice_name)
                 # Merge engine name into voice data
                 enriched_data = dict(voice_data)
                 enriched_data["engine"] = engine_name
                 enriched_data["built_in"] = True
-                # Use voice name as narrator name if not specified
+                # Use original voice name as narrator name if not specified
                 if "narrator_name" not in enriched_data:
                     enriched_data["narrator_name"] = voice_name
                 voices[voice_id] = VoiceMetadata.from_dict(voice_id, enriched_data)

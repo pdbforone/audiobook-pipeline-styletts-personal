@@ -894,6 +894,7 @@ You can:
         max_retries: float,
         generate_subtitles: bool,
         concat_only: bool,
+        auto_mode: bool,
         phase_choices: List[str],
         progress=gr.Progress(track_tqdm=True),
     ) -> Tuple[Optional[str], str, UIState]:
@@ -903,9 +904,15 @@ You can:
         if ui_state.worker.is_running:
             return None, "⚠️ Another pipeline run is already in progress.", ui_state
 
-        voice_meta = self.voice_manager.get_voice(voice_selection)
-        if not voice_meta:
-            return None, "❌ Please select a voice.", ui_state
+        # In auto mode, AI selects voice based on genre; otherwise use manual selection
+        if auto_mode:
+            voice_id = None  # Let Phase 3 AI select voice based on genre
+            logger.info("Auto mode enabled: AI will select voice based on detected genre")
+        else:
+            voice_meta = self.voice_manager.get_voice(voice_selection)
+            if not voice_meta:
+                return None, "❌ Please select a voice.", ui_state
+            voice_id = voice_meta.voice_id
 
         phases, subtitles_selected = self._parse_phase_choices(phase_choices)
         if not phases:
@@ -944,7 +951,7 @@ You can:
             ui_state.pipeline_api.reset_cancel()
             result = await ui_state.pipeline_api.run_pipeline_async(
                 file_path=file_path,
-                voice_id=voice_meta.voice_id,
+                voice_id=voice_id,  # None in auto mode, specific voice otherwise
                 tts_engine=engine,
                 mastering_preset=mastering_preset,
                 phases=phases,
@@ -952,6 +959,7 @@ You can:
                 max_retries=retries,
                 no_resume=no_resume,
                 concat_only=bool(concat_only),
+                auto_mode=bool(auto_mode),
                 progress_callback=progress_hook,
                 cancel_event=cancel_event,
             )
@@ -979,6 +987,8 @@ You can:
 
         audiobook_path = result.get("audiobook_path", "phase5_enhancement/processed/")
         options_list = []
+        if auto_mode:
+            options_list.append("🤖 Auto mode (AI-selected voice based on genre)")
         if no_resume:
             options_list.append("Fresh run (no resume)")
         if retries != 2:
@@ -991,11 +1001,12 @@ You can:
             options_list.append("Concat only (reuse enhanced WAVs when present)")
 
         options_text = "\n- ".join(options_list) if options_list else "Default settings"
+        voice_display = "AI-selected (auto mode)" if auto_mode else voice_id
         return None, f"""
 ✅ Audiobook generated successfully!
 
 **Configuration:**
-- Voice: {voice_meta.voice_id}
+- Voice: {voice_display}
 - Engine: {engine_selection}
 - Mastering: {mastering_preset}
 
@@ -1386,6 +1397,12 @@ You can:
                                 info="Choose synthesis engine (XTTS=quality, Kokoro=speed)",
                             )
 
+                        auto_mode = gr.Checkbox(
+                            label="🤖 Auto Mode (AI selects voice based on genre)",
+                            value=False,
+                            info="Let AI automatically choose the best voice for detected genre. Overrides manual voice selection.",
+                        )
+
                         with gr.Row():
                             preset_dropdown = gr.Dropdown(
                                 choices=self.presets,
@@ -1466,6 +1483,7 @@ You can:
                         max_retries,
                         generate_subtitles,
                         concat_only,
+                        auto_mode,
                         phase_selector,
                     ],
                     outputs=[audio_output, status_output, ui_state],
