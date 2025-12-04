@@ -442,8 +442,23 @@ def select_voice(
     """
     voices_config = voices_config or load_voices_config(voices_config_path)
 
-    # Modern voices.json structure: all voices under "voices" key with "built_in" flag
-    all_voices = voices_config.get("voices", {}) or {}
+    # Build unified all_voices dict from both voice_references and built_in_voices
+    all_voices: Dict[str, Any] = {}
+
+    # Add custom voice references
+    for voice_id, voice_data in voices_config.get("voice_references", {}).items():
+        all_voices[voice_id] = dict(voice_data)
+        all_voices[voice_id]["_type"] = "custom"
+
+    # Add built-in voices from each engine
+    for engine_name, engine_voices in voices_config.get("built_in_voices", {}).items():
+        if isinstance(engine_voices, dict):
+            for voice_name, voice_data in engine_voices.items():
+                all_voices[voice_name] = dict(voice_data)
+                all_voices[voice_name]["_type"] = "built_in"
+                all_voices[voice_name]["engine"] = engine_name
+                all_voices[voice_name]["built_in"] = True
+
     default_voice = voices_config.get("default_voice")
 
     # Determine which voice to use
@@ -591,8 +606,22 @@ def build_voice_assets(
     """Precompute per-voice assets for fast lookup (used for per-chunk overrides)."""
     assets: Dict[str, VoiceAsset] = {}
 
-    # Modern voices.json structure: all voices under "voices" key with "built_in" flag
-    all_voices = voices_config.get("voices", {}) or {}
+    # Build unified all_voices dict from both voice_references and built_in_voices
+    all_voices: Dict[str, Any] = {}
+
+    # Add custom voice references
+    for voice_id, voice_data in voices_config.get("voice_references", {}).items():
+        all_voices[voice_id] = dict(voice_data)
+        all_voices[voice_id]["_type"] = "custom"
+
+    # Add built-in voices from each engine
+    for engine_name, engine_voices in voices_config.get("built_in_voices", {}).items():
+        if isinstance(engine_voices, dict):
+            for voice_name, voice_data in engine_voices.items():
+                all_voices[voice_name] = dict(voice_data)
+                all_voices[voice_name]["_type"] = "built_in"
+                all_voices[voice_name]["engine"] = engine_name
+                all_voices[voice_name]["built_in"] = True
 
     for voice_name, voice_data in all_voices.items():
         # Check if this is a built-in voice (XTTS/Kokoro default speakers)
@@ -633,7 +662,7 @@ def build_voice_assets(
 
 def synthesize_chunk_with_engine(
     chunk: ChunkPayload,
-    reference_audio: Path,
+    reference_audio: Optional[Path],
     engine_manager: EngineManager,
     engine_name: str,
     output_dir: Path,

@@ -97,7 +97,7 @@ class EngineManager:
     def synthesize(
         self,
         text: str,
-        reference_audio: Path,
+        reference_audio: Optional[Path] = None,
         engine: Optional[str] = None,
         language: str = "en",
         fallback: bool = True,
@@ -111,13 +111,14 @@ class EngineManager:
 
         Args:
             text: Text to synthesize
-            reference_audio: Reference audio path
+            reference_audio: Optional reference audio path for voice cloning
+                           (None for built-in voices)
             engine: Engine name (or None for default)
             language: Language code
             fallback: Whether to fallback to other engines on failure
             return_engine: When True, return (audio, engine_name) so callers
                 can record which engine produced the clip
-            **kwargs: Engine-specific parameters
+            **kwargs: Engine-specific parameters (e.g., speaker, voice)
 
         Returns:
             Audio array (float32, mono) or tuple (audio, engine_name)
