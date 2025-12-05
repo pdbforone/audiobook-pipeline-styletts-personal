@@ -119,31 +119,26 @@ class XTTSEngine(TTSEngine):
         speed = kwargs.get("speed", 1.0)
         temperature = kwargs.get("temperature", 0.7)
         speaker = kwargs.get("speaker", "Claribel Dervla")  # Default XTTS voice
-        speaker_supported = getattr(self.model, "is_multi_speaker", True)
-        if not speaker_supported:
-            logger.info(
-                "XTTS model reports single-speaker; ignoring speaker parameter."
-            )
-            active_speaker = None
-        else:
-            active_speaker = speaker
 
-        # BUGFIX: Only use fallback_reference if no speaker was explicitly requested
-        # When speaker param is provided (built-in voice), don't override with fallback
+        # CRITICAL BUGFIX: XTTS v2 model incorrectly reports is_multi_speaker=False
+        # We KNOW XTTS v2 supports 33 built-in speakers via the speaker parameter.
+        # When a speaker is explicitly provided in kwargs, ALWAYS use it - don't trust is_multi_speaker.
         speaker_explicitly_requested = "speaker" in kwargs
+
+        if speaker_explicitly_requested:
+            # Built-in voice explicitly requested - use speaker parameter (Mode 2)
+            active_speaker = speaker
+            logger.debug(f"Using built-in XTTS speaker: {speaker}")
+        else:
+            # No built-in speaker - will use voice cloning if reference_audio provided (Mode 1)
+            active_speaker = None
+
+        # Fallback reference logic: only used when NO speaker requested and NO reference_audio
         fallback_reference = None
-        if not speaker_supported:
-            # If the model claims single-speaker, force a reference path so TTS has audio context.
-            if reference_audio and reference_audio.exists():
-                fallback_reference = reference_audio
-            elif self.default_reference.exists():
+        if not speaker_explicitly_requested and not reference_audio:
+            # No speaker AND no reference_audio - use fallback for voice cloning
+            if self.default_reference.exists():
                 fallback_reference = self.default_reference
-        elif (
-            not reference_audio
-            and not speaker_explicitly_requested  # NEW: Don't fallback if speaker was requested
-            and self.default_reference.exists()
-        ):
-            fallback_reference = self.default_reference
 
         # Validate language
         if language not in self.get_supported_languages():
