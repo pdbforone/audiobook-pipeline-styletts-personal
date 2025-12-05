@@ -701,11 +701,12 @@ def synthesize_chunk_with_engine(
             # For built-in voices: reference_audio is None, use speaker param from engine_params
             # For custom voices: use reference_audio for voice cloning
             if voice_asset.reference_audio:
+                # Custom voice: use reference audio for voice cloning
                 reference = voice_asset.reference_audio
             else:
-                # Built-in voice: fallback to default reference to avoid single-speaker failures
-                reference = reference or reference_audio
-                chunk_kwargs.pop("speaker", None)
+                # Built-in voice: NO reference audio needed, keep speaker param in chunk_kwargs
+                # The speaker param was already added to chunk_kwargs from engine_params above
+                reference = None
             if (
                 voice_asset.preferred_engine
                 and voice_asset.preferred_engine in engine_manager.engines
