@@ -704,9 +704,11 @@ def synthesize_chunk_with_engine(
                 # Custom voice: use reference audio for voice cloning
                 reference = voice_asset.reference_audio
             else:
-                # Built-in voice: NO reference audio needed, keep speaker param in chunk_kwargs
+                # Built-in voice attempt: pass speaker param in chunk_kwargs
+                # NOTE: If XTTS model is single-speaker, xtts_engine.py will automatically
+                # fall back to voice cloning using the default reference (george_mckayland)
+                reference = reference_audio  # Keep any existing reference as fallback
                 # The speaker param was already added to chunk_kwargs from engine_params above
-                reference = None
             if (
                 voice_asset.preferred_engine
                 and voice_asset.preferred_engine in engine_manager.engines

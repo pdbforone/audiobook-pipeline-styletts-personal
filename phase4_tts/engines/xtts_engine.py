@@ -120,25 +120,30 @@ class XTTSEngine(TTSEngine):
         temperature = kwargs.get("temperature", 0.7)
         speaker = kwargs.get("speaker", "Claribel Dervla")  # Default XTTS voice
 
-        # CRITICAL BUGFIX: XTTS v2 model incorrectly reports is_multi_speaker=False
-        # We KNOW XTTS v2 supports 33 built-in speakers via the speaker parameter.
-        # When a speaker is explicitly provided in kwargs, ALWAYS use it - don't trust is_multi_speaker.
+        # Check if model actually supports multiple speakers
+        speaker_supported = getattr(self.model, "is_multi_speaker", False)
         speaker_explicitly_requested = "speaker" in kwargs
 
-        if speaker_explicitly_requested:
-            # Built-in voice explicitly requested - use speaker parameter (Mode 2)
+        if speaker_explicitly_requested and speaker_supported:
+            # Multi-speaker model: use speaker parameter (Mode 2)
             active_speaker = speaker
-            logger.debug(f"Using built-in XTTS speaker: {speaker}")
+            logger.info(f"Using built-in XTTS speaker: {speaker}")
         else:
-            # No built-in speaker - will use voice cloning if reference_audio provided (Mode 1)
+            # Single-speaker model OR no speaker requested: use voice cloning (Mode 1)
             active_speaker = None
+            if speaker_explicitly_requested and not speaker_supported:
+                logger.warning(
+                    f"XTTS model is single-speaker; cannot use built-in speaker '{speaker}'. "
+                    f"Using voice cloning instead."
+                )
 
-        # Fallback reference logic: only used when NO speaker requested and NO reference_audio
+        # Fallback reference for voice cloning when no reference_audio provided
         fallback_reference = None
-        if not speaker_explicitly_requested and not reference_audio:
-            # No speaker AND no reference_audio - use fallback for voice cloning
+        if not active_speaker and not reference_audio:
+            # Voice cloning mode but no reference - use default
             if self.default_reference.exists():
                 fallback_reference = self.default_reference
+                logger.info(f"No reference audio provided; using default: {self.default_reference.name}")
 
         # Validate language
         if language not in self.get_supported_languages():
