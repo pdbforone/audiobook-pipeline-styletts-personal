@@ -703,8 +703,9 @@ def synthesize_chunk_with_engine(
             if voice_asset.reference_audio:
                 reference = voice_asset.reference_audio
             else:
-                # Built-in voice: don't use reference audio (speaker param is in chunk_kwargs)
-                reference = None
+                # Built-in voice: fallback to default reference to avoid single-speaker failures
+                reference = reference or reference_audio
+                chunk_kwargs.pop("speaker", None)
             if (
                 voice_asset.preferred_engine
                 and voice_asset.preferred_engine in engine_manager.engines

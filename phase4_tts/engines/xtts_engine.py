@@ -118,21 +118,28 @@ class XTTSEngine(TTSEngine):
         # Extract parameters
         speed = kwargs.get("speed", 1.0)
         temperature = kwargs.get("temperature", 0.7)
-        speaker = kwargs.get(
-            "speaker", "Claribel Dervla"
-        )  # Default XTTS voice
-        # Some XTTS builds report single-speaker even though we pass a speaker name.
-        # Avoid passing the speaker flag if the model does not support it to prevent ValueError.
+        speaker = kwargs.get("speaker", "Claribel Dervla")  # Default XTTS voice
         speaker_supported = getattr(self.model, "is_multi_speaker", True)
-        active_speaker = speaker if speaker_supported else None
+        if not speaker_supported:
+            logger.info(
+                "XTTS model reports single-speaker; ignoring speaker parameter."
+            )
+            active_speaker = None
+        else:
+            active_speaker = speaker
 
         # BUGFIX: Only use fallback_reference if no speaker was explicitly requested
         # When speaker param is provided (built-in voice), don't override with fallback
         speaker_explicitly_requested = "speaker" in kwargs
         fallback_reference = None
-        if (
-            not speaker_supported
-            and not reference_audio
+        if not speaker_supported:
+            # If the model claims single-speaker, force a reference path so TTS has audio context.
+            if reference_audio and reference_audio.exists():
+                fallback_reference = reference_audio
+            elif self.default_reference.exists():
+                fallback_reference = self.default_reference
+        elif (
+            not reference_audio
             and not speaker_explicitly_requested  # NEW: Don't fallback if speaker was requested
             and self.default_reference.exists()
         ):

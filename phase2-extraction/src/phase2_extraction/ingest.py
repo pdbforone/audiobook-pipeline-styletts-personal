@@ -23,14 +23,15 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, Dict, List, Optional, Tuple
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-if str(PACKAGE_ROOT) not in sys.path:
-    sys.path.insert(0, str(PACKAGE_ROOT))
-
-from pipeline_common import PipelineState, StateError
+try:
+    from pipeline_common import PipelineState, StateError
+except ImportError:
+    project_root = Path(__file__).resolve().parents[3]
+    package_root = Path(__file__).resolve().parents[1]
+    for _path in (project_root, package_root):
+        if str(_path) not in sys.path:
+            sys.path.insert(0, str(_path))
+    from pipeline_common import PipelineState, StateError
 
 # Extractors
 from .extractors import docx, epub, html, ocr, txt
@@ -557,13 +558,13 @@ if __name__ == "__main__":
 Examples:
   # Basic extraction using Phase 1 classification
   python -m phase2_extraction.ingest --file_id test001
-  
+
   # Override file path
   python -m phase2_extraction.ingest --file_id test001 --file /path/to/book.pdf
-  
+
   # Force OCR for scanned PDF
   python -m phase2_extraction.ingest --file_id test001 --force-ocr
-  
+
   # Custom output directory
   python -m phase2_extraction.ingest --file_id test001 --extracted_dir ./output
 """,

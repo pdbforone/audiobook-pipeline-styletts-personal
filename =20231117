@@ -1,0 +1,29 @@
+Collecting openai-whisper
+  Using cached openai_whisper-20250625-py3-none-any.whl
+Requirement already satisfied: more-itertools in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from openai-whisper) (10.8.0)
+Requirement already satisfied: numba in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from openai-whisper) (0.59.1)
+Requirement already satisfied: numpy in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from openai-whisper) (1.26.4)
+Collecting tiktoken (from openai-whisper)
+  Using cached tiktoken-0.12.0-cp311-cp311-win_amd64.whl.metadata (6.9 kB)
+Requirement already satisfied: torch in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from openai-whisper) (2.2.2)
+Requirement already satisfied: tqdm in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from openai-whisper) (4.67.1)
+Requirement already satisfied: llvmlite<0.43,>=0.42.0dev0 in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from numba->openai-whisper) (0.42.0)
+Requirement already satisfied: regex>=2022.1.18 in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from tiktoken->openai-whisper) (2025.11.3)
+Requirement already satisfied: requests>=2.26.0 in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from tiktoken->openai-whisper) (2.32.5)
+Requirement already satisfied: charset_normalizer<4,>=2 in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from requests>=2.26.0->tiktoken->openai-whisper) (3.4.4)
+Requirement already satisfied: idna<4,>=2.5 in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from requests>=2.26.0->tiktoken->openai-whisper) (3.11)
+Requirement already satisfied: urllib3<3,>=1.21.1 in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from requests>=2.26.0->tiktoken->openai-whisper) (2.5.0)
+Requirement already satisfied: certifi>=2017.4.17 in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from requests>=2.26.0->tiktoken->openai-whisper) (2025.11.12)
+Requirement already satisfied: filelock in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from torch->openai-whisper) (3.20.0)
+Requirement already satisfied: typing-extensions>=4.8.0 in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from torch->openai-whisper) (4.15.0)
+Requirement already satisfied: sympy in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from torch->openai-whisper) (1.14.0)
+Requirement already satisfied: networkx in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from torch->openai-whisper) (2.8.8)
+Requirement already satisfied: jinja2 in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from torch->openai-whisper) (3.1.6)
+Requirement already satisfied: fsspec in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from torch->openai-whisper) (2025.10.0)
+Requirement already satisfied: MarkupSafe>=2.0 in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from jinja2->torch->openai-whisper) (3.0.3)
+Requirement already satisfied: mpmath<1.4,>=1.1.0 in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from sympy->torch->openai-whisper) (1.3.0)
+Requirement already satisfied: colorama in c:\users\myson\pipeline\audiobook-pipeline-personal\audiobook-pipeline-styletts-personal\phase4_tts\.engine_envs\xtts\lib\site-packages (from tqdm->openai-whisper) (0.4.6)
+Using cached tiktoken-0.12.0-cp311-cp311-win_amd64.whl (879 kB)
+Installing collected packages: tiktoken, openai-whisper
+
+Successfully installed openai-whisper-20250625 tiktoken-0.12.0

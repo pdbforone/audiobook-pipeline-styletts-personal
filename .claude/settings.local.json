@@ -55,7 +55,10 @@
       "Bash(timeout 5 grep:*)",
       "Bash(timeout 25 python:*)",
       "Bash(tee:*)",
-      "Bash(timeout 60 python:*)"
+      "Bash(timeout 60 python:*)",
+      "Bash(git checkout:*)",
+      "Bash(grep:*)",
+      "Bash(ollama pull:*)"
     ],
     "deny": [],
     "ask": []
