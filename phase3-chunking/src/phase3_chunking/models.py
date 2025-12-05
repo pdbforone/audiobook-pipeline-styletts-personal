@@ -411,7 +411,7 @@ class Phase3Config(ValidationConfig):
     voice_override: Optional[str] = None
     # LlamaChunker integration (enabled by default, requires Ollama)
     use_llama_chunker: bool = True
-    llama_model: str = "phi3:mini"
+    llama_model: str = "llama3.1:8b-instruct-q4_K_M"
 
     @field_validator("phase3_profile")
     @classmethod

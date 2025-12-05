@@ -148,7 +148,7 @@ _LLAMA_CHUNKER = None
 _LLAMA_CHUNKER_CHECKED = False
 
 
-def _get_llama_chunker(model: str = "phi3:mini"):
+def _get_llama_chunker(model: str = "llama3.1:8b-instruct-q4_K_M"):
     """
     Lazy-load LlamaChunker to avoid import errors when Ollama not available.
 
@@ -185,7 +185,7 @@ def _llama_chunk_text(
     text: str,
     max_chars: int,
     min_chars: int,
-    model: str = "phi3:mini",
+    model: str = "llama3.1:8b-instruct-q4_K_M",
 ) -> tuple[list[str], list[float]]:
     """
     Use LlamaChunker to split text into semantic chunks.

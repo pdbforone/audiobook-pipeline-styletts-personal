@@ -11,7 +11,9 @@ All agents use local Ollama for inference - no external APIs.
 
 Requirements:
     pip install ollama
-    # Then run: ollama pull phi3:mini  (or your preferred model)
+    # Then run: ollama pull llama3.1:8b-instruct-q4_K_M
+
+Default Model: Llama 3.1 8B Instruct (4.9GB quantized)
 """
 
 from .llama_base import LlamaAgent, LlamaResourceManager, get_agent

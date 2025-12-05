@@ -8,14 +8,14 @@ Provides:
 - Error handling with graceful degradation
 
 Recommended Models (CPU, 16GB RAM):
-- phi3:mini (2.4GB) - Fast, good for structured tasks
-- llama3.2:3b (2.0GB) - Balanced quality/speed
-- tinyllama (1.1GB) - Ultra-fast, simple tasks
+- llama3.1:8b-instruct-q4_K_M (4.9GB) - Default, excellent quality (RECOMMENDED)
+- llama3.2:3b (2.0GB) - Balanced quality/speed, fallback option
+- tinyllama (1.1GB) - Ultra-fast, simple tasks only
 
 Usage:
     from agents import LlamaAgent
 
-    agent = LlamaAgent(model="phi3:mini")
+    agent = LlamaAgent(model="llama3.1:8b-instruct-q4_K_M")
     response = agent.query("Explain quantum physics in one sentence.")
 """
 
@@ -35,7 +35,7 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 # Configuration
-DEFAULT_MODEL = os.getenv("LLAMA_MODEL", "phi3:mini")
+DEFAULT_MODEL = os.getenv("LLAMA_MODEL", "llama3.1:8b-instruct-q4_K_M")
 CACHE_DIR = Path(".pipeline") / "llm_cache"
 CACHE_TTL_HOURS = 24
 
