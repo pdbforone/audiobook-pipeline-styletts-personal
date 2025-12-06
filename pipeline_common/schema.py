@@ -1,4 +1,29 @@
-"""Canonical pipeline.json schema helpers and migration utilities."""
+"""
+Canonical pipeline.json schema helpers and migration utilities.
+
+This module provides:
+- Schema loading from schema.json (v4.0.0)
+- State canonicalization (normalizes arbitrary layouts)
+- Lightweight validation (structural checks)
+- Optional Pydantic-based strict validation
+
+Schema v4.0.0 introduces phase-specific definitions:
+- Each phase has its own block schema (phase1Block, phase2Block, etc.)
+- Per-phase file schemas with required fields
+- Per-phase chunk schemas (Phase 4/5 specific)
+- Rich field descriptions and enums
+
+Usage:
+    from pipeline_common.schema import canonicalize_state, validate_pipeline_schema
+
+    # Normalize and validate
+    data = canonicalize_state(raw_data)
+    validate_pipeline_schema(data)
+
+    # Optional: Strict Pydantic validation
+    from pipeline_common.schema import validate_with_pydantic
+    validate_with_pydantic(data, strict=True)
+"""
 
 from __future__ import annotations
 
@@ -7,7 +32,10 @@ import re
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .models import PipelineSchema
 
 SCHEMA_PATH = Path(__file__).with_name("schema.json")
 
@@ -621,3 +649,102 @@ def _validate_batch_run(index: int, run: Any, errors: List[str]) -> None:
                 errors.append(
                     f"batch_runs[{index}].files['{file_id}'] missing '{field}'"
                 )
+
+
+# =============================================================================
+# Pydantic Integration (Optional)
+# =============================================================================
+
+
+def validate_with_pydantic(
+    data: Dict[str, Any],
+    *,
+    strict: bool = True,
+    raise_on_error: bool = True,
+) -> Tuple[bool, List[str]]:
+    """
+    Validate pipeline data using Pydantic models for stricter type checking.
+
+    This provides deeper validation than validate_pipeline_schema():
+    - Type checking for all fields
+    - Enum validation for status, engines, profiles
+    - Nested model validation for chunks
+    - Range validation (e.g., 0 <= quality_score <= 1)
+
+    Args:
+        data: Pipeline state dictionary
+        strict: If True, use full PipelineSchema; if False, minimal validation
+        raise_on_error: If True, raise ValueError on validation failure
+
+    Returns:
+        Tuple of (is_valid, list_of_errors)
+
+    Raises:
+        ValueError: If raise_on_error=True and validation fails
+        ImportError: If pydantic is not installed
+
+    Example:
+        >>> from pipeline_common.schema import validate_with_pydantic
+        >>> is_valid, errors = validate_with_pydantic(data, raise_on_error=False)
+        >>> if not is_valid:
+        ...     print(f"Validation errors: {errors}")
+    """
+    try:
+        from .models import (
+            PipelineSchema,
+            MinimalPipelineSchema,
+            PYDANTIC_AVAILABLE,
+        )
+    except ImportError as e:
+        if raise_on_error:
+            raise ImportError(
+                "Pydantic models not available. Install pydantic>=2.0"
+            ) from e
+        return False, ["Pydantic models not available"]
+
+    if not PYDANTIC_AVAILABLE:
+        # Pydantic not installed, fall back to lightweight validation
+        try:
+            validate_pipeline_schema(data)
+            return True, []
+        except ValueError as e:
+            if raise_on_error:
+                raise
+            return False, [str(e)]
+
+    schema_class = PipelineSchema if strict else MinimalPipelineSchema
+    errors: List[str] = []
+
+    try:
+        schema_class.model_validate(data)
+        return True, []
+    except Exception as e:
+        error_msg = str(e)
+        errors.append(error_msg)
+        if raise_on_error:
+            raise ValueError(f"Pydantic validation failed: {error_msg}") from e
+        return False, errors
+
+
+def get_schema_version() -> str:
+    """Return the current schema version from schema.json."""
+    return CANONICAL_SCHEMA_VERSION
+
+
+def get_phase_definitions() -> Dict[str, Dict[str, Any]]:
+    """
+    Extract phase-specific definitions from the schema.
+
+    Returns:
+        Dictionary mapping phase names to their schema definitions
+
+    Example:
+        >>> defs = get_phase_definitions()
+        >>> phase4_chunk_schema = defs.get("phase4Chunk", {})
+    """
+    definitions = CANONICAL_JSON_SCHEMA.get("definitions", {})
+    return {
+        key: value
+        for key, value in definitions.items()
+        if key.startswith("phase") or key.endswith("Block") or key.endswith("Chunk")
+    }
