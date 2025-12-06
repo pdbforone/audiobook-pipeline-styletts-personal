@@ -1,64 +1,105 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Audiobook Pipeline State",
-  "version": "3.0.0",
+  "$id": "https://audiobook-pipeline.local/schema/v4",
+  "title": "Audiobook Pipeline State Schema",
+  "description": "The canonical schema for pipeline.json - the single source of truth for pipeline state. Each phase has specific contracts defining what it produces and consumes.",
+  "version": "4.0.0",
   "type": "object",
   "additionalProperties": true,
-  "required": [
-    "pipeline_version",
-    "phases"
-  ],
+  "required": ["pipeline_version"],
   "properties": {
     "pipeline_version": {
       "type": "string",
-      "default": "3.0.0"
+      "description": "Schema version for migration compatibility",
+      "default": "4.0.0"
     },
     "created_at": {
-      "type": ["string", "null"]
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "ISO8601 timestamp when this pipeline file was created"
     },
     "last_updated": {
-      "type": ["string", "null"]
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "ISO8601 timestamp of most recent update"
     },
     "file_id": {
-      "type": ["string", "null"]
+      "type": ["string", "null"],
+      "description": "Primary file identifier for single-file pipelines"
     },
     "input_file": {
-      "type": ["string", "null"]
+      "type": ["string", "null"],
+      "description": "Path to the source file being processed"
     },
     "tts_profile": {
-      "type": ["string", "null"]
+      "type": ["string", "null"],
+      "description": "Genre profile for TTS tuning (philosophy, fiction, technical, etc.)",
+      "enum": ["auto", "philosophy", "fiction", "technical", "poetry", "drama", null]
     },
     "tts_voice": {
-      "type": ["string", "null"]
+      "type": ["string", "null"],
+      "description": "Global voice ID override for all files"
     },
     "voice_overrides": {
       "type": "object",
+      "description": "Per-file voice ID overrides, keyed by file_id",
       "additionalProperties": {
         "type": "string"
       }
     },
     "phases": {
       "type": "object",
+      "description": "Quick-lookup status map for all phases",
       "additionalProperties": {
-        "type": "string"
+        "$ref": "#/definitions/status"
       }
+    },
+    "phase1": {
+      "$ref": "#/definitions/phase1Block",
+      "description": "Phase 1: Validation & Repair - Verifies integrity, repairs common issues, extracts metadata"
+    },
+    "phase2": {
+      "$ref": "#/definitions/phase2Block",
+      "description": "Phase 2: Text Extraction - Multi-format ingest, OCR when needed, text normalization"
+    },
+    "phase3": {
+      "$ref": "#/definitions/phase3Block",
+      "description": "Phase 3: Semantic Chunking - Genre-aware segmentation, readability scoring, voice suggestion"
+    },
+    "phase4": {
+      "$ref": "#/definitions/phase4Block",
+      "description": "Phase 4: TTS Synthesis - Voice cloning with validation, multi-engine fallback"
+    },
+    "phase5": {
+      "$ref": "#/definitions/phase5Block",
+      "description": "Phase 5: Audio Enhancement - Noise reduction, LUFS normalization, mastering"
+    },
+    "phase5_5": {
+      "$ref": "#/definitions/phase5_5Block",
+      "description": "Phase 5.5: Subtitle Generation - Whisper transcription, SRT/VTT generation"
+    },
+    "phase6": {
+      "$ref": "#/definitions/phase6Block",
+      "description": "Phase 6: Orchestration - Telemetry and coordination metadata"
+    },
+    "phase7": {
+      "$ref": "#/definitions/phase7Block",
+      "description": "Phase 7: Batch Processing - Multi-file batch run metadata"
     },
     "batch_runs": {
       "type": "array",
+      "description": "History of batch processing runs",
       "items": {
         "$ref": "#/definitions/batchRun"
       },
       "default": []
     }
   },
-  "patternProperties": {
-    "^(phase[1-5](?:_5)?|phase6|phase7)$": {
-      "$ref": "#/definitions/phaseBlock"
-    }
-  },
+
   "definitions": {
     "status": {
       "type": "string",
+      "description": "Lifecycle status for phases, files, and chunks",
       "enum": [
         "pending",
         "running",
@@ -71,209 +112,948 @@
         "unknown"
       ]
     },
+
     "timestamp": {
       "type": "object",
+      "description": "Timing information for operations",
       "additionalProperties": true,
       "properties": {
         "start": {
-          "type": ["number", "string", "null"]
+          "type": ["number", "string", "null"],
+          "description": "Unix timestamp or ISO8601 string when operation started"
         },
         "end": {
-          "type": ["number", "string", "null"]
+          "type": ["number", "string", "null"],
+          "description": "Unix timestamp or ISO8601 string when operation ended"
         },
         "duration": {
-          "type": ["number", "string", "null"]
+          "type": ["number", "null"],
+          "description": "Duration in seconds"
         }
       }
     },
-    "artifactContainer": {
+
+    "errorEntry": {
       "oneOf": [
         {
-          "type": "object",
-          "additionalProperties": true
+          "type": "string",
+          "description": "Simple error message"
         },
         {
-          "type": "array",
-          "items": {}
+          "type": "object",
+          "description": "Structured error with context",
+          "additionalProperties": true,
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Error category (e.g., ValidationError, TimeoutError)"
+            },
+            "message": {
+              "type": "string",
+              "description": "Human-readable error description"
+            },
+            "timestamp": {
+              "type": ["number", "string", "null"],
+              "description": "When the error occurred"
+            },
+            "file_id": {
+              "type": ["string", "null"],
+              "description": "Associated file if applicable"
+            },
+            "chunk_id": {
+              "type": ["string", "null"],
+              "description": "Associated chunk if applicable"
+            }
+          }
         }
       ]
     },
-    "chunkEntry": {
+
+    "artifactContainer": {
+      "description": "Container for output artifacts - either a list of paths or a structured object",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true
+        }
+      ]
+    },
+
+    "basePhaseBlock": {
       "type": "object",
+      "description": "Common structure shared by all phase blocks",
       "additionalProperties": true,
+      "required": ["status", "timestamps", "artifacts", "metrics", "errors"],
+      "properties": {
+        "status": {
+          "$ref": "#/definitions/status",
+          "description": "Aggregate status for this phase"
+        },
+        "timestamps": {
+          "$ref": "#/definitions/timestamp",
+          "description": "Phase-level timing"
+        },
+        "artifacts": {
+          "$ref": "#/definitions/artifactContainer",
+          "description": "Output files produced by this phase"
+        },
+        "metrics": {
+          "type": "object",
+          "description": "Phase-level metrics and statistics",
+          "additionalProperties": true
+        },
+        "errors": {
+          "type": "array",
+          "description": "Phase-level errors",
+          "items": {
+            "$ref": "#/definitions/errorEntry"
+          }
+        }
+      }
+    },
+
+    "phase1Block": {
+      "allOf": [
+        { "$ref": "#/definitions/basePhaseBlock" },
+        {
+          "type": "object",
+          "description": "Phase 1: Validation & Repair - Verifies file integrity and extracts metadata",
+          "properties": {
+            "files": {
+              "type": "object",
+              "description": "Per-file validation results",
+              "additionalProperties": {
+                "$ref": "#/definitions/phase1File"
+              }
+            },
+            "hashes": {
+              "type": "array",
+              "description": "SHA256 hashes of all validated files for duplicate detection",
+              "items": {
+                "type": "string"
+              }
+            },
+            "metrics": {
+              "type": "object",
+              "properties": {
+                "total_files": {
+                  "type": "integer",
+                  "description": "Total files processed"
+                },
+                "duplicates": {
+                  "type": "integer",
+                  "description": "Number of duplicate files detected"
+                },
+                "repaired": {
+                  "type": "integer",
+                  "description": "Number of files that required repair"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "phase1File": {
+      "type": "object",
+      "description": "Phase 1 output for a single file",
+      "additionalProperties": true,
+      "required": ["status", "timestamps", "artifacts", "metrics", "errors"],
+      "properties": {
+        "status": { "$ref": "#/definitions/status" },
+        "timestamps": { "$ref": "#/definitions/timestamp" },
+        "artifacts": { "$ref": "#/definitions/artifactContainer" },
+        "metrics": { "type": "object", "additionalProperties": true },
+        "errors": { "type": "array", "items": { "$ref": "#/definitions/errorEntry" } },
+        "chunks": { "type": "array", "default": [] },
+        "title": {
+          "type": ["string", "null"],
+          "description": "Extracted document title"
+        },
+        "author": {
+          "type": ["string", "null"],
+          "description": "Extracted author name"
+        },
+        "creation_date": {
+          "type": ["string", "null"],
+          "description": "Document creation date if available"
+        },
+        "file_type": {
+          "type": "string",
+          "description": "Detected file format",
+          "enum": ["pdf", "epub", "docx", "txt", "mobi", "unknown"]
+        },
+        "classification": {
+          "type": "string",
+          "description": "Content type classification",
+          "enum": ["text", "scanned", "mixed", "unknown"]
+        },
+        "hash": {
+          "type": "string",
+          "description": "SHA256 hash of file contents"
+        },
+        "repair_status": {
+          "type": "string",
+          "description": "Whether repair was attempted/successful",
+          "enum": ["validated", "repaired", "skipped", "failed"]
+        },
+        "duplicate": {
+          "type": "boolean",
+          "description": "True if this file's hash matches a previously processed file",
+          "default": false
+        },
+        "artifacts_path": {
+          "type": ["string", "null"],
+          "description": "Path to validation artifacts if any"
+        }
+      }
+    },
+
+    "phase2Block": {
+      "allOf": [
+        { "$ref": "#/definitions/basePhaseBlock" },
+        {
+          "type": "object",
+          "description": "Phase 2: Text Extraction - Extracts and normalizes text content",
+          "properties": {
+            "files": {
+              "type": "object",
+              "description": "Per-file extraction results",
+              "additionalProperties": {
+                "$ref": "#/definitions/phase2File"
+              }
+            },
+            "metrics": {
+              "type": "object",
+              "properties": {
+                "total_files": { "type": "integer" },
+                "successful": { "type": "integer" },
+                "failed": { "type": "integer" }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "phase2File": {
+      "type": "object",
+      "description": "Phase 2 output for a single file",
+      "additionalProperties": true,
+      "required": ["status", "timestamps", "artifacts", "metrics", "errors"],
+      "properties": {
+        "status": { "$ref": "#/definitions/status" },
+        "timestamps": { "$ref": "#/definitions/timestamp" },
+        "artifacts": { "$ref": "#/definitions/artifactContainer" },
+        "metrics": { "type": "object", "additionalProperties": true },
+        "errors": { "type": "array", "items": { "$ref": "#/definitions/errorEntry" } },
+        "chunks": { "type": "array", "default": [] },
+        "extracted_text_path": {
+          "type": "string",
+          "description": "Path to extracted plain text file"
+        },
+        "tool_used": {
+          "type": "string",
+          "description": "Extraction tool that succeeded",
+          "enum": ["pdfplumber", "pypdf", "fitz", "pytesseract", "easyocr", "ebooklib", "python-docx", "unknown"]
+        },
+        "yield_pct": {
+          "type": "number",
+          "description": "Percentage of content successfully extracted (0-100)",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "quality_score": {
+          "type": "number",
+          "description": "Text quality score (0-1) based on gibberish detection",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "language": {
+          "type": "string",
+          "description": "Detected language code (ISO 639-1)"
+        },
+        "lang_confidence": {
+          "type": "number",
+          "description": "Language detection confidence (0-1)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "structure": {
+          "type": "array",
+          "description": "Detected document structure (chapters, sections)",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "cleanup_notes": {
+          "type": ["string", "null"],
+          "description": "Notes about text normalization performed"
+        }
+      }
+    },
+
+    "phase3Block": {
+      "allOf": [
+        { "$ref": "#/definitions/basePhaseBlock" },
+        {
+          "type": "object",
+          "description": "Phase 3: Semantic Chunking - Divides text into TTS-ready segments",
+          "properties": {
+            "files": {
+              "type": "object",
+              "description": "Per-file chunking results",
+              "additionalProperties": {
+                "$ref": "#/definitions/phase3File"
+              }
+            },
+            "metrics": {
+              "type": "object",
+              "properties": {
+                "total_files": { "type": "integer" },
+                "successful": { "type": "integer" },
+                "partial": { "type": "integer" },
+                "failed": { "type": "integer" },
+                "total_chunks": { "type": "integer" }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "phase3File": {
+      "type": "object",
+      "description": "Phase 3 output for a single file",
+      "additionalProperties": true,
+      "required": ["status", "timestamps", "artifacts", "metrics", "errors"],
+      "properties": {
+        "status": { "$ref": "#/definitions/status" },
+        "timestamps": { "$ref": "#/definitions/timestamp" },
+        "artifacts": { "$ref": "#/definitions/artifactContainer" },
+        "metrics": { "type": "object", "additionalProperties": true },
+        "errors": { "type": "array", "items": { "$ref": "#/definitions/errorEntry" } },
+        "chunks": { "type": "array", "default": [] },
+        "text_path": {
+          "type": "string",
+          "description": "Path to source text file (from Phase 2)"
+        },
+        "chunk_paths": {
+          "type": "array",
+          "description": "Ordered list of chunk file paths",
+          "items": { "type": "string" }
+        },
+        "coherence_scores": {
+          "type": "array",
+          "description": "Semantic coherence scores between consecutive chunks (n-1 values)",
+          "items": { "type": "number" }
+        },
+        "readability_scores": {
+          "type": "array",
+          "description": "Flesch-Kincaid readability score per chunk",
+          "items": { "type": "number" }
+        },
+        "embeddings": {
+          "type": "array",
+          "description": "Sentence embeddings per chunk for semantic similarity",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" }
+          }
+        },
+        "chunk_metrics": {
+          "type": "object",
+          "description": "Aggregate statistics about chunks",
+          "properties": {
+            "avg_chars": { "type": "number" },
+            "min_chars": { "type": "integer" },
+            "max_chars": { "type": "integer" },
+            "total_chunks": { "type": "integer" }
+          }
+        },
+        "applied_profile": {
+          "type": "string",
+          "description": "Genre profile used for chunking",
+          "enum": ["auto", "philosophy", "fiction", "technical", "poetry", "drama"]
+        },
+        "genre_confidence": {
+          "type": "number",
+          "description": "Confidence in genre classification (0-1)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "suggested_voice": {
+          "type": ["string", "null"],
+          "description": "Recommended voice ID based on genre analysis"
+        },
+        "chunk_voice_overrides": {
+          "type": "object",
+          "description": "Per-chunk voice overrides for multi-voice narration",
+          "additionalProperties": { "type": "string" }
+        },
+        "coherence_threshold": {
+          "type": "number",
+          "description": "Minimum coherence threshold used"
+        },
+        "flesch_threshold": {
+          "type": "number",
+          "description": "Minimum readability threshold used"
+        }
+      }
+    },
+
+    "phase4Block": {
+      "allOf": [
+        { "$ref": "#/definitions/basePhaseBlock" },
+        {
+          "type": "object",
+          "description": "Phase 4: TTS Synthesis - Converts text chunks to audio",
+          "properties": {
+            "files": {
+              "type": "object",
+              "description": "Per-file TTS results",
+              "additionalProperties": {
+                "$ref": "#/definitions/phase4File"
+              }
+            },
+            "metrics": {
+              "type": "object",
+              "properties": {
+                "total_files": { "type": "integer" },
+                "successful": { "type": "integer" },
+                "partial": { "type": "integer" },
+                "failed": { "type": "integer" },
+                "total_chunks": { "type": "integer" },
+                "total_audio_seconds": { "type": "number" }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "phase4File": {
+      "type": "object",
+      "description": "Phase 4 output for a single file",
+      "additionalProperties": true,
+      "required": ["status", "timestamps", "artifacts", "metrics", "errors"],
+      "properties": {
+        "status": { "$ref": "#/definitions/status" },
+        "timestamps": { "$ref": "#/definitions/timestamp" },
+        "artifacts": { "$ref": "#/definitions/artifactContainer" },
+        "metrics": { "type": "object", "additionalProperties": true },
+        "errors": { "type": "array", "items": { "$ref": "#/definitions/errorEntry" } },
+        "chunks": {
+          "type": "array",
+          "description": "Per-chunk TTS results",
+          "items": { "$ref": "#/definitions/phase4Chunk" }
+        },
+        "voice_id": {
+          "type": "string",
+          "description": "Voice ID used for synthesis"
+        },
+        "requested_engine": {
+          "type": "string",
+          "description": "Engine requested by user/config",
+          "enum": ["xtts", "kokoro", "piper", "auto"]
+        },
+        "selected_engine": {
+          "type": "string",
+          "description": "Engine actually selected after auto-detection",
+          "enum": ["xtts", "kokoro", "piper"]
+        },
+        "engines_used": {
+          "type": "array",
+          "description": "All engines used during synthesis (including fallbacks)",
+          "items": {
+            "type": "string",
+            "enum": ["xtts", "kokoro", "piper"]
+          }
+        },
+        "total_chunks": {
+          "type": "integer",
+          "description": "Total number of chunks to synthesize"
+        },
+        "chunks_completed": {
+          "type": "integer",
+          "description": "Number of chunks successfully synthesized"
+        },
+        "chunks_failed": {
+          "type": "integer",
+          "description": "Number of chunks that failed"
+        },
+        "audio_dir": {
+          "type": "string",
+          "description": "Directory containing chunk audio files"
+        },
+        "chunk_audio_paths": {
+          "type": "array",
+          "description": "Ordered list of successful chunk audio paths",
+          "items": { "type": "string" }
+        },
+        "duration_seconds": {
+          "type": "number",
+          "description": "Total audio duration in seconds"
+        },
+        "avg_rt_factor": {
+          "type": "number",
+          "description": "Average real-time factor (wall time / audio duration)"
+        },
+        "rt_p50": {
+          "type": "number",
+          "description": "Median real-time factor"
+        },
+        "rt_p90": {
+          "type": "number",
+          "description": "90th percentile real-time factor"
+        },
+        "rt_p99": {
+          "type": "number",
+          "description": "99th percentile real-time factor"
+        },
+        "latency_fallback_chunks": {
+          "type": "integer",
+          "description": "Number of chunks that used latency-based engine fallback"
+        },
+        "fallback_rate": {
+          "type": "number",
+          "description": "Ratio of chunks using fallback engine (0-1)"
+        },
+        "advisory": {
+          "type": ["string", "null"],
+          "description": "System advisory about performance or issues"
+        }
+      }
+    },
+
+    "phase4Chunk": {
+      "type": "object",
+      "description": "Phase 4 TTS result for a single chunk",
+      "additionalProperties": true,
+      "required": ["chunk_id", "status"],
       "properties": {
         "chunk_id": {
-          "type": ["string", "number"]
+          "type": ["string", "integer"],
+          "description": "Chunk identifier (e.g., 'chunk_0001' or 1)"
         },
-        "text_len": {
-          "type": ["number", "null"]
-        },
-        "est_dur": {
-          "type": ["number", "null"]
-        },
-        "engine": {
-          "type": ["string", "null"]
-        },
-        "rt_factor": {
-          "type": ["number", "null"]
+        "status": {
+          "$ref": "#/definitions/status",
+          "description": "Synthesis status for this chunk"
         },
         "audio_path": {
-          "type": ["string", "null"]
+          "type": ["string", "null"],
+          "description": "Path to generated audio file"
         },
-        "status": {
-          "$ref": "#/definitions/status"
+        "engine_used": {
+          "type": "string",
+          "description": "TTS engine that produced the audio",
+          "enum": ["xtts", "kokoro", "piper"]
+        },
+        "voice_used": {
+          "type": ["string", "null"],
+          "description": "Voice ID used for this chunk"
+        },
+        "text_length": {
+          "type": "integer",
+          "description": "Character count of input text"
+        },
+        "audio_seconds": {
+          "type": "number",
+          "description": "Duration of generated audio in seconds"
+        },
+        "rt_factor": {
+          "type": "number",
+          "description": "Real-time factor: wall time / audio duration"
+        },
+        "latency_fallback_used": {
+          "type": "boolean",
+          "description": "True if engine was switched due to latency threshold",
+          "default": false
+        },
+        "validation": {
+          "type": "object",
+          "description": "Audio validation results",
+          "additionalProperties": true,
+          "properties": {
+            "tier1_passed": {
+              "type": "boolean",
+              "description": "Basic validation (file exists, duration > 0)"
+            },
+            "tier2_wer": {
+              "type": ["number", "null"],
+              "description": "Word Error Rate from ASR validation"
+            },
+            "tier2_passed": {
+              "type": ["boolean", "null"],
+              "description": "ASR validation passed"
+            }
+          }
         },
         "errors": {
           "type": "array",
-          "items": {}
+          "description": "Errors encountered during synthesis",
+          "items": { "$ref": "#/definitions/errorEntry" }
         }
       }
     },
-    "phaseFile": {
-      "type": "object",
-      "additionalProperties": true,
-      "required": [
-        "status",
-        "timestamps",
-        "artifacts",
-        "metrics",
-        "errors"
-      ],
-      "properties": {
-        "status": {
-          "$ref": "#/definitions/status"
-        },
-        "timestamps": {
-          "$ref": "#/definitions/timestamp"
-        },
-        "artifacts": {
-          "$ref": "#/definitions/artifactContainer"
-        },
-        "metrics": {
+
+    "phase5Block": {
+      "allOf": [
+        { "$ref": "#/definitions/basePhaseBlock" },
+        {
           "type": "object",
-          "additionalProperties": true
-        },
-        "errors": {
-          "type": "array",
-          "items": {}
-        },
+          "description": "Phase 5: Audio Enhancement - Mastering and normalization",
+          "properties": {
+            "files": {
+              "type": "object",
+              "description": "Per-file enhancement results",
+              "additionalProperties": {
+                "$ref": "#/definitions/phase5File"
+              }
+            },
+            "chunks": {
+              "type": "array",
+              "description": "Per-chunk enhancement results (legacy flat structure)",
+              "items": { "$ref": "#/definitions/phase5Chunk" }
+            },
+            "metrics": {
+              "type": "object",
+              "properties": {
+                "successful": { "type": "integer" },
+                "failed": { "type": "integer" },
+                "total_duration": { "type": "number" },
+                "avg_snr_improvement": { "type": "number" },
+                "avg_volume_normalization_delta": { "type": "number" },
+                "volume_normalization_applied_count": { "type": "integer" },
+                "phrases_removed_total": { "type": "integer" },
+                "chunks_with_phrases": { "type": "integer" },
+                "cleanup_errors": { "type": "integer" }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "phase5File": {
+      "type": "object",
+      "description": "Phase 5 output for a single file",
+      "additionalProperties": true,
+      "required": ["status", "timestamps", "artifacts", "metrics", "errors"],
+      "properties": {
+        "status": { "$ref": "#/definitions/status" },
+        "timestamps": { "$ref": "#/definitions/timestamp" },
+        "artifacts": { "$ref": "#/definitions/artifactContainer" },
+        "metrics": { "type": "object", "additionalProperties": true },
+        "errors": { "type": "array", "items": { "$ref": "#/definitions/errorEntry" } },
         "chunks": {
           "type": "array",
-          "items": {
-            "$ref": "#/definitions/chunkEntry"
-          }
+          "description": "Per-chunk enhancement results",
+          "items": { "$ref": "#/definitions/phase5Chunk" }
+        },
+        "output_path": {
+          "type": "string",
+          "description": "Path to final mastered audio file"
+        },
+        "preset_used": {
+          "type": "string",
+          "description": "Mastering preset applied",
+          "enum": ["audiobook_intimate", "audiobook_dynamic", "podcast_standard", "audiobook_classic", "minimal"]
         }
       }
     },
-    "phaseBlock": {
+
+    "phase5Chunk": {
       "type": "object",
+      "description": "Phase 5 enhancement result for a single chunk",
       "additionalProperties": true,
-      "required": [
-        "status",
-        "timestamps",
-        "artifacts",
-        "metrics",
-        "errors"
-      ],
+      "required": ["chunk_id", "status"],
       "properties": {
+        "chunk_id": {
+          "type": ["string", "integer"],
+          "description": "Chunk identifier"
+        },
         "status": {
-          "$ref": "#/definitions/status"
+          "type": "string",
+          "description": "Enhancement status",
+          "enum": ["complete", "success", "failed", "error", "skipped"]
         },
-        "timestamps": {
-          "$ref": "#/definitions/timestamp"
+        "wav_path": {
+          "type": "string",
+          "description": "Input audio path (from Phase 4)"
         },
-        "artifacts": {
-          "$ref": "#/definitions/artifactContainer"
+        "enhanced_path": {
+          "type": "string",
+          "description": "Output enhanced audio path"
         },
-        "metrics": {
-          "type": "object",
-          "additionalProperties": true
+        "snr_pre": {
+          "type": "number",
+          "description": "Signal-to-noise ratio before enhancement (dB)"
         },
-        "errors": {
-          "type": "array",
-          "items": {}
+        "snr_post": {
+          "type": "number",
+          "description": "Signal-to-noise ratio after enhancement (dB)"
         },
-        "files": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/definitions/phaseFile"
-          }
+        "rms_pre": {
+          "type": "number",
+          "description": "RMS level before enhancement (dBFS)"
         },
-        "chunks": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/chunkEntry"
-          }
+        "rms_post": {
+          "type": "number",
+          "description": "RMS level after enhancement (dBFS)"
+        },
+        "lufs_pre": {
+          "type": "number",
+          "description": "LUFS loudness before enhancement"
+        },
+        "lufs_post": {
+          "type": "number",
+          "description": "LUFS loudness after enhancement"
+        },
+        "duration": {
+          "type": "number",
+          "description": "Chunk audio duration in seconds"
+        },
+        "cleanup_status": {
+          "type": "string",
+          "description": "Status of phrase cleanup",
+          "enum": ["clean", "cleaned", "skipped", "error"]
+        },
+        "phrases_removed": {
+          "type": "integer",
+          "description": "Number of unwanted phrases removed"
+        },
+        "cleanup_processing_time": {
+          "type": "number",
+          "description": "Time spent on cleanup in seconds"
+        },
+        "speech_ratio": {
+          "type": "number",
+          "description": "Ratio of speech to total audio (from VAD)"
+        },
+        "error_message": {
+          "type": ["string", "null"],
+          "description": "Error message if enhancement failed"
         }
       }
     },
+
+    "phase5_5Block": {
+      "allOf": [
+        { "$ref": "#/definitions/basePhaseBlock" },
+        {
+          "type": "object",
+          "description": "Phase 5.5: Subtitle Generation - Whisper transcription and alignment",
+          "properties": {
+            "files": {
+              "type": "object",
+              "description": "Per-file subtitle results",
+              "additionalProperties": {
+                "$ref": "#/definitions/phase5_5File"
+              }
+            },
+            "timestamp": {
+              "type": "number",
+              "description": "Unix timestamp when subtitle generation completed"
+            },
+            "duration": {
+              "type": "number",
+              "description": "Processing time in seconds"
+            },
+            "srt_file": {
+              "type": ["string", "null"],
+              "description": "Path to generated SRT subtitle file"
+            },
+            "vtt_file": {
+              "type": ["string", "null"],
+              "description": "Path to generated VTT subtitle file"
+            },
+            "metrics": {
+              "type": "object",
+              "properties": {
+                "coverage": {
+                  "type": "number",
+                  "description": "Percentage of audio covered by subtitles (0-1)"
+                },
+                "wer": {
+                  "type": "number",
+                  "description": "Word Error Rate (0-1, lower is better)"
+                },
+                "segments": {
+                  "type": "integer",
+                  "description": "Number of subtitle segments generated"
+                },
+                "average_segment_duration": {
+                  "type": "number",
+                  "description": "Average duration per subtitle segment"
+                },
+                "max_drift_seconds": {
+                  "type": "number",
+                  "description": "Maximum timing drift from reference"
+                },
+                "model": {
+                  "type": "string",
+                  "description": "Whisper model used for transcription"
+                },
+                "processing_host": {
+                  "type": "string",
+                  "description": "Machine that performed transcription"
+                }
+              }
+            },
+            "error": {
+              "type": ["string", "null"],
+              "description": "Error message if subtitle generation failed"
+            }
+          }
+        }
+      ]
+    },
+
+    "phase5_5File": {
+      "type": "object",
+      "description": "Phase 5.5 output for a single file",
+      "additionalProperties": true,
+      "required": ["status", "timestamps", "artifacts", "metrics", "errors"],
+      "properties": {
+        "status": { "$ref": "#/definitions/status" },
+        "timestamps": { "$ref": "#/definitions/timestamp" },
+        "artifacts": { "$ref": "#/definitions/artifactContainer" },
+        "metrics": { "type": "object", "additionalProperties": true },
+        "errors": { "type": "array", "items": { "$ref": "#/definitions/errorEntry" } },
+        "chunks": { "type": "array", "default": [] },
+        "srt_file": { "type": ["string", "null"] },
+        "vtt_file": { "type": ["string", "null"] },
+        "karaoke_file": { "type": ["string", "null"] },
+        "coverage": { "type": "number" },
+        "wer": { "type": "number" }
+      }
+    },
+
+    "phase6Block": {
+      "allOf": [
+        { "$ref": "#/definitions/basePhaseBlock" },
+        {
+          "type": "object",
+          "description": "Phase 6: Orchestration - Pipeline coordination telemetry",
+          "properties": {
+            "files": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "run_config": {
+              "type": "object",
+              "description": "Configuration used for this orchestration run",
+              "additionalProperties": true
+            },
+            "phases_executed": {
+              "type": "array",
+              "description": "List of phases that were executed",
+              "items": { "type": "string" }
+            },
+            "total_duration_seconds": {
+              "type": "number",
+              "description": "Total pipeline execution time"
+            },
+            "policy_decisions": {
+              "type": "array",
+              "description": "Log of policy engine decisions",
+              "items": { "type": "object", "additionalProperties": true }
+            }
+          }
+        }
+      ]
+    },
+
+    "phase7Block": {
+      "allOf": [
+        { "$ref": "#/definitions/basePhaseBlock" },
+        {
+          "type": "object",
+          "description": "Phase 7: Batch Processing - Multi-file batch run telemetry",
+          "properties": {
+            "files": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "manifest_path": {
+              "type": "string",
+              "description": "Path to batch manifest CSV"
+            },
+            "worker_count": {
+              "type": "integer",
+              "description": "Number of parallel workers used"
+            },
+            "files_queued": {
+              "type": "integer",
+              "description": "Total files in batch"
+            },
+            "files_completed": {
+              "type": "integer",
+              "description": "Files successfully processed"
+            },
+            "files_failed": {
+              "type": "integer",
+              "description": "Files that failed processing"
+            }
+          }
+        }
+      ]
+    },
+
     "batchFileEntry": {
       "type": "object",
+      "description": "Status of a single file within a batch run",
       "additionalProperties": true,
-      "required": [
-        "status",
-        "timestamps",
-        "artifacts",
-        "metrics",
-        "errors"
-      ],
+      "required": ["status", "timestamps", "artifacts", "metrics", "errors"],
       "properties": {
-        "status": {
-          "$ref": "#/definitions/status"
-        },
-        "timestamps": {
-          "$ref": "#/definitions/timestamp"
-        },
-        "artifacts": {
-          "$ref": "#/definitions/artifactContainer"
-        },
-        "metrics": {
-          "type": "object",
-          "additionalProperties": true
-        },
-        "errors": {
-          "type": "array",
-          "items": {}
-        }
+        "status": { "$ref": "#/definitions/status" },
+        "timestamps": { "$ref": "#/definitions/timestamp" },
+        "artifacts": { "$ref": "#/definitions/artifactContainer" },
+        "metrics": { "type": "object", "additionalProperties": true },
+        "errors": { "type": "array", "items": { "$ref": "#/definitions/errorEntry" } },
+        "source_path": { "type": "string" },
+        "duration_sec": { "type": "number" },
+        "cpu_avg": { "type": "number" }
       }
     },
+
     "batchRun": {
       "type": "object",
+      "description": "Record of a batch processing run",
       "additionalProperties": true,
-      "required": [
-        "run_id",
-        "status",
-        "timestamps",
-        "metrics",
-        "errors",
-        "files"
-      ],
+      "required": ["run_id", "status", "timestamps", "metrics", "errors", "files"],
       "properties": {
         "run_id": {
-          "type": "string"
+          "type": "string",
+          "description": "Unique identifier for this batch run"
         },
-        "status": {
-          "$ref": "#/definitions/status"
-        },
-        "timestamps": {
-          "$ref": "#/definitions/timestamp"
-        },
+        "status": { "$ref": "#/definitions/status" },
+        "timestamps": { "$ref": "#/definitions/timestamp" },
         "metrics": {
           "type": "object",
-          "additionalProperties": true
+          "additionalProperties": true,
+          "properties": {
+            "files_total": { "type": "integer" },
+            "files_completed": { "type": "integer" },
+            "files_failed": { "type": "integer" },
+            "duration_sec": { "type": "number" }
+          }
         },
-        "errors": {
-          "type": "array",
-          "items": {}
-        },
-        "artifacts": {
-          "$ref": "#/definitions/artifactContainer"
-        },
+        "errors": { "type": "array", "items": { "$ref": "#/definitions/errorEntry" } },
+        "artifacts": { "$ref": "#/definitions/artifactContainer" },
         "files": {
           "type": "object",
-          "additionalProperties": {
-            "$ref": "#/definitions/batchFileEntry"
-          }
+          "description": "Per-file batch results",
+          "additionalProperties": { "$ref": "#/definitions/batchFileEntry" }
         }
       }
     }
