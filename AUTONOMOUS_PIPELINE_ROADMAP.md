@@ -7,6 +7,35 @@
 
 ## Latest Updates (2025-12-06)
 
+### ✅ NEW: Phase 7 Batch Processing UI Fix
+
+**Problem Identified:**
+- Phase 7 ("Batch Runner") was incorrectly listed as a selectable phase for single-file processing
+- The UI's Batch Queue tab didn't persist batch state to `pipeline.json`
+- No integration between UI batch processing and the `phase7_batch` module
+
+**Fixes Applied:**
+
+1. **Removed Phase 7 from Single-File Selector** (`ui/app.py:51-61`)
+   - Phase 7 is a batch operation, not a single-file phase
+   - Now only Phases 1-6 and 5.5 (Subtitles) appear in the single-book phase selector
+
+2. **Added Batch State Persistence** (`ui/services/pipeline_api.py:383-423`)
+   - New `persist_batch_run()` method saves batch results to `pipeline.json`
+   - Compatible with `phase7_batch` CLI tool data format
+   - Records: `run_id`, `status`, `timestamps`, `metrics`, per-file results
+
+3. **Enhanced Batch Handler** (`ui/app.py:1020-1166`)
+   - Generates unique `run_id` (e.g., `batch_20251206_143022`)
+   - Tracks per-file results with timestamps and artifacts
+   - Calculates success/failure metrics
+   - Persists to `pipeline.json` under `batch_runs` on completion
+   - Shows summary with run_id and results breakdown
+
+**Result:** The Batch Queue tab now properly records batch runs in `pipeline.json`, appears in Batch History, and uses the same schema as the `phase7_batch` CLI tool.
+
+---
+
 ### ✅ NEW: Schema v4.0.0 - The Constitution
 
 **The schema is now the single source of truth for pipeline state.**
