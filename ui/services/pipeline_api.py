@@ -380,6 +380,48 @@ class PipelineAPI:
         runs = data.get("batch_runs") or []
         return runs if isinstance(runs, list) else []
 
+    def persist_batch_run(
+        self,
+        run_id: str,
+        status: str,
+        started_at: str,
+        completed_at: str,
+        files_results: Dict[str, Dict[str, Any]],
+        metrics: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Persist a batch run to pipeline.json under batch_runs."""
+        try:
+            with self.state.transaction(operation="batch_run") as txn:
+                runs = txn.data.setdefault("batch_runs", [])
+
+                # Build the batch run entry
+                run_entry = {
+                    "run_id": run_id,
+                    "status": status,
+                    "timestamps": {
+                        "start": started_at,
+                        "end": completed_at,
+                    },
+                    "metrics": metrics or {},
+                    "files": files_results,
+                }
+
+                # Check if this run_id already exists and update it
+                existing_idx = next(
+                    (i for i, r in enumerate(runs) if r.get("run_id") == run_id),
+                    None,
+                )
+                if existing_idx is not None:
+                    runs[existing_idx] = run_entry
+                else:
+                    runs.append(run_entry)
+
+            logger.info("Persisted batch run %s with status %s", run_id, status)
+            return True
+        except Exception as exc:
+            logger.warning("Failed to persist batch run: %s", exc)
+            return False
+
     # ------------------------------------------------------------------ #
     # Orchestration
     # ------------------------------------------------------------------ #
