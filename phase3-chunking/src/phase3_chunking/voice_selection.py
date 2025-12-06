@@ -450,22 +450,22 @@ if __name__ == "__main__":
 Examples:
   # List all available voices
   python voice_selection.py --list
-  
+
   # Show voices for specific genre
   python voice_selection.py --list --profile philosophy
-  
+
   # Set global voice override
   python voice_selection.py --set-global landon_elkind
-  
+
   # Set file-specific voice override
   python voice_selection.py --set-file file_abc123 tom_weiss
-  
+
   # Clear global override
   python voice_selection.py --clear-global
-  
+
   # Clear file-specific override
   python voice_selection.py --clear-file file_abc123
-  
+
   # Show details for specific voice
   python voice_selection.py --info jim_locke
         """,

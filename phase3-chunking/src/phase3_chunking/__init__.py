@@ -1,1 +1,1 @@
-from .compat import ChunkMetadata, _split_oversized_sentence
+from .compat import ChunkMetadata, _split_oversized_sentence  # noqa: F401

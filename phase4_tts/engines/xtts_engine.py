@@ -79,7 +79,87 @@ class XTTSEngine(TTSEngine):
                 gpu=(self.device == "cuda"),
             )
 
-            logger.info("XTTS v2 model loaded successfully")
+            # Attempt to attach bundled multi-speaker metadata (if available)
+            try:
+                from TTS.tts.utils.speakers import SpeakerManager
+                import torch
+
+                speakers_file = (
+                    Path.home()
+                    / "AppData"
+                    / "Local"
+                    / "tts"
+                    / "tts_models--multilingual--multi-dataset--xtts_v2"
+                    / "speakers_xtts.pth"
+                )
+
+                if speakers_file.exists():
+                    raw = torch.load(speakers_file, map_location="cpu")
+                    if isinstance(raw, dict) and raw:
+                        manager = SpeakerManager()
+                        manager.name_to_id = {
+                            name: idx for idx, name in enumerate(raw.keys())
+                        }
+                        manager.embeddings = {}
+                        manager.embeddings_by_names = {}
+                        manager.clip_ids = []
+
+                        for name, payload in raw.items():
+                            emb = payload.get("speaker_embedding")
+                            if emb is None:
+                                continue
+                            if hasattr(emb, "detach"):
+                                emb = emb.detach().cpu().numpy()
+                            if hasattr(emb, "tolist"):
+                                emb = emb.tolist()
+                            manager.embeddings[name] = {"name": name, "embedding": emb}
+                            manager.embeddings_by_names.setdefault(name, []).append(
+                                emb
+                            )
+                            manager.clip_ids.append(name)
+
+                        if manager.name_to_id:
+                            tts_model = self.model.synthesizer.tts_model
+                            self.model.synthesizer.tts_model.speaker_manager = manager
+                            # Mark config as d-vector based so Synthesizer uses speaker embeddings
+                            self.model.synthesizer.tts_config.use_d_vector_file = True
+                            self.model.synthesizer.tts_config.d_vector_file = str(
+                                speakers_file
+                            )
+                            logger.info(
+                                "Attached XTTS speaker_manager with %s speakers from %s",
+                                len(manager.name_to_id),
+                                speakers_file.name,
+                            )
+            except Exception as exc:
+                logger.warning("Could not attach XTTS speaker metadata: %s", exc)
+
+            # Log speaker capabilities for diagnostics
+            is_multi = getattr(self.model, "is_multi_speaker", None)
+            speaker_source = None
+            speakers: List[str] = []
+            if hasattr(self.model, "speakers") and isinstance(
+                getattr(self.model, "speakers"), (list, tuple)
+            ):
+                speakers = list(getattr(self.model, "speakers"))
+                speaker_source = "model.speakers"
+            elif hasattr(self.model, "speaker_manager") and getattr(
+                self.model.speaker_manager, "speakers", None
+            ):
+                speakers = list(self.model.speaker_manager.speakers)
+                speaker_source = "model.speaker_manager.speakers"
+
+            speaker_source_note = f" via {speaker_source}" if speaker_source else ""
+            logger.info(
+                "XTTS v2 model loaded successfully (multi_speaker=%s, speakers=%s%s)",
+                is_multi,
+                len(speakers),
+                speaker_source_note,
+            )
+            if speakers:
+                preview = speakers[:5]
+                more = "" if len(speakers) <= 5 else f" (+{len(speakers)-5} more)"
+                logger.info("XTTS available speakers sample: %s%s", preview, more)
 
         except ImportError as e:
             raise ImportError(
@@ -138,12 +218,13 @@ class XTTSEngine(TTSEngine):
                 )
 
         # Fallback reference for voice cloning when no reference_audio provided
+        # Fallback reference for cases where no explicit reference is provided
         fallback_reference = None
-        if not active_speaker and not reference_audio:
-            # Voice cloning mode but no reference - use default
-            if self.default_reference.exists():
-                fallback_reference = self.default_reference
-                logger.info(f"No reference audio provided; using default: {self.default_reference.name}")
+        if not reference_audio and self.default_reference.exists():
+            fallback_reference = self.default_reference
+            logger.info(
+                f"No reference audio provided; using default: {self.default_reference.name}"
+            )
 
         # Validate language
         if language not in self.get_supported_languages():
@@ -170,10 +251,16 @@ class XTTSEngine(TTSEngine):
                 )
             # Mode 2: Built-in voice using speaker parameter
             elif active_speaker:
-                logger.info(f"Using built-in XTTS voice: {active_speaker}")
+                speaker_wav = str(ref_to_use) if ref_to_use else None
+                logger.info(
+                    "Using built-in XTTS voice: %s (with reference_wav=%s)",
+                    active_speaker,
+                    speaker_wav if speaker_wav else "None",
+                )
                 wav = self.model.tts(
                     text=text,
                     speaker=active_speaker,  # Use speaker parameter for built-in voices
+                    speaker_wav=speaker_wav,
                     language=language,
                     speed=speed,
                     temperature=temperature,
@@ -222,11 +309,9 @@ class XTTSEngine(TTSEngine):
         Note: XTTS v2 uses a GPT-based architecture with ~400 token context window.
         This translates to roughly 2000-2500 characters depending on language.
 
-        We set a conservative limit of 10,000 characters to allow flexibility
-        while still catching extremely long chunks that would cause issues.
-
-        For best quality, Phase 3 should target 1000-1500 character chunks,
-        but XTTS will handle longer text if needed.
+        We set a conservative limit of 10,000 characters to allow Phase 3's
+        smart chunking system to make intelligent decisions based on research.
+        XTTS will handle internal sentence splitting as needed.
         """
         return 10000  # Conservative limit - allows Phase 3 flexibility
 

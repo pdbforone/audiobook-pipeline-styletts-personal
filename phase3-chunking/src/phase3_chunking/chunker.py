@@ -104,9 +104,15 @@ def chunk_with_profile(
     logger.info(f"  Word range: {profile.min_words}-{profile.max_words}")
     logger.info(f"  Char range: {profile.min_chars}-{profile.max_chars}")
     logger.info(f"  Rules: {profile.rules}")
+    if profile.split_long_sentences:
+        logger.info(f"  XTTS sentence splitting: enabled (max {profile.max_sentence_chars} chars)")
 
-    # Detect sentences
-    sentences = detect_sentences(text)
+    # Detect sentences with optional XTTS splitting
+    sentences = detect_sentences(
+        text,
+        split_long_sentences=profile.split_long_sentences,
+        max_sentence_chars=profile.max_sentence_chars,
+    )
     if not sentences:
         raise ValueError("No sentences detected in text")
 

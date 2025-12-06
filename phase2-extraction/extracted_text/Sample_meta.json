@@ -28,7 +28,7 @@
   "size_change": -2248,
   "text_yield": 0.344797435150102,
   "file_id": "Sample",
-  "source_file": "C:\\Users\\myson\\AppData\\Local\\Temp\\gradio\\479a414040383eb45856eb91fe3f92c9719f79ae27da044b37c7792ba8e965a9\\Sample.txt",
+  "source_file": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\input\\Sample.txt",
   "detected_format": "txt",
   "classification": "text"
 }
