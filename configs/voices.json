@@ -1,276 +1,125 @@
 {
   "voices": {
-    "landon_elkind": {
-      "description": "Measured, analytical tone for philosophy (Bertrand Russell reader)",
-      "narrator": "Landon D. C. Elkind",
-      "gender": "male",
-      "accent": "American",
+    "bob_neufeld": {
+      "description": "Bob Neufeld - Philosophy/Analytic (Plato's Republic)",
+      "narrator": "bob_neufeld",
+      "reference_audio": null,
       "preferred_profiles": [
         "philosophy",
         "academic"
       ],
-      "source": "LibriVox - Mysticism and Logic",
-      "tts_engine_params": {
-        "pitch": -1,
-        "rate": 0.95,
-        "emphasis": "moderate"
-      },
-      "characteristics": {
-        "pace": "deliberate",
-        "tone": "scholarly",
-        "clarity": "high"
-      }
+      "source": "LibriVox custom"
     },
-    "pamela_nagami": {
-      "description": "Clear, authoritative female voice for modern philosophy",
-      "narrator": "Pamela Nagami",
-      "gender": "female",
-      "accent": "American",
+    "de_wittkower": {
+      "description": "D.E. Wittkower - Philosophy/Continental (Descartes' Meditations)",
+      "narrator": "de_wittkower",
+      "reference_audio": null,
       "preferred_profiles": [
         "philosophy",
         "academic"
       ],
-      "source": "LibriVox - History of Modern Philosophy",
-      "tts_engine_params": {
-        "pitch": 0.5,
-        "rate": 1.0,
-        "emphasis": "balanced"
-      },
-      "characteristics": {
-        "pace": "steady",
-        "tone": "authoritative",
-        "clarity": "maximum"
-      }
+      "source": "LibriVox custom"
     },
-    "hugh_mcguire": {
-      "description": "Classical philosophy with possible British accent (Boethius reader)",
-      "narrator": "Hugh McGuire",
-      "gender": "male",
-      "accent": "British (possibly)",
+    "geoffrey_edwards": {
+      "description": "Geoffrey Edwards - Philosophy/Classical (Aristotle's Nicomachean Ethics)",
+      "narrator": "geoffrey_edwards",
+      "reference_audio": null,
       "preferred_profiles": [
         "philosophy",
         "academic"
       ],
-      "source": "LibriVox - The Consolation of Philosophy",
-      "tts_engine_params": {
-        "pitch": -0.5,
-        "rate": 0.95,
-        "emphasis": "moderate"
-      },
-      "characteristics": {
-        "pace": "measured",
-        "tone": "contemplative",
-        "clarity": "high"
-      }
+      "source": "LibriVox custom"
     },
-    "david_barnes": {
-      "description": "BBC English male voice for British literature/philosophy",
-      "narrator": "David Barnes",
-      "gender": "male",
-      "accent": "British (BBC English)",
+    "david_leeson": {
+      "description": "David Leeson - Theology/Modern (The Pursuit of God by Tozer)",
+      "narrator": "david_leeson",
+      "reference_audio": null,
       "preferred_profiles": [
+        "theology",
+        "philosophy"
+      ],
+      "source": "LibriVox custom"
+    },
+    "maryann_spiegel": {
+      "description": "MaryAnn Spiegel - Theology/Historical (Augustine's Confessions)",
+      "narrator": "maryann_spiegel",
+      "reference_audio": null,
+      "preferred_profiles": [
+        "theology",
         "philosophy",
-        "academic",
-        "poetry"
-      ],
-      "source": "LibriVox - Holy Sonnets (Donne)",
-      "tts_engine_params": {
-        "pitch": -0.5,
-        "rate": 0.95,
-        "emphasis": "formal"
-      },
-      "characteristics": {
-        "pace": "precise",
-        "tone": "refined",
-        "clarity": "maximum"
-      }
-    },
-    "ruth_golding": {
-      "description": "RP/BBC English female voice for British literature",
-      "narrator": "Ruth Golding",
-      "gender": "female",
-      "accent": "British (RP)",
-      "preferred_profiles": [
-        "fiction",
-        "poetry",
         "memoir"
       ],
-      "source": "LibriVox - To a Dog (Josephine Peabody)",
-      "tts_engine_params": {
-        "pitch": 1.0,
-        "rate": 1.0,
-        "emphasis": "refined"
-      },
-      "characteristics": {
-        "pace": "elegant",
-        "tone": "cultivated",
-        "clarity": "high"
-      }
+      "source": "LibriVox custom"
     },
-    "tom_weiss": {
-      "description": "Engaging male narrator for thrillers and suspense",
-      "narrator": "Tom Weiss",
-      "gender": "male",
-      "accent": "American",
-      "preferred_profiles": [
-        "fiction"
-      ],
-      "source": "LibriVox - The Masquerader",
-      "tts_engine_params": {
-        "pitch": -0.5,
-        "rate": 1.1,
-        "emphasis": "dramatic"
-      },
-      "characteristics": {
-        "pace": "dynamic",
-        "tone": "engaging",
-        "expressiveness": "high"
-      }
-    },
-    "bella_bolster": {
-      "description": "Female narrator for horror and dark fiction",
-      "narrator": "Bella Bolster",
-      "gender": "female",
-      "accent": "American",
-      "preferred_profiles": [
-        "fiction"
-      ],
-      "source": "LibriVox - Short Ghost and Horror Collection 074",
-      "tts_engine_params": {
-        "pitch": 0.5,
-        "rate": 1.0,
-        "emphasis": "atmospheric"
-      },
-      "characteristics": {
-        "pace": "measured",
-        "tone": "mysterious",
-        "expressiveness": "high"
-      }
-    },
-    "kara_shallenberg": {
-      "description": "Warm female voice for classic fiction and romance",
-      "narrator": "Kara Shallenberg",
-      "gender": "female",
-      "accent": "American",
+    "ruth_golding_local": {
+      "description": "Ruth Golding - British Female/Fiction (Wuthering Heights)",
+      "narrator": "ruth_golding_local",
+      "reference_audio": null,
       "preferred_profiles": [
         "fiction",
         "memoir"
       ],
-      "source": "LibriVox - Pride and Prejudice",
-      "tts_engine_params": {
-        "pitch": 0.5,
-        "rate": 1.05,
-        "emphasis": "natural"
-      },
-      "characteristics": {
-        "pace": "natural",
-        "tone": "conversational",
-        "expressiveness": "high"
-      }
+      "source": "LibriVox custom"
     },
-    "gareth_holmes": {
-      "description": "British male voice for poetry and epic works",
-      "narrator": "Gareth Holmes",
-      "gender": "male",
-      "accent": "British",
-      "preferred_profiles": [
-        "poetry"
-      ],
-      "source": "LibriVox - Short Poetry Collection 227",
-      "tts_engine_params": {
-        "pitch": 0,
-        "rate": 0.9,
-        "emphasis": "rhythmic"
-      },
-      "characteristics": {
-        "pace": "rhythmic",
-        "tone": "expressive",
-        "clarity": "high"
-      }
-    },
-    "wayne_cooke": {
-      "description": "Male narrator for theology and religious texts",
-      "narrator": "Wayne Cooke",
-      "gender": "male",
-      "accent": "American",
-      "preferred_profiles": [
-        "academic",
-        "theology"
-      ],
-      "source": "LibriVox - Rational Theology",
-      "tts_engine_params": {
-        "pitch": -0.5,
-        "rate": 0.95,
-        "emphasis": "contemplative"
-      },
-      "characteristics": {
-        "pace": "reverent",
-        "tone": "thoughtful",
-        "clarity": "high"
-      }
-    },
-    "eric_metzler": {
-      "description": "Male narrator for medieval theology and mysticism",
-      "narrator": "Eric Metzler",
-      "gender": "male",
-      "accent": "American",
-      "preferred_profiles": [
-        "academic",
-        "theology"
-      ],
-      "source": "LibriVox - Meister Eckhart's Sermons",
-      "tts_engine_params": {
-        "pitch": -0.5,
-        "rate": 0.9,
-        "emphasis": "meditative"
-      },
-      "characteristics": {
-        "pace": "slow",
-        "tone": "mystical",
-        "clarity": "high"
-      }
-    },
-    "cori_samuel": {
-      "description": "RP via Estuary English female voice",
-      "narrator": "Cori Samuel",
-      "gender": "female",
-      "accent": "British (RP/Estuary)",
+    "vincent_price_01": {
+      "description": "Vincent Price - Gothic/Horror (Sample 1)",
+      "narrator": "vincent_price_01",
+      "reference_audio": null,
       "preferred_profiles": [
         "fiction",
-        "memoir"
+        "gothic"
       ],
-      "source": "LibriVox - Wrinkles (Landor)",
-      "tts_engine_params": {
-        "pitch": 0.5,
-        "rate": 1.0,
-        "emphasis": "natural"
-      },
-      "characteristics": {
-        "pace": "conversational",
-        "tone": "approachable",
-        "clarity": "high"
-      }
+      "source": "LibriVox custom"
     },
-    "peter_yearsley": {
-      "description": "South-east England with London colouring male voice",
-      "narrator": "Peter Yearsley",
-      "gender": "male",
-      "accent": "British (London)",
+    "vincent_price_02": {
+      "description": "Vincent Price - Gothic/Horror (Sample 2)",
+      "narrator": "vincent_price_02",
+      "reference_audio": null,
       "preferred_profiles": [
         "fiction",
-        "memoir"
+        "gothic"
       ],
-      "source": "LibriVox - Various",
-      "tts_engine_params": {
-        "pitch": -0.5,
-        "rate": 1.0,
-        "emphasis": "natural"
-      },
-      "characteristics": {
-        "pace": "comfortable",
-        "tone": "friendly",
-        "clarity": "high"
-      }
+      "source": "LibriVox custom"
+    },
+    "vincent_price_03": {
+      "description": "Vincent Price - Gothic/Horror (Sample 3)",
+      "narrator": "vincent_price_03",
+      "reference_audio": null,
+      "preferred_profiles": [
+        "fiction",
+        "gothic"
+      ],
+      "source": "LibriVox custom"
+    },
+    "mercedes_mccambridge": {
+      "description": "Mercedes McCambridge - Drama/Thriller",
+      "narrator": "mercedes_mccambridge",
+      "reference_audio": null,
+      "preferred_profiles": [
+        "fiction",
+        "thriller"
+      ],
+      "source": "LibriVox custom"
+    },
+    "agnes_moorehead": {
+      "description": "Agnes Moorehead - Drama/Horror",
+      "narrator": "agnes_moorehead",
+      "reference_audio": null,
+      "preferred_profiles": [
+        "fiction",
+        "gothic"
+      ],
+      "source": "LibriVox custom"
+    },
+    "greenman": {
+      "description": "Greenman reference voice",
+      "narrator": "greenman",
+      "reference_audio": null,
+      "preferred_profiles": [
+        "fiction",
+        "narrative"
+      ],
+      "source": "LibriVox custom"
     },
     "neutral_narrator": {
       "description": "Fallback clear, impartial voice for general content",

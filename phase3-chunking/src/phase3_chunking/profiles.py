@@ -26,6 +26,9 @@ class ChunkProfile:
     genre_duration_overrides: Dict[str, Dict[str, int]] = field(
         default_factory=dict
     )
+    # XTTS v2 compatibility settings
+    split_long_sentences: bool = False  # Enable sentence splitting for XTTS
+    max_sentence_chars: int = 250  # XTTS sentence limit
 
     def get_rule(self, rule_name: str, default: bool = False) -> bool:
         """Safely get a rule value with default fallback."""
@@ -63,6 +66,8 @@ PROFILES: Dict[str, ChunkProfile] = {
         description="Measured tone for philosophical texts with complex arguments",
         tts_priority="clarity",
         genre_duration_overrides=GENRE_DURATION_OVERRIDES,
+        split_long_sentences=True,  # Enable for classical texts (Plutarch, etc.)
+        max_sentence_chars=250,  # XTTS optimal limit
     ),
     "fiction": ChunkProfile(
         name="fiction",
@@ -95,6 +100,8 @@ PROFILES: Dict[str, ChunkProfile] = {
         description="Clear, impartial for technical/academic content",
         tts_priority="precision",
         genre_duration_overrides=GENRE_DURATION_OVERRIDES,
+        split_long_sentences=True,  # Enable for academic texts with long sentences
+        max_sentence_chars=250,  # XTTS optimal limit
     ),
     "memoir": ChunkProfile(
         name="memoir",
