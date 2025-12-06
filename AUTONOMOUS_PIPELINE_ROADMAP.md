@@ -5,7 +5,62 @@
 
 ---
 
-## Latest Updates (2025-11-27)
+## Latest Updates (2025-12-06)
+
+### ✅ NEW: Schema v4.0.0 - The Constitution
+
+**The schema is now the single source of truth for pipeline state.**
+
+**Phase-Specific Definitions** (1,062 lines of intentional design):
+
+- Each phase has its own block schema (`phase1Block` through `phase7Block`)
+- Per-phase file schemas with required fields
+- Chunk-level schemas: `phase4Chunk` (rt_factor, engine_used, validation), `phase5Chunk` (snr/lufs metrics)
+- Rich descriptions for all 200+ fields
+- Location: [pipeline_common/schema.json](pipeline_common/schema.json)
+- Status: ✅ Complete v4.0.0 release
+
+**Pydantic Models** (774 lines):
+
+- Type-safe Python models matching schema.json exactly
+- Enums: `StatusEnum`, `EngineEnum`, `ProfileEnum`, `PresetEnum`
+- Graceful fallback when pydantic unavailable
+- Location: [pipeline_common/models.py](pipeline_common/models.py)
+- Status: ✅ Full phase coverage
+
+**Validation & Migration**:
+
+- `canonicalize_state()` - normalizes any layout to v4.0.0
+- `validate_pipeline_schema()` - lightweight structural validation
+- `validate_with_pydantic()` - optional strict type checking
+- Backward compatible with v3.0.0 data
+- Location: [pipeline_common/schema.py](pipeline_common/schema.py)
+- Status: ✅ Full test coverage
+
+**Test Suite** (440 lines):
+
+- Schema structure validation
+- Canonicalization tests (legacy v3.0.0 → v4.0.0)
+- Pydantic model tests
+- Edge cases (null values, extra fields, mixed formats)
+- Location: [tests/test_schema_v4_validation.py](tests/test_schema_v4_validation.py)
+- Status: ✅ Comprehensive coverage
+
+**Documentation**:
+
+- [PIPELINE_JSON_SCHEMA.md](PIPELINE_JSON_SCHEMA.md) - Updated to reference schema.json as source of truth
+- [DESIGN_FIRST_REFACTOR_PLAN.md](DESIGN_FIRST_REFACTOR_PLAN.md) - Architecture vision
+
+**What This Enables**:
+
+- Clear contracts between phases
+- IDE autocompletion for pipeline state
+- Runtime validation of phase outputs
+- Foundation for orchestrator decomposition
+
+---
+
+## Updates (2025-11-27)
 
 ### ✅ NEW: UI Enhancements & Voice Configuration
 
@@ -114,7 +169,7 @@
 | Engine Registry | `phase4_tts/engine_registry.yaml` | ✅ | ✅ `phase4_tts.engines.engine_manager.EngineManager` and `phase4_tts/src/main_multi_engine.py` consult it for XTTS/Kokoro only (Piper disabled) |
 | Ollama | System | Required | ✅ Agents call the `ollama` daemon (default `phi3:mini`) from `agents/llama_base.py` when RAM permits |
 | Per-Phase Timeouts | `phase6_orchestrator/config.yaml` | ✅ | ✅ Loaded into `PhaseTimeouts`/`OrchestratorConfig` and enforced before each phase |
-| pipeline_common | `pipeline_common.py` | ✅ | ✅ Shared constants, `PipelineState`, and `StateTransaction` are used by both the UI and orchestrator |
+| pipeline_common | `pipeline_common/` | ✅ | ✅ Schema v4.0.0 (`schema.json`), Pydantic models (`models.py`), validation (`schema.py`), state manager |
 | Gradio UI | `ui/app.py` | ✅ | ✅ Launches via `PipelineAPI`, `VoiceManager`, and background workers; auto-selects an available port starting at 7860 |
 
 ### Validation & Tests
@@ -123,6 +178,7 @@
 |-------|----------|--------|-------|
 | Phase O full-pipeline validation | `tests/integration/test_full_pipeline.py` | ✅ Added | Opt-in (`RUN_PHASE_O_FULL=1`); runs phases 1→6 on `input/baseline_snippet.txt` and asserts state/artifacts |
 | Cross-phase schema alignment | `tests/integration/test_schema_alignment.py` | ✅ Added | Verifies Phase2→Phase3 hashes, Phase3→Phase4 chunk ids, engine_used ∈ {xtts, kokoro}, ordering preserved |
+| Schema v4.0.0 validation | `tests/test_schema_v4_validation.py` | ✅ Added | Schema structure, canonicalization, Pydantic models, edge cases, backward compatibility |
 | Two-run consistency | `tests/integration/test_two_runs.py` | ✅ Added | Ensures overrides reset and no autonomy_runtime/experiments linger after repeated runs |
 | Engine regression smoke | `phase4_tts/tests/test_engine_regression.py` | ✅ Added | XTTS/Kokoro synth stubs, Piper disabled check (skips if heavy deps missing) |
 | Repair integration | `self_repair/tests/test_repair_flow.py` | ✅ Added | Synthetic failure updates `error_registry.json`, no destructive overwrites |
