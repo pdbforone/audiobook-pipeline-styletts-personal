@@ -1,14 +1,49 @@
 # pipeline.json Schema Reference
 
 ## Overview
-`pipeline.json` is the pipeline’s single source of truth. Each phase updates a well-defined section so downstream stages (and tooling such as the orchestrator or batch runner) can reason about inputs, outputs, metrics, and errors without ad‑hoc scraping of logs.
 
-The **canonical, phase-first schema** now lives at `pipeline_common/schema.json` (version `3.0.0`) and is enforced by `pipeline_common.PipelineState`. All readers should expect the top-level `phase*` blocks with per-file maps, plus consistent metadata (`pipeline_version`, `created_at`, `last_updated`). Use `pipeline_common.adapter.upgrade_pipeline_file` to migrate legacy `pipeline.json` files safely.
+`pipeline.json` is the pipeline's single source of truth. Each phase updates a well-defined section so downstream stages (and tooling such as the orchestrator or batch runner) can reason about inputs, outputs, metrics, and errors without ad‑hoc scraping of logs.
+
+## Canonical Schema (v4.0.0)
+
+The **canonical, phase-first schema** lives at `pipeline_common/schema.json` (version `4.0.0`). This is the **single source of truth** for all pipeline state structures.
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `pipeline_common/schema.json` | JSON Schema v4.0.0 with phase-specific definitions |
+| `pipeline_common/models.py` | Pydantic models matching the schema |
+| `pipeline_common/schema.py` | Canonicalization and validation utilities |
+
+### Schema v4.0.0 Features
+
+- **Phase-specific definitions**: Each phase has its own block schema (`phase1Block`, `phase2Block`, etc.)
+- **Per-phase file schemas**: `phase1File`, `phase2File`, `phase3File`, `phase4File`, `phase5File`
+- **Chunk-level schemas**: `phase4Chunk` (with `rt_factor`, `engine_used`, `validation`) and `phase5Chunk` (with `snr_pre/post`, `lufs_pre/post`)
+- **Rich field descriptions**: Every field is documented with type, description, and constraints
+- **Backward compatible**: Uses `additionalProperties: true` to accept unknown fields gracefully
+
+### Usage
+
+```python
+from pipeline_common.schema import canonicalize_state, validate_pipeline_schema
+
+# Normalize and validate
+data = canonicalize_state(raw_data)
+validate_pipeline_schema(data)
+
+# Optional: Strict Pydantic validation
+from pipeline_common.schema import validate_with_pydantic
+is_valid, errors = validate_with_pydantic(data, strict=True, raise_on_error=False)
+```
+
+All readers should expect the top-level `phase*` blocks with per-file maps, plus consistent metadata (`pipeline_version`, `created_at`, `last_updated`). Use `pipeline_common.schema.canonicalize_state()` to normalize legacy layouts.
 
 ## Top-Level Structure
 ```json
 {
-  "pipeline_version": "1.0",
+  "pipeline_version": "4.0.0",
   "created_at": "ISO8601 timestamp",
   "last_updated": "ISO8601 timestamp",
   "input_file": "/path/to/source",
@@ -487,10 +522,39 @@ The **canonical, phase-first schema** now lives at `pipeline_common/schema.json`
 
 ## Migration Notes
 
+### v3.0.0 → v4.0.0 Migration
+
+Schema v4.0.0 is **backward compatible** with v3.0.0. The `canonicalize_state()` function handles:
+
+- **Status coercion**: `complete` → `success`, `ok` → `success`, `in_progress` → `running`
+- **Chunk normalization**: `chunk_0001` style keys are collapsed into the `chunks` array
+- **Phase structure**: Missing required fields are populated with defaults
+- **Legacy file-first layouts**: Converted to phase-first structure
+
+```python
+from pipeline_common.schema import canonicalize_state
+
+# Automatically migrates v3.0.0 to v4.0.0 structure
+canonical = canonicalize_state(legacy_data)
+```
+
+### General Migration Notes
+
 1. **Phase 5.5 addition**: Earlier schemas stopped at Phase 5. All new tooling should anticipate a `phase5_5` block. When absent, treat subtitle generation as not yet attempted.
-2. **Per-chunk metadata in Phase 4**: Some legacy runs used arrays rather than chunk-id maps. The modern schema uses a dictionary keyed by `chunk_id`. Migration scripts should normalize arrays into the keyed form.
+2. **Per-chunk metadata in Phase 4**: Some legacy runs used arrays rather than chunk-id maps. The modern schema uses the `chunks` array. `canonicalize_state()` normalizes both formats.
 3. **Metrics normalization**: Phase 1 and Phase 2 historically omitted the nested `metrics` object. When missing, orchestrator code backfills minimal metrics (duration-only). Consumers should use `dict.get("metrics", {})`.
 4. **Subtitle metrics**: If `<file_id>_metrics.json` is absent (e.g., Whisper aborted), the orchestrator stores an empty `{}`. Downstream code should handle missing metrics gracefully.
 5. **Top-level metadata**: If `pipeline_version`, `created_at`, or `tts_profile` are missing, the orchestrator writes them the next time it saves the file. New tooling should not consider their absence an error.
+6. **Phase-specific validation**: v4.0.0 schema defines specific fields for each phase. Use `validate_with_pydantic(data, strict=True)` for full type checking.
+
+### Schema Files
+
+The canonical schema is defined in three files that should be kept in sync:
+
+| File | Description |
+|------|-------------|
+| `pipeline_common/schema.json` | JSON Schema (primary source of truth) |
+| `pipeline_common/models.py` | Pydantic models (Python type hints) |
+| `PIPELINE_JSON_SCHEMA.md` | Human-readable documentation |
 
 Maintaining these structures keeps every phase loosely coupled while preserving the historical trace necessary for auditing, retries, and batch automation.
