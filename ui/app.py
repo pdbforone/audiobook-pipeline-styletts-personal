@@ -56,8 +56,9 @@ PHASE_DEFINITIONS: List[tuple[str, float, str]] = [
     ("phase5", 5, "Phase 5 – Enhancement"),
     ("phase5_5", 5.5, "Phase 5.5 – Subtitles"),
     ("phase6", 6, "Phase 6 – Orchestration"),
-    ("phase7", 7, "Phase 7 – Batch Runner"),
 ]
+# Phase 7 (Batch Runner) is not included in single-file phase selection
+# It's a batch operation handled separately via the Batch Queue tab
 PHASE_TITLE_MAP = {key: label for key, _, label in PHASE_DEFINITIONS}
 PHASE_ORDER_MAP = {key: order for key, order, _ in PHASE_DEFINITIONS}
 AVAILABLE_PHASE_KEYS = [key for key, _, _ in PHASE_DEFINITIONS if key in PHASE_KEYS]
@@ -66,7 +67,7 @@ PHASE_CHOICE_VALUES = [PHASE_CHOICE_LOOKUP[key] for key in AVAILABLE_PHASE_KEYS]
 DEFAULT_PHASE_SELECTION = [
     PHASE_CHOICE_LOOKUP[key]
     for key in AVAILABLE_PHASE_KEYS
-    if key not in {"phase5_5", "phase6", "phase7"}
+    if key not in {"phase5_5", "phase6"}
 ]
 RUNNABLE_PHASES = []
 for phase_key in AVAILABLE_PHASE_KEYS:
@@ -1029,6 +1030,8 @@ You can:
         phase_choices: List[str],
         progress=gr.Progress(track_tqdm=True),
     ) -> Tuple[str, UIState]:
+        from datetime import datetime, timezone
+
         if not book_files:
             return "❌ Please upload one or more book files.", ui_state
         if ui_state.worker.is_running:
@@ -1049,16 +1052,33 @@ You can:
         no_resume = not resume_enabled
         subtitles_requested = bool(generate_subtitles) or subtitles_selected
 
+        # Generate batch run ID
+        batch_start = datetime.now(timezone.utc)
+        run_id = f"batch_{batch_start.strftime('%Y%m%d_%H%M%S')}"
+
         async def runner(cancel_event, update_progress):
             results = []
+            files_results: dict[str, dict] = {}
             total = len(book_files)
+            successful = 0
+            failed = 0
+
             ui_state.pipeline_api.reset_cancel()
+
             for idx, book in enumerate(book_files, start=1):
+                file_path = Path(book)
+                file_id = file_path.stem
+                file_start = datetime.now(timezone.utc).isoformat()
+
                 if cancel_event.is_set():
-                    results.append(f"- ❌ Cancelled before processing `{Path(book).name}`")
+                    results.append(f"- ❌ Cancelled before processing `{file_path.name}`")
+                    files_results[file_id] = {
+                        "status": "skipped",
+                        "error_message": "Cancelled by user",
+                        "timestamps": {"start": file_start},
+                    }
                     break
 
-                file_path = Path(book)
                 self._safe_progress(progress, (idx - 1) / total, f"Batch {idx}/{total}: {file_path.name}")
                 update_progress((idx - 1) / total, f"Starting {file_path.name}")
 
@@ -1078,18 +1098,57 @@ You can:
                     max_retries=retries,
                     no_resume=no_resume,
                     concat_only=False,
+                    auto_mode=False,
                     progress_callback=progress_hook,
                     cancel_event=cancel_event,
                 )
 
+                file_end = datetime.now(timezone.utc).isoformat()
+
                 if res.get("success"):
                     out_path = res.get("audiobook_path", "phase5_enhancement/processed/")
                     results.append(f"- ✅ `{file_path.name}` → `{out_path}`")
+                    successful += 1
+                    files_results[file_id] = {
+                        "status": "success",
+                        "timestamps": {"start": file_start, "end": file_end},
+                        "artifacts": {"audiobook_path": str(out_path)},
+                    }
                 else:
-                    results.append(f"- ❌ `{file_path.name}` failed: {res.get('error','unknown error')}")
+                    error_msg = res.get("error", "unknown error")
+                    results.append(f"- ❌ `{file_path.name}` failed: {error_msg}")
+                    failed += 1
+                    files_results[file_id] = {
+                        "status": "failed",
+                        "error_message": error_msg,
+                        "timestamps": {"start": file_start, "end": file_end},
+                    }
 
             self._safe_progress(progress, 1.0, "Batch complete")
-            return "\n".join(results)
+
+            # Persist batch run to pipeline.json
+            batch_end = datetime.now(timezone.utc)
+            batch_status = "success" if failed == 0 else ("partial" if successful > 0 else "failed")
+
+            ui_state.pipeline_api.persist_batch_run(
+                run_id=run_id,
+                status=batch_status,
+                started_at=batch_start.isoformat(),
+                completed_at=batch_end.isoformat(),
+                files_results=files_results,
+                metrics={
+                    "total_files": total,
+                    "successful_files": successful,
+                    "failed_files": failed,
+                    "duration_sec": (batch_end - batch_start).total_seconds(),
+                },
+            )
+
+            # Build summary message
+            summary = f"## Batch Complete: `{run_id}`\n\n"
+            summary += f"**Results:** {successful} succeeded, {failed} failed out of {total} files\n\n"
+            summary += "\n".join(results)
+            return summary
 
         ui_state.mark_job("batch")
         try:
