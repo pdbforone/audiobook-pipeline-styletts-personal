@@ -5,9 +5,68 @@
 
 ---
 
-## Latest Updates (2025-12-06)
+## Latest Updates (2025-12-12)
 
-### ✅ NEW: Phase 7 Batch Processing UI Fix
+### ✅ CRITICAL: XTTS Engine Segment-Level Synthesis (Anti-Repetition Fix)
+
+**Problem Identified:**
+When XTTS v2 receives text exceeding its internal ~400 token limit, it performs its own sentence splitting. This internal splitting is buggy and causes:
+- **Audio repetition** - Same phrase spoken 2-3 times
+- **Hallucination/looping** - Model generates nonsense or loops
+- **Truncated output** - Text cut off mid-sentence
+
+This was especially severe for **classical texts** (Plutarch, philosophy) which have long, complex sentences with many subordinate clauses.
+
+**Root Cause Analysis:**
+1. Phase 3 sentence splitting existed but only affected *sentences*, not chunks
+2. Chunks combine multiple sentences → still exceed XTTS limits
+3. XTTS engine passed entire chunk text directly to `model.tts()`
+4. XTTS's internal splitter triggered, causing repetition at segment boundaries
+
+**Solution: Engine-Level Segment Synthesis**
+
+The XTTS engine (`phase4_tts/engines/xtts_engine.py`) now:
+
+1. **Pre-splits text** into safe segments (< 220 chars each) BEFORE sending to XTTS
+2. **Splits at natural boundaries** - sentences first, then clauses (semicolons, colons, conjunctions)
+3. **Synthesizes each segment individually** - no internal XTTS splitting triggered
+4. **Concatenates with brief silence** (80ms) for natural pacing
+
+**New Methods Added:**
+- `_split_text_for_safe_synthesis()` - Main splitting logic
+- `_split_long_sentence()` - Clause-level splitting for long sentences
+- `_concatenate_audio_segments()` - Joins segments with silence gaps
+- `_synthesize_single_segment()` - Handles single segment TTS call
+
+**Constants:**
+```python
+XTTS_SAFE_SEGMENT_CHARS = 220   # Target max per segment
+XTTS_MAX_SEGMENT_CHARS = 280    # Absolute max before force split
+XTTS_SEGMENT_SILENCE_MS = 80    # Silence between segments
+```
+
+**Split Priority Order:**
+1. Semicolons (strongest boundary in classical texts)
+2. Colons
+3. Em-dashes
+4. Coordinating conjunctions (and, but, or, yet, for, nor, so)
+5. Relative pronouns (which, that, who, whom, whose)
+6. Subordinating conjunctions (because, although, while, since, when, where, etc.)
+7. Commas (weakest, last resort)
+
+**Result:**
+- Eliminates repetition regardless of chunk size
+- Works transparently - no changes needed to Phase 3 or orchestrator
+- Classical texts (Plutarch, Aristotle, etc.) now synthesize cleanly
+- Logs show segment count when splitting occurs
+
+**Location:** [phase4_tts/engines/xtts_engine.py](phase4_tts/engines/xtts_engine.py:79-278)
+
+---
+
+## Updates (2025-12-06)
+
+### ✅ Phase 7 Batch Processing UI Fix
 
 **Problem Identified:**
 - Phase 7 ("Batch Runner") was incorrectly listed as a selectable phase for single-file processing

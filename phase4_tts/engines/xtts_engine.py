@@ -1,16 +1,27 @@
 """
 XTTS v2 Engine Wrapper
 Mature, production-tested TTS with excellent voice cloning
+
+Enhanced with segment-level synthesis to prevent repetition/hallucination
+issues that occur when XTTS processes text exceeding its ~400 token limit.
 """
 
 import logging
+import re
 import numpy as np
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from . import TTSEngine
 
 logger = logging.getLogger(__name__)
+
+# XTTS v2 safe synthesis limits
+# The model warns at 250 chars/sentence and fails at 400 tokens (~1600 chars)
+# We use conservative limits to prevent internal splitting (which causes repetition)
+XTTS_SAFE_SEGMENT_CHARS = 220  # Stay well under 250 char warning
+XTTS_MAX_SEGMENT_CHARS = 280   # Absolute max before we force split
+XTTS_SEGMENT_SILENCE_MS = 80   # Silence between segments (ms)
 
 
 class XTTSEngine(TTSEngine):
@@ -64,6 +75,207 @@ class XTTSEngine(TTSEngine):
             "hu",
             "ko",
         ]
+
+    def _split_text_for_safe_synthesis(
+        self, text: str, max_chars: int = XTTS_SAFE_SEGMENT_CHARS
+    ) -> List[str]:
+        """
+        Split text into XTTS-safe segments to prevent repetition/hallucination.
+
+        XTTS v2 has known issues when processing text that exceeds its internal
+        limits (~250 chars per sentence, ~400 tokens total). When this happens,
+        XTTS does its own internal splitting which often causes:
+        - Repeated phrases or sentences
+        - Audio hallucination/looping
+        - Truncated output
+
+        This method pre-splits text at natural boundaries BEFORE sending to XTTS,
+        giving us control over segment boundaries and preventing these issues.
+
+        Args:
+            text: Text to split
+            max_chars: Maximum characters per segment (default: 220)
+
+        Returns:
+            List of text segments, each safe for XTTS synthesis
+        """
+        text = text.strip()
+        if not text:
+            return []
+
+        # If text is already short enough, return as-is
+        if len(text) <= max_chars:
+            return [text]
+
+        segments = []
+
+        # Step 1: Split into sentences first
+        # Match sentence endings: . ! ? followed by space or end
+        sentence_pattern = r'(?<=[.!?])\s+'
+        sentences = re.split(sentence_pattern, text)
+        sentences = [s.strip() for s in sentences if s.strip()]
+
+        current_segment = ""
+
+        for sentence in sentences:
+            # If adding this sentence would exceed limit
+            if current_segment and len(current_segment) + len(sentence) + 1 > max_chars:
+                # Save current segment
+                if current_segment:
+                    segments.append(current_segment.strip())
+
+                # If the sentence itself is too long, split it further
+                if len(sentence) > max_chars:
+                    sub_segments = self._split_long_sentence(sentence, max_chars)
+                    # Add all but the last as complete segments
+                    segments.extend(sub_segments[:-1])
+                    # Keep the last one as the start of next segment
+                    current_segment = sub_segments[-1] if sub_segments else ""
+                else:
+                    current_segment = sentence
+            else:
+                # Add sentence to current segment
+                if current_segment:
+                    current_segment += " " + sentence
+                else:
+                    current_segment = sentence
+
+        # Don't forget the last segment
+        if current_segment.strip():
+            segments.append(current_segment.strip())
+
+        # Log what we did
+        if len(segments) > 1:
+            logger.info(
+                f"Pre-split text into {len(segments)} segments for safe XTTS synthesis "
+                f"(original: {len(text)} chars, segments: {[len(s) for s in segments]})"
+            )
+
+        return segments
+
+    def _split_long_sentence(self, sentence: str, max_chars: int) -> List[str]:
+        """
+        Split a single long sentence at clause boundaries.
+
+        Tries these split points in order of preference:
+        1. Semicolons (strongest boundary in classical texts)
+        2. Colons
+        3. Em-dashes
+        4. Conjunctions (and, but, or, yet, for, nor, so)
+        5. Relative pronouns (which, that, who, whom, whose)
+        6. Subordinating conjunctions (because, although, while, etc.)
+        7. Commas (weakest, last resort)
+
+        Args:
+            sentence: Long sentence to split
+            max_chars: Maximum characters per segment
+
+        Returns:
+            List of sentence segments
+        """
+        if len(sentence) <= max_chars:
+            return [sentence]
+
+        segments = []
+        remaining = sentence
+
+        # Priority-ordered split patterns
+        # Each pattern includes the delimiter handling
+        split_patterns = [
+            # Semicolons - keep with preceding text
+            (r';(?:\s+)', ';'),
+            # Colons - keep with preceding text
+            (r':(?:\s+)', ':'),
+            # Em-dashes (both styles)
+            (r'\s*[—–]\s*', ' —'),
+            (r'\s+--\s+', ' —'),
+            # Coordinating conjunctions - split before, keep conjunction with following
+            (r'\s+(?=(?:and|but|or|yet|for|nor|so)\s+)', ''),
+            # Relative pronouns - split before
+            (r'\s+(?=(?:which|that|who|whom|whose)\s+)', ''),
+            # Subordinating conjunctions - split before
+            (r'\s+(?=(?:because|although|though|while|since|when|where|whereas|unless|if)\s+)', ''),
+            # Commas - weakest boundary, keep with preceding
+            (r',(?:\s+)', ','),
+        ]
+
+        while len(remaining) > max_chars:
+            best_split = None
+            best_pos = 0
+
+            # Try each pattern to find the best split point
+            for pattern, delimiter_suffix in split_patterns:
+                matches = list(re.finditer(pattern, remaining, re.IGNORECASE))
+
+                for match in matches:
+                    # Calculate position after the delimiter
+                    split_pos = match.end()
+
+                    # We want to split where the first part is as close to max_chars as possible
+                    # but not exceeding it
+                    if split_pos <= max_chars and split_pos > best_pos:
+                        # Check that we'd have meaningful content on both sides
+                        before = remaining[:match.start()].strip()
+                        if len(before) >= 20:  # Minimum segment length
+                            best_split = (match.start(), match.end(), delimiter_suffix)
+                            best_pos = split_pos
+
+            if best_split:
+                start, end, suffix = best_split
+                segment = remaining[:start].strip()
+                if suffix and not segment.endswith(suffix.strip()):
+                    segment += suffix.strip()
+                segments.append(segment)
+                remaining = remaining[end:].strip()
+            else:
+                # No good split point found - force split at word boundary near max_chars
+                # Find the last space before max_chars
+                space_pos = remaining.rfind(' ', 0, max_chars)
+                if space_pos > 20:
+                    segments.append(remaining[:space_pos].strip())
+                    remaining = remaining[space_pos:].strip()
+                else:
+                    # Give up and take what we have (very long word or no spaces)
+                    segments.append(remaining[:max_chars].strip())
+                    remaining = remaining[max_chars:].strip()
+
+        # Add the remaining text
+        if remaining.strip():
+            segments.append(remaining.strip())
+
+        return segments
+
+    def _concatenate_audio_segments(
+        self, segments: List[np.ndarray], silence_ms: int = XTTS_SEGMENT_SILENCE_MS
+    ) -> np.ndarray:
+        """
+        Concatenate audio segments with brief silence gaps.
+
+        Args:
+            segments: List of audio arrays (float32, mono)
+            silence_ms: Milliseconds of silence between segments
+
+        Returns:
+            Concatenated audio array
+        """
+        if not segments:
+            return np.array([], dtype=np.float32)
+
+        if len(segments) == 1:
+            return segments[0]
+
+        # Create silence buffer
+        silence_samples = int(self.sample_rate_val * silence_ms / 1000)
+        silence = np.zeros(silence_samples, dtype=np.float32)
+
+        # Concatenate with silence between segments
+        result_parts = []
+        for i, segment in enumerate(segments):
+            result_parts.append(segment)
+            if i < len(segments) - 1:
+                result_parts.append(silence)
+
+        return np.concatenate(result_parts)
 
     def load_model(self) -> None:
         """Load XTTS v2 model"""
@@ -176,10 +388,14 @@ class XTTSEngine(TTSEngine):
         **kwargs,
     ) -> np.ndarray:
         """
-        Synthesize speech using XTTS v2
+        Synthesize speech using XTTS v2 with automatic segment splitting.
+
+        This method automatically splits long text into XTTS-safe segments
+        to prevent the repetition/hallucination issues that occur when XTTS
+        tries to process text exceeding its ~400 token internal limit.
 
         Args:
-            text: Text to synthesize (recommended < 1000 chars for optimal quality)
+            text: Text to synthesize (any length - will be auto-split if needed)
             reference_audio: Optional path to reference audio for voice cloning
                            If None, uses default XTTS voice
             language: Language code
@@ -218,7 +434,6 @@ class XTTSEngine(TTSEngine):
                 )
 
         # Fallback reference for voice cloning when no reference_audio provided
-        # Fallback reference for cases where no explicit reference is provided
         fallback_reference = None
         if not reference_audio and self.default_reference.exists():
             fallback_reference = self.default_reference
@@ -233,87 +448,138 @@ class XTTSEngine(TTSEngine):
             )
             language = "en"
 
-        try:
-            # Determine synthesis mode: voice cloning vs built-in voice
-            ref_to_use = reference_audio or fallback_reference
+        # Determine synthesis mode
+        ref_to_use = reference_audio or fallback_reference
 
-            # Mode 1: Voice cloning with reference audio
-            if ref_to_use and ref_to_use.exists():
-                logger.info(
-                    f"Using voice cloning with reference: {ref_to_use}"
-                )
-                wav = self.model.tts(
-                    text=text,
-                    speaker_wav=str(ref_to_use),
-                    language=language,
-                    speed=speed,
-                    temperature=temperature,
-                )
-            # Mode 2: Built-in voice using speaker parameter
-            elif active_speaker:
-                speaker_wav = str(ref_to_use) if ref_to_use else None
-                logger.info(
-                    "Using built-in XTTS voice: %s (with reference_wav=%s)",
-                    active_speaker,
-                    speaker_wav if speaker_wav else "None",
-                )
-                wav = self.model.tts(
-                    text=text,
-                    speaker=active_speaker,  # Use speaker parameter for built-in voices
-                    speaker_wav=speaker_wav,
-                    language=language,
-                    speed=speed,
-                    temperature=temperature,
-                )
-            # Mode 3: Fallback to single-speaker model default
-            else:
-                if reference_audio and not ref_to_use:
-                    logger.warning(
-                        f"Reference audio not found: {reference_audio}, using model default"
+        # Split text into safe segments BEFORE sending to XTTS
+        # This prevents XTTS's buggy internal splitting from causing repetition
+        segments = self._split_text_for_safe_synthesis(text)
+
+        if not segments:
+            logger.warning("No text segments to synthesize")
+            return np.array([], dtype=np.float32)
+
+        # Synthesize each segment individually
+        audio_segments = []
+        for i, segment_text in enumerate(segments):
+            try:
+                if len(segments) > 1:
+                    logger.debug(
+                        f"Synthesizing segment {i+1}/{len(segments)}: "
+                        f"{len(segment_text)} chars"
                     )
-                logger.info(
-                    "XTTS model reports single-speaker; using built-in default voice"
-                )
-                # Single-speaker model - no speaker parameter needed
-                wav = self.model.tts(
-                    text=text,
+
+                wav = self._synthesize_single_segment(
+                    segment_text,
+                    ref_to_use=ref_to_use,
+                    active_speaker=active_speaker,
                     language=language,
                     speed=speed,
                     temperature=temperature,
                 )
 
-            # Convert to numpy array
-            if isinstance(wav, list):
-                audio = np.array(wav, dtype=np.float32)
-            else:
-                audio = wav.astype(np.float32)
+                # Convert to numpy array
+                if isinstance(wav, list):
+                    audio = np.array(wav, dtype=np.float32)
+                else:
+                    audio = wav.astype(np.float32)
 
-            # Ensure mono
-            if audio.ndim > 1:
-                audio = audio.mean(axis=0)
+                # Ensure mono
+                if audio.ndim > 1:
+                    audio = audio.mean(axis=0)
 
-            # XTTS outputs 24kHz by default, but verify
-            # Normalization
-            if np.max(np.abs(audio)) > 0:
-                audio = audio / np.max(np.abs(audio)) * 0.95
+                audio_segments.append(audio)
 
-            return audio
+            except Exception as e:
+                logger.error(
+                    f"XTTS synthesis failed for segment {i+1}/{len(segments)}: {e}"
+                )
+                # Re-raise - let caller handle the failure
+                raise
 
-        except Exception as e:
-            logger.error(f"XTTS synthesis failed: {e}")
-            raise
+        # Concatenate all segments with brief silence gaps
+        combined_audio = self._concatenate_audio_segments(audio_segments)
+
+        # Final normalization
+        if len(combined_audio) > 0 and np.max(np.abs(combined_audio)) > 0:
+            combined_audio = combined_audio / np.max(np.abs(combined_audio)) * 0.95
+
+        return combined_audio
+
+    def _synthesize_single_segment(
+        self,
+        text: str,
+        ref_to_use: Optional[Path],
+        active_speaker: Optional[str],
+        language: str,
+        speed: float,
+        temperature: float,
+    ) -> np.ndarray:
+        """
+        Synthesize a single text segment (internal method).
+
+        This method handles the actual XTTS API call for a single segment
+        that is known to be within safe limits.
+
+        Args:
+            text: Text segment to synthesize (should be < 250 chars)
+            ref_to_use: Reference audio path for voice cloning
+            active_speaker: Built-in speaker name (if using multi-speaker mode)
+            language: Language code
+            speed: Speech speed multiplier
+            temperature: Generation temperature
+
+        Returns:
+            Raw audio array from XTTS
+        """
+        # Mode 1: Voice cloning with reference audio
+        if ref_to_use and ref_to_use.exists():
+            return self.model.tts(
+                text=text,
+                speaker_wav=str(ref_to_use),
+                language=language,
+                speed=speed,
+                temperature=temperature,
+            )
+
+        # Mode 2: Built-in voice using speaker parameter
+        if active_speaker:
+            speaker_wav = str(ref_to_use) if ref_to_use else None
+            return self.model.tts(
+                text=text,
+                speaker=active_speaker,
+                speaker_wav=speaker_wav,
+                language=language,
+                speed=speed,
+                temperature=temperature,
+            )
+
+        # Mode 3: Single-speaker model default
+        return self.model.tts(
+            text=text,
+            language=language,
+            speed=speed,
+            temperature=temperature,
+        )
 
     def get_max_text_length(self) -> Optional[int]:
-        """XTTS v2 practical text length limit for optimal quality.
+        """XTTS v2 maximum text length (with internal segment handling).
 
         Note: XTTS v2 uses a GPT-based architecture with ~400 token context window.
-        This translates to roughly 2000-2500 characters depending on language.
+        Raw XTTS would struggle with text > ~1600 chars, causing repetition/hallucination.
 
-        We set a conservative limit of 10,000 characters to allow Phase 3's
-        smart chunking system to make intelligent decisions based on research.
-        XTTS will handle internal sentence splitting as needed.
+        However, this engine now includes automatic segment splitting that:
+        - Pre-splits text at sentence/clause boundaries before synthesis
+        - Synthesizes each segment individually (< 220 chars each)
+        - Concatenates segments with appropriate silence gaps
+
+        This allows accepting much longer text while preventing XTTS's
+        internal splitting bugs from causing audio repetition.
+
+        We still set a reasonable limit to prevent memory issues with
+        very long chunks, but Phase 3 can safely create larger chunks now.
         """
-        return 10000  # Conservative limit - allows Phase 3 flexibility
+        return 10000  # Safe with internal segment splitting
 
     def supports_fine_tuning(self) -> bool:
         """XTTS supports fine-tuning for better voice adaptation"""
