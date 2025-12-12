@@ -434,8 +434,9 @@ class XTTSEngine(TTSEngine):
                 )
 
         # Fallback reference for voice cloning when no reference_audio provided
+        # Only needed if NOT using a built-in speaker
         fallback_reference = None
-        if not reference_audio and self.default_reference.exists():
+        if not active_speaker and not reference_audio and self.default_reference.exists():
             fallback_reference = self.default_reference
             logger.info(
                 f"No reference audio provided; using default: {self.default_reference.name}"
@@ -532,7 +533,19 @@ class XTTSEngine(TTSEngine):
         Returns:
             Raw audio array from XTTS
         """
-        # Mode 1: Voice cloning with reference audio
+        # Mode 1: Built-in voice using speaker parameter (PRIORITY)
+        # When using a built-in speaker, don't pass speaker_wav to avoid
+        # mixing the built-in voice with reference audio characteristics
+        if active_speaker:
+            return self.model.tts(
+                text=text,
+                speaker=active_speaker,
+                language=language,
+                speed=speed,
+                temperature=temperature,
+            )
+
+        # Mode 2: Voice cloning with reference audio
         if ref_to_use and ref_to_use.exists():
             return self.model.tts(
                 text=text,
@@ -542,19 +555,7 @@ class XTTSEngine(TTSEngine):
                 temperature=temperature,
             )
 
-        # Mode 2: Built-in voice using speaker parameter
-        if active_speaker:
-            speaker_wav = str(ref_to_use) if ref_to_use else None
-            return self.model.tts(
-                text=text,
-                speaker=active_speaker,
-                speaker_wav=speaker_wav,
-                language=language,
-                speed=speed,
-                temperature=temperature,
-            )
-
-        # Mode 3: Single-speaker model default
+        # Mode 3: Single-speaker model default (no speaker, no reference)
         return self.model.tts(
             text=text,
             language=language,
