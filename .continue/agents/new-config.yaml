@@ -1,0 +1,26 @@
+{
+  "models": [
+    {
+      "title": "Gemma2 Normalizer",
+      "provider": "ollama",
+      "model": "gemma2:9b-instruct-q6_k-perfection"
+    },
+    {
+      "title": "Code Llama 13B",
+      "provider": "ollama",
+      "model": "codellama:13b-instruct-q6_k"
+    },
+    {
+      "title": "Llama3.1 8B",
+      "provider": "ollama",
+      "model": "llama3.1:8b-instruct-q6_k"
+    }
+  ],
+  "tabAutocompleteModel": {
+    "title": "Code Llama 13B",
+    "provider": "ollama",
+    "model": "codellama:13b-instruct-q6_k"
+  },
+  "embeddingsProvider": "ollama",
+  "allowAnonymousTelemetry": false
+}

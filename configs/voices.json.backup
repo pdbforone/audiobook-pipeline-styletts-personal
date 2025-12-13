@@ -1,0 +1,1509 @@
+{
+  "voices": {
+    "landon_elkind": {
+      "description": "Measured, analytical tone for philosophy (Bertrand Russell reader)",
+      "narrator": "Landon D. C. Elkind",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "philosophy",
+        "academic"
+      ],
+      "source": "LibriVox - Mysticism and Logic",
+      "tts_engine_params": {
+        "pitch": -1,
+        "rate": 0.95,
+        "emphasis": "moderate"
+      },
+      "characteristics": {
+        "pace": "deliberate",
+        "tone": "scholarly",
+        "clarity": "high"
+      }
+    },
+    "pamela_nagami": {
+      "description": "Clear, authoritative female voice for modern philosophy",
+      "narrator": "Pamela Nagami",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "philosophy",
+        "academic"
+      ],
+      "source": "LibriVox - History of Modern Philosophy",
+      "tts_engine_params": {
+        "pitch": 0.5,
+        "rate": 1.0,
+        "emphasis": "balanced"
+      },
+      "characteristics": {
+        "pace": "steady",
+        "tone": "authoritative",
+        "clarity": "maximum"
+      }
+    },
+    "hugh_mcguire": {
+      "description": "Classical philosophy with possible British accent (Boethius reader)",
+      "narrator": "Hugh McGuire",
+      "gender": "male",
+      "accent": "British (possibly)",
+      "preferred_profiles": [
+        "philosophy",
+        "academic"
+      ],
+      "source": "LibriVox - The Consolation of Philosophy",
+      "tts_engine_params": {
+        "pitch": -0.5,
+        "rate": 0.95,
+        "emphasis": "moderate"
+      },
+      "characteristics": {
+        "pace": "measured",
+        "tone": "contemplative",
+        "clarity": "high"
+      }
+    },
+    "david_barnes": {
+      "description": "BBC English male voice for British literature/philosophy",
+      "narrator": "David Barnes",
+      "gender": "male",
+      "accent": "British (BBC English)",
+      "preferred_profiles": [
+        "philosophy",
+        "academic",
+        "poetry"
+      ],
+      "source": "LibriVox - Holy Sonnets (Donne)",
+      "tts_engine_params": {
+        "pitch": -0.5,
+        "rate": 0.95,
+        "emphasis": "formal"
+      },
+      "characteristics": {
+        "pace": "precise",
+        "tone": "refined",
+        "clarity": "maximum"
+      }
+    },
+    "ruth_golding": {
+      "description": "RP/BBC English female voice for British literature",
+      "narrator": "Ruth Golding",
+      "gender": "female",
+      "accent": "British (RP)",
+      "preferred_profiles": [
+        "fiction",
+        "poetry",
+        "memoir"
+      ],
+      "source": "LibriVox - To a Dog (Josephine Peabody)",
+      "tts_engine_params": {
+        "pitch": 1.0,
+        "rate": 1.0,
+        "emphasis": "refined"
+      },
+      "characteristics": {
+        "pace": "elegant",
+        "tone": "cultivated",
+        "clarity": "high"
+      }
+    },
+    "tom_weiss": {
+      "description": "Engaging male narrator for thrillers and suspense",
+      "narrator": "Tom Weiss",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction"
+      ],
+      "source": "LibriVox - The Masquerader",
+      "tts_engine_params": {
+        "pitch": -0.5,
+        "rate": 1.1,
+        "emphasis": "dramatic"
+      },
+      "characteristics": {
+        "pace": "dynamic",
+        "tone": "engaging",
+        "expressiveness": "high"
+      }
+    },
+    "bella_bolster": {
+      "description": "Female narrator for horror and dark fiction",
+      "narrator": "Bella Bolster",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction"
+      ],
+      "source": "LibriVox - Short Ghost and Horror Collection 074",
+      "tts_engine_params": {
+        "pitch": 0.5,
+        "rate": 1.0,
+        "emphasis": "atmospheric"
+      },
+      "characteristics": {
+        "pace": "measured",
+        "tone": "mysterious",
+        "expressiveness": "high"
+      }
+    },
+    "kara_shallenberg": {
+      "description": "Warm female voice for classic fiction and romance",
+      "narrator": "Kara Shallenberg",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "memoir"
+      ],
+      "source": "LibriVox - Pride and Prejudice",
+      "tts_engine_params": {
+        "pitch": 0.5,
+        "rate": 1.05,
+        "emphasis": "natural"
+      },
+      "characteristics": {
+        "pace": "natural",
+        "tone": "conversational",
+        "expressiveness": "high"
+      }
+    },
+    "gareth_holmes": {
+      "description": "British male voice for poetry and epic works",
+      "narrator": "Gareth Holmes",
+      "gender": "male",
+      "accent": "British",
+      "preferred_profiles": [
+        "poetry"
+      ],
+      "source": "LibriVox - Short Poetry Collection 227",
+      "tts_engine_params": {
+        "pitch": 0,
+        "rate": 0.9,
+        "emphasis": "rhythmic"
+      },
+      "characteristics": {
+        "pace": "rhythmic",
+        "tone": "expressive",
+        "clarity": "high"
+      }
+    },
+    "wayne_cooke": {
+      "description": "Male narrator for theology and religious texts",
+      "narrator": "Wayne Cooke",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "academic",
+        "theology"
+      ],
+      "source": "LibriVox - Rational Theology",
+      "tts_engine_params": {
+        "pitch": -0.5,
+        "rate": 0.95,
+        "emphasis": "contemplative"
+      },
+      "characteristics": {
+        "pace": "reverent",
+        "tone": "thoughtful",
+        "clarity": "high"
+      }
+    },
+    "eric_metzler": {
+      "description": "Male narrator for medieval theology and mysticism",
+      "narrator": "Eric Metzler",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "academic",
+        "theology"
+      ],
+      "source": "LibriVox - Meister Eckhart's Sermons",
+      "tts_engine_params": {
+        "pitch": -0.5,
+        "rate": 0.9,
+        "emphasis": "meditative"
+      },
+      "characteristics": {
+        "pace": "slow",
+        "tone": "mystical",
+        "clarity": "high"
+      }
+    },
+    "cori_samuel": {
+      "description": "RP via Estuary English female voice",
+      "narrator": "Cori Samuel",
+      "gender": "female",
+      "accent": "British (RP/Estuary)",
+      "preferred_profiles": [
+        "fiction",
+        "memoir"
+      ],
+      "source": "LibriVox - Wrinkles (Landor)",
+      "tts_engine_params": {
+        "pitch": 0.5,
+        "rate": 1.0,
+        "emphasis": "natural"
+      },
+      "characteristics": {
+        "pace": "conversational",
+        "tone": "approachable",
+        "clarity": "high"
+      }
+    },
+    "peter_yearsley": {
+      "description": "South-east England with London colouring male voice",
+      "narrator": "Peter Yearsley",
+      "gender": "male",
+      "accent": "British (London)",
+      "preferred_profiles": [
+        "fiction",
+        "memoir"
+      ],
+      "source": "LibriVox - Various",
+      "tts_engine_params": {
+        "pitch": -0.5,
+        "rate": 1.0,
+        "emphasis": "natural"
+      },
+      "characteristics": {
+        "pace": "comfortable",
+        "tone": "friendly",
+        "clarity": "high"
+      }
+    },
+    "neutral_narrator": {
+      "description": "Fallback clear, impartial voice for general content",
+      "narrator": "Default (Mark Twain reader)",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "auto",
+        "technical"
+      ],
+      "source": "LibriVox - Roughing It",
+      "tts_engine_params": {
+        "pitch": 0,
+        "rate": 1.0,
+        "emphasis": "balanced"
+      },
+      "characteristics": {
+        "pace": "steady",
+        "tone": "professional",
+        "clarity": "maximum"
+      }
+    },
+    "george_mckayland": {
+      "description": "Deep, measured tone for philosophy/academic texts",
+      "reference_audio": "phase4_tts/voice_references/george_mckayland_trimmed.wav",
+      "start_time": 950,
+      "duration": 30,
+      "preferred_profiles": [
+        "philosophy",
+        "academic"
+      ],
+      "tts_engine_params": {
+        "pitch": -0.5,
+        "rate": 0.95,
+        "emphasis": "moderate"
+      },
+      "characteristics": {
+        "pace": "deliberate",
+        "tone": "scholarly",
+        "clarity": "high"
+      }
+    },
+    "claribel_dervla": {
+      "description": "XTTS Default - Female British accent, clear and warm",
+      "narrator": "Claribel Dervla",
+      "gender": "female",
+      "accent": "British",
+      "preferred_profiles": [
+        "fiction",
+        "memoir",
+        "general"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "daisy_studious": {
+      "description": "XTTS - Female American accent, youthful and energetic",
+      "narrator": "Daisy Studious",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "young adult"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "gracie_wise": {
+      "description": "XTTS - Female American accent, mature and authoritative",
+      "narrator": "Gracie Wise",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "academic",
+        "philosophy",
+        "theology"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "tammie_ema": {
+      "description": "XTTS - Female American accent, conversational and friendly",
+      "narrator": "Tammie Ema",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "memoir"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "alison_dietlinde": {
+      "description": "XTTS - Female British accent, refined and elegant",
+      "narrator": "Alison Dietlinde",
+      "gender": "female",
+      "accent": "British",
+      "preferred_profiles": [
+        "fiction",
+        "classic literature"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "ana_florence": {
+      "description": "XTTS - Female American accent, warm and expressive",
+      "narrator": "Ana Florence",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "drama"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "annmarie_nele": {
+      "description": "XTTS - Female American accent, clear and professional",
+      "narrator": "Annmarie Nele",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "academic",
+        "technical"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "asya_anara": {
+      "description": "XTTS - Female accent with slight European influence",
+      "narrator": "Asya Anara",
+      "gender": "female",
+      "accent": "European",
+      "preferred_profiles": [
+        "fiction",
+        "international"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "brenda_stern": {
+      "description": "XTTS - Female American accent, authoritative and strong",
+      "narrator": "Brenda Stern",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "academic",
+        "leadership"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "gitta_nikolina": {
+      "description": "XTTS - Female accent with European influence",
+      "narrator": "Gitta Nikolina",
+      "gender": "female",
+      "accent": "European",
+      "preferred_profiles": [
+        "fiction",
+        "international"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "henriette": {
+      "description": "XTTS - Female French accent, sophisticated",
+      "narrator": "Henriette",
+      "gender": "female",
+      "accent": "French",
+      "preferred_profiles": [
+        "fiction",
+        "classic literature"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "sofia_hellen": {
+      "description": "XTTS - Female accent, gentle and soothing",
+      "narrator": "Sofia Hellen",
+      "gender": "female",
+      "accent": "neutral",
+      "preferred_profiles": [
+        "meditation",
+        "relaxation"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "tammy_grit": {
+      "description": "XTTS - Female American accent, determined and strong",
+      "narrator": "Tammy Grit",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "thriller",
+        "action"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "tanja_adelina": {
+      "description": "XTTS - Female accent with European influence",
+      "narrator": "Tanja Adelina",
+      "gender": "female",
+      "accent": "European",
+      "preferred_profiles": [
+        "fiction",
+        "international"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "vjollca_johnnie": {
+      "description": "XTTS - Female accent with Eastern European influence",
+      "narrator": "Vjollca Johnnie",
+      "gender": "female",
+      "accent": "Eastern European",
+      "preferred_profiles": [
+        "fiction",
+        "international"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "andrew_chipper": {
+      "description": "XTTS - Male British accent, cheerful and upbeat",
+      "narrator": "Andrew Chipper",
+      "gender": "male",
+      "accent": "British",
+      "preferred_profiles": [
+        "fiction",
+        "humor"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "badr_odhiambo": {
+      "description": "XTTS - Male accent, deep and resonant",
+      "narrator": "Badr Odhiambo",
+      "gender": "male",
+      "accent": "neutral",
+      "preferred_profiles": [
+        "philosophy",
+        "theology"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "dionisio_schuyler": {
+      "description": "XTTS - Male accent with Spanish influence",
+      "narrator": "Dionisio Schuyler",
+      "gender": "male",
+      "accent": "Spanish",
+      "preferred_profiles": [
+        "fiction",
+        "international"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "royston_min": {
+      "description": "XTTS - Male British accent, refined and authoritative",
+      "narrator": "Royston Min",
+      "gender": "male",
+      "accent": "British",
+      "preferred_profiles": [
+        "academic",
+        "philosophy"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "viktor_eka": {
+      "description": "XTTS - Male accent with European influence",
+      "narrator": "Viktor Eka",
+      "gender": "male",
+      "accent": "European",
+      "preferred_profiles": [
+        "fiction",
+        "thriller"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "abrahan_mack": {
+      "description": "XTTS - Male American accent, warm and friendly",
+      "narrator": "Abrahan Mack",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "memoir"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "adde_michal": {
+      "description": "XTTS - Male accent with Scandinavian influence",
+      "narrator": "Adde Michal",
+      "gender": "male",
+      "accent": "Scandinavian",
+      "preferred_profiles": [
+        "fiction",
+        "international"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "baldur_sanjin": {
+      "description": "XTTS - Male accent, strong and commanding",
+      "narrator": "Baldur Sanjin",
+      "gender": "male",
+      "accent": "neutral",
+      "preferred_profiles": [
+        "philosophy",
+        "epic"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "craig_gutsy": {
+      "description": "XTTS - Male American accent, energetic and bold",
+      "narrator": "Craig Gutsy",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "action",
+        "thriller"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "damien_black": {
+      "description": "XTTS - Male accent, deep and mysterious",
+      "narrator": "Damien Black",
+      "gender": "male",
+      "accent": "neutral",
+      "preferred_profiles": [
+        "gothic",
+        "horror"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "gilberto_mathias": {
+      "description": "XTTS - Male accent with Portuguese influence",
+      "narrator": "Gilberto Mathias",
+      "gender": "male",
+      "accent": "Portuguese",
+      "preferred_profiles": [
+        "fiction",
+        "international"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "ilkin_urbano": {
+      "description": "XTTS - Male accent with Turkish influence",
+      "narrator": "Ilkin Urbano",
+      "gender": "male",
+      "accent": "Turkish",
+      "preferred_profiles": [
+        "fiction",
+        "international"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "kazuhiko_atallah": {
+      "description": "XTTS - Male accent with Japanese influence",
+      "narrator": "Kazuhiko Atallah",
+      "gender": "male",
+      "accent": "Japanese",
+      "preferred_profiles": [
+        "fiction",
+        "international"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "ludvig_milivoj": {
+      "description": "XTTS - Male accent with Slavic influence",
+      "narrator": "Ludvig Milivoj",
+      "gender": "male",
+      "accent": "Slavic",
+      "preferred_profiles": [
+        "fiction",
+        "international"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "suad_qasim": {
+      "description": "XTTS - Male accent with Arabic influence",
+      "narrator": "Suad Qasim",
+      "gender": "male",
+      "accent": "Arabic",
+      "preferred_profiles": [
+        "fiction",
+        "international"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "torcull_diarmuid": {
+      "description": "XTTS - Male Scottish accent, rugged and warm",
+      "narrator": "Torcull Diarmuid",
+      "gender": "male",
+      "accent": "Scottish",
+      "preferred_profiles": [
+        "fiction",
+        "adventure"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "wulf_carlevaro": {
+      "description": "XTTS - Male accent with Italian influence",
+      "narrator": "Wulf Carlevaro",
+      "gender": "male",
+      "accent": "Italian",
+      "preferred_profiles": [
+        "fiction",
+        "international"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "ervin_hank": {
+      "description": "XTTS - Male American accent, casual and relatable",
+      "narrator": "Ervin Hank",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "memoir"
+      ],
+      "source": "XTTS built-in",
+      "built_in": true,
+      "engine": "xtts"
+    },
+    "af_heart": {
+      "description": "Kokoro - American female voice",
+      "narrator": "af_heart",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "af_alloy": {
+      "description": "Kokoro - American female voice",
+      "narrator": "af_alloy",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "af_aoede": {
+      "description": "Kokoro - American female voice",
+      "narrator": "af_aoede",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "af_bella": {
+      "description": "Kokoro - American female, warm and expressive",
+      "narrator": "af_bella",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "memoir",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "af_jessica": {
+      "description": "Kokoro - American female voice",
+      "narrator": "af_jessica",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "af_kore": {
+      "description": "Kokoro - American female voice",
+      "narrator": "af_kore",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "af_nicole": {
+      "description": "Kokoro - American female voice",
+      "narrator": "af_nicole",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "af_nova": {
+      "description": "Kokoro - American female voice",
+      "narrator": "af_nova",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "af_river": {
+      "description": "Kokoro - American female voice",
+      "narrator": "af_river",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "af_sarah": {
+      "description": "Kokoro - American female, clear and professional",
+      "narrator": "af_sarah",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "academic",
+        "philosophy",
+        "technical"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "af_sky": {
+      "description": "Kokoro - American female voice",
+      "narrator": "af_sky",
+      "gender": "female",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "am_adam": {
+      "description": "Kokoro - American male, deep and authoritative",
+      "narrator": "am_adam",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "philosophy",
+        "theology",
+        "academic"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "am_echo": {
+      "description": "Kokoro - American male voice",
+      "narrator": "am_echo",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "am_eric": {
+      "description": "Kokoro - American male voice",
+      "narrator": "am_eric",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "am_fenrir": {
+      "description": "Kokoro - American male voice",
+      "narrator": "am_fenrir",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "am_liam": {
+      "description": "Kokoro - American male voice",
+      "narrator": "am_liam",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "am_michael": {
+      "description": "Kokoro - American male, neutral and measured",
+      "narrator": "am_michael",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "academic",
+        "technical",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "am_onyx": {
+      "description": "Kokoro - American male voice",
+      "narrator": "am_onyx",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "am_puck": {
+      "description": "Kokoro - American male voice",
+      "narrator": "am_puck",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "am_santa": {
+      "description": "Kokoro - American male voice",
+      "narrator": "am_santa",
+      "gender": "male",
+      "accent": "American",
+      "preferred_profiles": [
+        "fiction",
+        "general"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "bf_alice": {
+      "description": "Kokoro - British female voice",
+      "narrator": "bf_alice",
+      "gender": "female",
+      "accent": "British",
+      "preferred_profiles": [
+        "fiction",
+        "classic literature"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "bf_emma": {
+      "description": "Kokoro - British female voice",
+      "narrator": "bf_emma",
+      "gender": "female",
+      "accent": "British",
+      "preferred_profiles": [
+        "fiction",
+        "classic literature"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "bf_isabella": {
+      "description": "Kokoro - British female voice",
+      "narrator": "bf_isabella",
+      "gender": "female",
+      "accent": "British",
+      "preferred_profiles": [
+        "fiction",
+        "classic literature"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "bf_lily": {
+      "description": "Kokoro - British female voice",
+      "narrator": "bf_lily",
+      "gender": "female",
+      "accent": "British",
+      "preferred_profiles": [
+        "fiction",
+        "classic literature"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "bm_daniel": {
+      "description": "Kokoro - British male voice",
+      "narrator": "bm_daniel",
+      "gender": "male",
+      "accent": "British",
+      "preferred_profiles": [
+        "academic",
+        "philosophy"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "bm_fable": {
+      "description": "Kokoro - British male voice",
+      "narrator": "bm_fable",
+      "gender": "male",
+      "accent": "British",
+      "preferred_profiles": [
+        "fiction",
+        "classic literature"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "bm_george": {
+      "description": "Kokoro - British male voice",
+      "narrator": "bm_george",
+      "gender": "male",
+      "accent": "British",
+      "preferred_profiles": [
+        "academic",
+        "philosophy"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "bm_lewis": {
+      "description": "Kokoro - British male voice",
+      "narrator": "bm_lewis",
+      "gender": "male",
+      "accent": "British",
+      "preferred_profiles": [
+        "fiction",
+        "classic literature"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro"
+    },
+    "jf_alpha": {
+      "description": "Kokoro - Japanese female voice",
+      "narrator": "jf_alpha",
+      "gender": "female",
+      "accent": "Japanese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "ja"
+    },
+    "jf_gongitsune": {
+      "description": "Kokoro - Japanese female voice",
+      "narrator": "jf_gongitsune",
+      "gender": "female",
+      "accent": "Japanese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "ja"
+    },
+    "jf_nezumi": {
+      "description": "Kokoro - Japanese female voice",
+      "narrator": "jf_nezumi",
+      "gender": "female",
+      "accent": "Japanese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "ja"
+    },
+    "jf_tebukuro": {
+      "description": "Kokoro - Japanese female voice",
+      "narrator": "jf_tebukuro",
+      "gender": "female",
+      "accent": "Japanese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "ja"
+    },
+    "jm_kumo": {
+      "description": "Kokoro - Japanese male voice",
+      "narrator": "jm_kumo",
+      "gender": "male",
+      "accent": "Japanese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "ja"
+    },
+    "zf_xiaobei": {
+      "description": "Kokoro - Mandarin Chinese female voice",
+      "narrator": "zf_xiaobei",
+      "gender": "female",
+      "accent": "Chinese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "zh"
+    },
+    "zf_xiaoni": {
+      "description": "Kokoro - Mandarin Chinese female voice",
+      "narrator": "zf_xiaoni",
+      "gender": "female",
+      "accent": "Chinese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "zh"
+    },
+    "zf_xiaoxiao": {
+      "description": "Kokoro - Mandarin Chinese female voice",
+      "narrator": "zf_xiaoxiao",
+      "gender": "female",
+      "accent": "Chinese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "zh"
+    },
+    "zf_xiaoyi": {
+      "description": "Kokoro - Mandarin Chinese female voice",
+      "narrator": "zf_xiaoyi",
+      "gender": "female",
+      "accent": "Chinese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "zh"
+    },
+    "zm_yunjian": {
+      "description": "Kokoro - Mandarin Chinese male voice",
+      "narrator": "zm_yunjian",
+      "gender": "male",
+      "accent": "Chinese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "zh"
+    },
+    "zm_yunxi": {
+      "description": "Kokoro - Mandarin Chinese male voice",
+      "narrator": "zm_yunxi",
+      "gender": "male",
+      "accent": "Chinese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "zh"
+    },
+    "zm_yunxia": {
+      "description": "Kokoro - Mandarin Chinese male voice",
+      "narrator": "zm_yunxia",
+      "gender": "male",
+      "accent": "Chinese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "zh"
+    },
+    "zm_yunyang": {
+      "description": "Kokoro - Mandarin Chinese male voice",
+      "narrator": "zm_yunyang",
+      "gender": "male",
+      "accent": "Chinese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "zh"
+    },
+    "ef_dora": {
+      "description": "Kokoro - Spanish female voice",
+      "narrator": "ef_dora",
+      "gender": "female",
+      "accent": "Spanish",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "es"
+    },
+    "em_alex": {
+      "description": "Kokoro - Spanish male voice",
+      "narrator": "em_alex",
+      "gender": "male",
+      "accent": "Spanish",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "es"
+    },
+    "em_santa": {
+      "description": "Kokoro - Spanish male voice",
+      "narrator": "em_santa",
+      "gender": "male",
+      "accent": "Spanish",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "es"
+    },
+    "ff_siwis": {
+      "description": "Kokoro - French female voice",
+      "narrator": "ff_siwis",
+      "gender": "female",
+      "accent": "French",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "fr"
+    },
+    "hf_alpha": {
+      "description": "Kokoro - Hindi female voice",
+      "narrator": "hf_alpha",
+      "gender": "female",
+      "accent": "Hindi",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "hi"
+    },
+    "hf_beta": {
+      "description": "Kokoro - Hindi female voice",
+      "narrator": "hf_beta",
+      "gender": "female",
+      "accent": "Hindi",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "hi"
+    },
+    "hm_omega": {
+      "description": "Kokoro - Hindi male voice",
+      "narrator": "hm_omega",
+      "gender": "male",
+      "accent": "Hindi",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "hi"
+    },
+    "hm_psi": {
+      "description": "Kokoro - Hindi male voice",
+      "narrator": "hm_psi",
+      "gender": "male",
+      "accent": "Hindi",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "hi"
+    },
+    "if_sara": {
+      "description": "Kokoro - Italian female voice",
+      "narrator": "if_sara",
+      "gender": "female",
+      "accent": "Italian",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "it"
+    },
+    "im_nicola": {
+      "description": "Kokoro - Italian male voice",
+      "narrator": "im_nicola",
+      "gender": "male",
+      "accent": "Italian",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "it"
+    },
+    "pf_dora": {
+      "description": "Kokoro - Brazilian Portuguese female voice",
+      "narrator": "pf_dora",
+      "gender": "female",
+      "accent": "Brazilian Portuguese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "pt-BR"
+    },
+    "pm_alex": {
+      "description": "Kokoro - Brazilian Portuguese male voice",
+      "narrator": "pm_alex",
+      "gender": "male",
+      "accent": "Brazilian Portuguese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "pt-BR"
+    },
+    "pm_santa": {
+      "description": "Kokoro - Brazilian Portuguese male voice",
+      "narrator": "pm_santa",
+      "gender": "male",
+      "accent": "Brazilian Portuguese",
+      "preferred_profiles": [
+        "general",
+        "international"
+      ],
+      "source": "Kokoro built-in",
+      "built_in": true,
+      "engine": "kokoro",
+      "language": "pt-BR"
+    }
+  },
+  "default_voice": "neutral_narrator",
+  "fallback_voice": "neutral_narrator",
+  "voice_selection_rules": {
+    "prefer_gender_match": false,
+    "prefer_accent_match": true,
+    "prefer_narrator_experience": true
+  },
+  "notes": {
+    "usage": "Voices auto-selected based on genre profile. Override in pipeline.json with 'tts_voice' field.",
+    "selection_priority": "1. Explicit tts_voice, 2. Genre + accent match, 3. Genre match only, 4. Default",
+    "british_voices": [
+      "david_barnes",
+      "ruth_golding",
+      "gareth_holmes",
+      "hugh_mcguire",
+      "cori_samuel",
+      "peter_yearsley"
+    ],
+    "american_voices": [
+      "landon_elkind",
+      "pamela_nagami",
+      "tom_weiss",
+      "bella_bolster",
+      "kara_shallenberg",
+      "wayne_cooke",
+      "eric_metzler",
+      "neutral_narrator"
+    ]
+  }
+}

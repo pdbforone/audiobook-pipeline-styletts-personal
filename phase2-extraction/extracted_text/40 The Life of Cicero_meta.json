@@ -1,0 +1,33 @@
+{
+  "title": "40 The Life of Cicero",
+  "char_count": 195472,
+  "encoding": "utf-8",
+  "original_lines": 130,
+  "merged_lines": 127,
+  "quality_score": 1.0,
+  "removed_junk_lines": 0,
+  "removed_inline_numbers": 0,
+  "converted_numbers_to_words": 0,
+  "converted_quotes": false,
+  "preserved_headings": 0,
+  "extracted_footnotes": 0,
+  "language": "en",
+  "language_confidence": 0.9,
+  "changes": [
+    "Detected language: en",
+    "Removed 0 junk lines",
+    "Normalized unicode characters",
+    "Removed PDF artifacts",
+    "Fixed punctuation spacing"
+  ],
+  "normalizer": "regex",
+  "tts_ready": true,
+  "original_length": 195472,
+  "final_length": 195555,
+  "size_change": 83,
+  "text_yield": 1.0004246132438406,
+  "file_id": "40 The Life of Cicero",
+  "source_file": "C:\\Users\\myson\\AppData\\Local\\Temp\\gradio\\20f18a5597a13ad89a419f8e196653c4c54a7cb80e11a6d70566ca0d69729d36\\40 The Life of Cicero.txt",
+  "detected_format": "txt",
+  "classification": "text"
+}

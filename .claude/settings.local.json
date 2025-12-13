@@ -58,7 +58,11 @@
       "Bash(timeout 60 python:*)",
       "Bash(git checkout:*)",
       "Bash(grep:*)",
-      "Bash(ollama pull:*)"
+      "Bash(ollama pull:*)",
+      "Bash(ffprobe:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(.engine_envs/xtts/Scripts/python:*)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []

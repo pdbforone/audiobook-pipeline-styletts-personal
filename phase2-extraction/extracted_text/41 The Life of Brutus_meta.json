@@ -1,0 +1,33 @@
+{
+  "title": "41 The Life of Brutus",
+  "char_count": 204219,
+  "encoding": "utf-8",
+  "original_lines": 163,
+  "merged_lines": 162,
+  "quality_score": 1.0,
+  "removed_junk_lines": 0,
+  "removed_inline_numbers": 0,
+  "converted_numbers_to_words": 0,
+  "converted_quotes": false,
+  "preserved_headings": 0,
+  "extracted_footnotes": 0,
+  "language": "en",
+  "language_confidence": 0.9,
+  "changes": [
+    "Detected language: en",
+    "Removed 0 junk lines",
+    "Normalized unicode characters",
+    "Removed PDF artifacts",
+    "Fixed punctuation spacing"
+  ],
+  "normalizer": "regex",
+  "tts_ready": true,
+  "original_length": 204219,
+  "final_length": 204221,
+  "size_change": 2,
+  "text_yield": 1.000009793408057,
+  "file_id": "41 The Life of Brutus",
+  "source_file": "C:\\Users\\myson\\AppData\\Local\\Temp\\gradio\\4c22ab7179264995db433af378d7252b685af1027032d02dade7f4585885dc44\\41 The Life of Brutus.txt",
+  "detected_format": "txt",
+  "classification": "text"
+}
