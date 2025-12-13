@@ -44,6 +44,9 @@ class XTTSEngine(TTSEngine):
             / "voice_references"
             / "george_mckayland_trimmed.wav"
         )
+        # Built-in speaker latents loaded from speakers_xtts.pth
+        # Contains {speaker_name: {'gpt_cond_latent': tensor, 'speaker_embedding': tensor}}
+        self.builtin_speakers_data = None
 
     @property
     def name(self) -> str:
@@ -291,16 +294,20 @@ class XTTSEngine(TTSEngine):
                 gpu=(self.device == "cuda"),
             )
 
-            # Attempt to attach bundled multi-speaker metadata (if available)
+            # Load built-in speaker latents from speakers_xtts.pth
+            # These contain pre-computed gpt_cond_latent + speaker_embedding for each speaker
             try:
-                from TTS.tts.utils.speakers import SpeakerManager
                 import torch
+                import platform
+
+                # Find speakers_xtts.pth in the TTS cache directory
+                if platform.system() == "Windows":
+                    tts_cache = Path.home() / "AppData" / "Local" / "tts"
+                else:
+                    tts_cache = Path.home() / ".local" / "share" / "tts"
 
                 speakers_file = (
-                    Path.home()
-                    / "AppData"
-                    / "Local"
-                    / "tts"
+                    tts_cache
                     / "tts_models--multilingual--multi-dataset--xtts_v2"
                     / "speakers_xtts.pth"
                 )
@@ -308,43 +315,21 @@ class XTTSEngine(TTSEngine):
                 if speakers_file.exists():
                     raw = torch.load(speakers_file, map_location="cpu")
                     if isinstance(raw, dict) and raw:
-                        manager = SpeakerManager()
-                        manager.name_to_id = {
-                            name: idx for idx, name in enumerate(raw.keys())
-                        }
-                        manager.embeddings = {}
-                        manager.embeddings_by_names = {}
-                        manager.clip_ids = []
-
-                        for name, payload in raw.items():
-                            emb = payload.get("speaker_embedding")
-                            if emb is None:
-                                continue
-                            if hasattr(emb, "detach"):
-                                emb = emb.detach().cpu().numpy()
-                            if hasattr(emb, "tolist"):
-                                emb = emb.tolist()
-                            manager.embeddings[name] = {"name": name, "embedding": emb}
-                            manager.embeddings_by_names.setdefault(name, []).append(
-                                emb
-                            )
-                            manager.clip_ids.append(name)
-
-                        if manager.name_to_id:
-                            tts_model = self.model.synthesizer.tts_model
-                            self.model.synthesizer.tts_model.speaker_manager = manager
-                            # Mark config as d-vector based so Synthesizer uses speaker embeddings
-                            self.model.synthesizer.tts_config.use_d_vector_file = True
-                            self.model.synthesizer.tts_config.d_vector_file = str(
-                                speakers_file
-                            )
-                            logger.info(
-                                "Attached XTTS speaker_manager with %s speakers from %s",
-                                len(manager.name_to_id),
-                                speakers_file.name,
-                            )
+                        # Store the full speaker data for use in inference
+                        # Each entry has: {'gpt_cond_latent': tensor, 'speaker_embedding': tensor}
+                        self.builtin_speakers_data = raw
+                        logger.info(
+                            "Loaded %d built-in speaker latents from %s",
+                            len(raw),
+                            speakers_file.name,
+                        )
+                else:
+                    logger.warning(
+                        "speakers_xtts.pth not found at %s - built-in speakers will not work",
+                        speakers_file,
+                    )
             except Exception as exc:
-                logger.warning("Could not attach XTTS speaker metadata: %s", exc)
+                logger.warning("Could not load XTTS speaker latents: %s", exc)
 
             # Log speaker capabilities for diagnostics
             is_multi = getattr(self.model, "is_multi_speaker", None)
@@ -416,20 +401,21 @@ class XTTSEngine(TTSEngine):
         temperature = kwargs.get("temperature", 0.7)
         speaker = kwargs.get("speaker", "Claribel Dervla")  # Default XTTS voice
 
-        # Check if model actually supports multiple speakers
-        speaker_supported = getattr(self.model, "is_multi_speaker", False)
+        # Check if we have built-in speaker latents loaded
+        # This is more reliable than checking model.is_multi_speaker
+        speaker_supported = self.builtin_speakers_data is not None
         speaker_explicitly_requested = "speaker" in kwargs
 
         if speaker_explicitly_requested and speaker_supported:
-            # Multi-speaker model: use speaker parameter (Mode 2)
+            # Use built-in speaker with pre-computed latents
             active_speaker = speaker
             logger.info(f"Using built-in XTTS speaker: {speaker}")
         else:
-            # Single-speaker model OR no speaker requested: use voice cloning (Mode 1)
+            # No built-in speakers available OR no speaker requested: use voice cloning
             active_speaker = None
             if speaker_explicitly_requested and not speaker_supported:
                 logger.warning(
-                    f"XTTS model is single-speaker; cannot use built-in speaker '{speaker}'. "
+                    f"Built-in speaker latents not loaded; cannot use speaker '{speaker}'. "
                     f"Using voice cloning instead."
                 )
 
@@ -533,17 +519,43 @@ class XTTSEngine(TTSEngine):
         Returns:
             Raw audio array from XTTS
         """
-        # Mode 1: Built-in voice using speaker parameter (PRIORITY)
-        # When using a built-in speaker, don't pass speaker_wav to avoid
-        # mixing the built-in voice with reference audio characteristics
-        if active_speaker:
-            return self.model.tts(
+        # Mode 1: Built-in voice using pre-computed latents (PRIORITY)
+        # The high-level model.tts() API doesn't work with built-in speakers
+        # (it always requires speaker_wav). We must use the low-level
+        # tts_model.inference() API directly with pre-computed latents.
+        if active_speaker and self.builtin_speakers_data:
+            if active_speaker not in self.builtin_speakers_data:
+                available = list(self.builtin_speakers_data.keys())[:5]
+                raise ValueError(
+                    f"Speaker '{active_speaker}' not found in built-in speakers. "
+                    f"Available: {available}... ({len(self.builtin_speakers_data)} total)"
+                )
+
+            speaker_dict = self.builtin_speakers_data[active_speaker]
+            gpt_cond_latent = speaker_dict["gpt_cond_latent"]
+            speaker_embedding = speaker_dict["speaker_embedding"]
+
+            # Call the low-level inference API directly
+            tts_model = self.model.synthesizer.tts_model
+            result = tts_model.inference(
                 text=text,
-                speaker=active_speaker,
                 language=language,
-                speed=speed,
+                gpt_cond_latent=gpt_cond_latent,
+                speaker_embedding=speaker_embedding,
                 temperature=temperature,
+                speed=speed,
+                # Enable text splitting for safety (handles any remaining long text)
+                enable_text_splitting=False,  # We already split externally
             )
+
+            # Result is a dict with 'wav' key
+            if isinstance(result, dict) and "wav" in result:
+                wav = result["wav"]
+                # Convert torch tensor to numpy if needed
+                if hasattr(wav, "cpu"):
+                    wav = wav.cpu().numpy()
+                return wav
+            return result
 
         # Mode 2: Voice cloning with reference audio
         if ref_to_use and ref_to_use.exists():
@@ -555,12 +567,23 @@ class XTTSEngine(TTSEngine):
                 temperature=temperature,
             )
 
-        # Mode 3: Single-speaker model default (no speaker, no reference)
-        return self.model.tts(
-            text=text,
-            language=language,
-            speed=speed,
-            temperature=temperature,
+        # Mode 3: Fallback - try default reference if available
+        if self.default_reference.exists():
+            logger.warning(
+                "No active_speaker or reference audio - using default reference"
+            )
+            return self.model.tts(
+                text=text,
+                speaker_wav=str(self.default_reference),
+                language=language,
+                speed=speed,
+                temperature=temperature,
+            )
+
+        # Mode 4: Last resort - this will likely fail but let XTTS try
+        raise RuntimeError(
+            "XTTS synthesis requires either a built-in speaker name or "
+            "a reference audio file for voice cloning. Neither was provided."
         )
 
     def get_max_text_length(self) -> Optional[int]:
@@ -585,3 +608,14 @@ class XTTSEngine(TTSEngine):
     def supports_fine_tuning(self) -> bool:
         """XTTS supports fine-tuning for better voice adaptation"""
         return True
+
+    def get_builtin_speakers(self) -> List[str]:
+        """Get list of available built-in speaker names.
+
+        Returns:
+            List of speaker names that can be used with the 'speaker' parameter.
+            Empty list if built-in speakers are not available.
+        """
+        if self.builtin_speakers_data:
+            return list(self.builtin_speakers_data.keys())
+        return []
