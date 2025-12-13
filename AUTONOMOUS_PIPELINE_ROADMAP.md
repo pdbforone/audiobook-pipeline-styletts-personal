@@ -5,7 +5,79 @@
 
 ---
 
-## Latest Updates (2025-12-12)
+## ⚠️ THIS DOCUMENT IS CANON
+
+**This is the single source of truth for the audiobook pipeline architecture, decisions, and hard-won knowledge.**
+
+For LLMs and developers:
+- Read this BEFORE modifying any phase
+- Check here FIRST for known API gotchas and workarounds
+- Update this document when new truth is discovered
+- Cross-reference: `pipeline_common/schema.json` for data contracts
+
+---
+
+## Latest Updates (2025-12-13)
+
+### ✅ CRITICAL: XTTS Built-in Speaker Fix (Low-Level Inference API)
+
+**Problem Identified:**
+XTTS v2 built-in speakers (58 voices like "Claribel Dervla", "Daisy Studious") were failing with `TypeError: Invalid file: None` when using the documented high-level API.
+
+**Root Cause:**
+The Coqui TTS 0.21.3 high-level API is **broken for built-in speakers**:
+```python
+# WHAT DOCS SAY (BROKEN):
+model.tts(text=text, speaker="Claribel Dervla")  # ❌ FAILS - "Invalid file: None"
+
+# WHAT ACTUALLY WORKS:
+model.tts(text=text, speaker_wav="reference.wav")  # ✅ Voice cloning works
+```
+
+The high-level `tts()` method IGNORES the `speaker` parameter and always requires `speaker_wav`. This is a known bug/limitation in Coqui TTS.
+
+**Solution: Use Low-Level Inference API**
+
+Built-in speakers require pre-computed latents loaded from `speakers_xtts.pth`:
+
+```python
+# Load speaker latents once at model initialization
+speakers_data = torch.load("speakers_xtts.pth", map_location="cpu")
+# Structure: {"Speaker Name": {"gpt_cond_latent": [1,32,1024], "speaker_embedding": [1,512,1]}}
+
+# Use low-level inference API for synthesis
+speaker = speakers_data["Claribel Dervla"]
+tts_model = model.synthesizer.tts_model
+result = tts_model.inference(
+    text=text,
+    language="en",
+    gpt_cond_latent=speaker["gpt_cond_latent"],
+    speaker_embedding=speaker["speaker_embedding"],
+    temperature=0.65,
+    speed=1.0,
+    enable_text_splitting=False,
+)
+audio = result["wav"]
+```
+
+**Important Lies to Know:**
+- `model.is_multi_speaker` returns `False` even when 58 speakers are available
+- Check `self.builtin_speakers_data is not None` instead
+
+**File Locations:**
+- `speakers_xtts.pth`: `~/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2/` (Linux)
+- Windows: `~/AppData/Local/tts/tts_models--multilingual--multi-dataset--xtts_v2/`
+
+**Implementation:** [phase4_tts/engines/xtts_engine.py](phase4_tts/engines/xtts_engine.py)
+- `load_model()` now loads `speakers_xtts.pth` into `self.builtin_speakers_data`
+- `_synthesize_single_segment()` uses `tts_model.inference()` for built-in speakers
+- Priority: Built-in speaker latents → Voice cloning → Default reference fallback
+
+**Commit:** `ecc22db` - Fix XTTS built-in speakers by using low-level inference API
+
+---
+
+## Updates (2025-12-12)
 
 ### ✅ CRITICAL: XTTS Engine Segment-Level Synthesis (Anti-Repetition Fix)
 
@@ -169,9 +241,10 @@ XTTS_SEGMENT_SILENCE_MS = 80    # Silence between segments
 **Key Decision:** Preserved research-based chunk size limits (10,000 chars) - solution works at sentence level, not chunk level
 
 ### ✅ XTTS Built-in Voice Stabilization
-- Multi-speaker XTTS now loads with 58 built-in speakers (`speakers_xtts.pth` attached at load) and logs capabilities.
+- Multi-speaker XTTS now loads 58 built-in speakers via `speakers_xtts.pth` latents (see 2025-12-13 fix above for details).
+- **IMPORTANT:** Built-in speakers use the low-level `tts_model.inference()` API, NOT the high-level `model.tts(speaker=...)` API which is broken.
 - Env pinned to torch 2.2.2+cpu, TTS 0.21.3, transformers 4.36.2 to avoid weights_only/BeamSearch issues.
-- XTTS engine gracefully falls back to default reference when no reference is provided (required for conditioning).
+- XTTS engine gracefully falls back to default reference when no reference is provided (required for voice cloning mode).
 - Smoke suite `test_xtts_builtin_voices.py` added; 9 representative built-ins all synthesize successfully. Output: `phase4_tts/audio_chunks/test_xtts_voices/`.
 - Orchestrator/engine_runner honors built-in voices with `--voice <name>`; chunk IDs mapped correctly for testing (`chunk_0001` → `--chunk_id 0`).
 
