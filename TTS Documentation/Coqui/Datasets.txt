@@ -1,0 +1,48 @@
+Datasets
+TTS Dataset
+class TTS.tts.datasets.TTSDataset(outputs_per_step=1, compute_linear_spec=False, ap=None, samples=None, tokenizer=None, compute_f0=False, compute_energy=False, f0_cache_path=None, energy_cache_path=None, return_wav=False, batch_group_size=0, min_text_len=0, max_text_len=inf, min_audio_len=0, max_audio_len=inf, phoneme_cache_path=None, precompute_num_workers=0, speaker_id_mapping=None, d_vector_mapping=None, language_id_mapping=None, use_noise_augment=False, start_by_longest=False, verbose=False)[source]
+collate_fn(batch)[source]
+Perform preprocessing and create a final data batch: 1. Sort batch instances by text-length 2. Convert Audio signal to features. 3. PAD sequences wrt r. 4. Load to Torch.
+
+preprocess_samples()[source]
+Sort items based on text length or audio length in ascending order. Filter out samples out or the length range.
+
+Vocoder Dataset
+class TTS.vocoder.datasets.gan_dataset.GANDataset(ap, items, seq_len, hop_len, pad_short, conv_pad=2, return_pairs=False, is_training=True, return_segments=True, use_noise_augment=False, use_cache=False, verbose=False)[source]
+GAN Dataset searchs for all the wav files under root path and converts them to acoustic features on the fly and returns random segments of (audio, feature) couples.
+
+load_item(idx)[source]
+load (audio, feat) couple
+
+class TTS.vocoder.datasets.wavegrad_dataset.WaveGradDataset(ap, items, seq_len, hop_len, pad_short, conv_pad=2, is_training=True, return_segments=True, use_noise_augment=False, use_cache=False, verbose=False)[source]
+WaveGrad Dataset searchs for all the wav files under root path and converts them to acoustic features on the fly and returns random segments of (audio, feature) couples.
+
+static collate_full_clips(batch)[source]
+This is used in tune_wavegrad.py. It pads sequences to the max length.
+
+load_item(idx)[source]
+load (audio, feat) couple
+
+load_test_samples(num_samples)[source]
+Return test samples.
+
+Parameters:
+num_samples (int) – Number of samples to return.
+
+Returns:
+melspectorgram and audio.
+
+Return type:
+List[Tuple]
+
+Shapes
+
+melspectrogram (Tensor): 
+
+audio (Tensor): 
+
+class TTS.vocoder.datasets.wavernn_dataset.WaveRNNDataset(ap, items, seq_len, hop_len, pad, mode, mulaw, is_training=True, verbose=False, return_segments=True)[source]
+WaveRNN Dataset searchs for all the wav files under root path and converts them to acoustic features on the fly.
+
+load_item(index)[source]
+load (audio, feat) couple if feature_path is set else compute it on the fly

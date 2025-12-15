@@ -62,7 +62,8 @@
       "Bash(ffprobe:*)",
       "Bash(ffmpeg:*)",
       "Bash(.engine_envs/xtts/Scripts/python:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

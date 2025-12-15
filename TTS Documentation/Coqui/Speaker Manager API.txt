@@ -1,0 +1,79 @@
+Speaker Manager API
+The TTS.tts.utils.speakers.SpeakerManager organize speaker related data and information for 🐸TTS models. It is especially useful for multi-speaker models.
+
+Speaker Manager
+class TTS.tts.utils.speakers.SpeakerManager(data_items=None, d_vectors_file_path='', speaker_id_file_path='', encoder_model_path='', encoder_config_path='', use_cuda=False)[source]
+Manage the speakers for multi-speaker 🐸TTS models. Load a datafile and parse the information in a way that can be queried by speaker or clip.
+
+There are 3 different scenarios considered:
+
+Models using speaker embedding layers. The datafile only maps speaker names to ids used by the embedding layer.
+
+Models using d-vectors. The datafile includes a dictionary in the following format.
+
+{
+    'clip_name.wav':{
+        'name': 'speakerA',
+        'embedding'[<d_vector_values>]
+    },
+    ...
+}
+3. Computing the d-vectors by the speaker encoder. It loads the speaker encoder model and computes the d-vectors for a given clip or speaker.
+
+Parameters:
+d_vectors_file_path (str, optional) – Path to the metafile including x vectors. Defaults to “”.
+
+speaker_id_file_path (str, optional) – Path to the metafile that maps speaker names to ids used by
+
+"". (TTS models. Defaults to) –
+
+encoder_model_path (str, optional) – Path to the speaker encoder model file. Defaults to “”.
+
+encoder_config_path (str, optional) – Path to the spealer encoder config file. Defaults to “”.
+
+Examples
+
+# load audio processor and speaker encoder
+ap = AudioProcessor(**config.audio)
+manager = SpeakerManager(encoder_model_path=encoder_model_path, encoder_config_path=encoder_config_path)
+# load a sample audio and compute embedding
+waveform = ap.load_wav(sample_wav_path)
+mel = ap.melspectrogram(waveform)
+d_vector = manager.compute_embeddings(mel.T)
+static init_from_config(config, samples=None)[source]
+Initialize a speaker manager from config
+
+Parameters:
+config (Coqpit) – Config object.
+
+samples (Union[List[List], List[Dict]], optional) – List of data samples to parse out the speaker names. Defaults to None.
+
+Returns:
+Speaker encoder object.
+
+Return type:
+SpeakerEncoder
+
+TTS.tts.utils.speakers.get_speaker_manager(c, data=None, restore_path=None, out_path=None)[source]
+Initiate a SpeakerManager instance by the provided config.
+
+Parameters:
+c (Coqpit) – Model configuration.
+
+restore_path (str) – Path to a previous training folder.
+
+data (List) – Data samples used in training to infer speakers from. It must be provided if speaker embedding layers is used. Defaults to None.
+
+out_path (str, optional) – Save the generated speaker IDs to a output path. Defaults to None.
+
+Returns:
+initialized and ready to use instance.
+
+Return type:
+SpeakerManager
+
+TTS.tts.utils.speakers.load_speaker_mapping(out_path)[source]
+Loads speaker mapping if already present.
+
+TTS.tts.utils.speakers.save_speaker_mapping(out_path, speaker_mapping)[source]
+Saves speaker mapping if not yet present.

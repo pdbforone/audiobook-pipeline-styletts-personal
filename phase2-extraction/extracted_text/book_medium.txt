@@ -1,2 +1,0 @@
-The quick brown fox jumps over the lazy dog.
-This contains moderate structure, punctuation, and slightly longer sentences for chunking tests. and slightly longer sentences for chunking tests.

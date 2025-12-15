@@ -1,0 +1,367 @@
+AudioProcessor API
+TTS.utils.audio.AudioProcessor is the core class for all the audio processing routines. It provides an API for
+
+Feature extraction.
+
+Sound normalization.
+
+Reading and writing audio files.
+
+Sampling audio signals.
+
+Normalizing and denormalizing audio signals.
+
+Griffin-Lim vocoder.
+
+The AudioProcessor needs to be initialized with TTS.config.shared_configs.BaseAudioConfig. Any model config also must inherit or initiate BaseAudioConfig.
+
+AudioProcessor
+class TTS.utils.audio.AudioProcessor(sample_rate=None, resample=False, num_mels=None, log_func='np.log10', min_level_db=None, frame_shift_ms=None, frame_length_ms=None, hop_length=None, win_length=None, ref_level_db=None, fft_size=1024, power=None, preemphasis=0.0, signal_norm=None, symmetric_norm=None, max_norm=None, mel_fmin=None, mel_fmax=None, pitch_fmax=None, pitch_fmin=None, spec_gain=20, stft_pad_mode='reflect', clip_norm=True, griffin_lim_iters=None, do_trim_silence=False, trim_db=60, do_sound_norm=False, do_amp_to_db_linear=True, do_amp_to_db_mel=True, do_rms_norm=False, db_level=None, stats_path=None, verbose=True, **_)[source]
+Audio Processor for TTS.
+
+Note
+
+All the class arguments are set to default values to enable a flexible initialization of the class with the model config. They are not meaningful for all the arguments.
+
+Parameters:
+sample_rate (int, optional) – target audio sampling rate. Defaults to None.
+
+resample (bool, optional) – enable/disable resampling of the audio clips when the target sampling rate does not match the original sampling rate. Defaults to False.
+
+num_mels (int, optional) – number of melspectrogram dimensions. Defaults to None.
+
+log_func (int, optional) – log exponent used for converting spectrogram aplitude to DB.
+
+min_level_db (int, optional) – minimum db threshold for the computed melspectrograms. Defaults to None.
+
+frame_shift_ms (int, optional) – milliseconds of frames between STFT columns. Defaults to None.
+
+frame_length_ms (int, optional) – milliseconds of STFT window length. Defaults to None.
+
+hop_length (int, optional) – number of frames between STFT columns. Used if `frame_shift_ms` is None. Defaults to None.
+
+win_length (int, optional) – STFT window length. Used if `frame_length_ms` is None. Defaults to None.
+
+ref_level_db (int, optional) – reference DB level to avoid background noise. In general <20DB corresponds to the air noise. Defaults to None.
+
+fft_size (int, optional) – FFT window size for STFT. Defaults to 1024.
+
+power (int, optional) – Exponent value applied to the spectrogram before GriffinLim. Defaults to None.
+
+preemphasis (float, optional) – Preemphasis coefficient. Preemphasis is disabled if == 0.0. Defaults to 0.0.
+
+signal_norm (bool, optional) – enable/disable signal normalization. Defaults to None.
+
+symmetric_norm (bool, optional) – enable/disable symmetric normalization. If set True normalization is performed in the range [-k, k] else [0, k], Defaults to None.
+
+max_norm (float, optional) – `k` defining the normalization range. Defaults to None.
+
+mel_fmin (int, optional) – minimum filter frequency for computing melspectrograms. Defaults to None.
+
+mel_fmax (int, optional) – maximum filter frequency for computing melspectrograms. Defaults to None.
+
+pitch_fmin (int, optional) – minimum filter frequency for computing pitch. Defaults to None.
+
+pitch_fmax (int, optional) – maximum filter frequency for computing pitch. Defaults to None.
+
+spec_gain (int, optional) – gain applied when converting amplitude to DB. Defaults to 20.
+
+stft_pad_mode (str, optional) – Padding mode for STFT. Defaults to ‘reflect’.
+
+clip_norm (bool, optional) – enable/disable clipping the our of range values in the normalized audio signal. Defaults to True.
+
+griffin_lim_iters (int, optional) – Number of GriffinLim iterations. Defaults to None.
+
+do_trim_silence (bool, optional) – enable/disable silence trimming when loading the audio signal. Defaults to False.
+
+trim_db (int, optional) – DB threshold used for silence trimming. Defaults to 60.
+
+do_sound_norm (bool, optional) – enable/disable signal normalization. Defaults to False.
+
+do_amp_to_db_linear (bool, optional) – enable/disable amplitude to dB conversion of linear spectrograms. Defaults to True.
+
+do_amp_to_db_mel (bool, optional) – enable/disable amplitude to dB conversion of mel spectrograms. Defaults to True.
+
+do_rms_norm (bool, optional) – enable/disable RMS volume normalization when loading an audio file. Defaults to False.
+
+db_level (int, optional) – dB level used for rms normalization. The range is -99 to 0. Defaults to None.
+
+stats_path (str, optional) – Path to the computed stats file. Defaults to None.
+
+verbose (bool, optional) – enable/disable logging. Defaults to True.
+
+apply_inv_preemphasis(x)[source]
+Reverse pre-emphasis.
+
+apply_preemphasis(x)[source]
+Apply pre-emphasis to the audio signal. Useful to reduce the correlation between neighbouring signal values.
+
+Parameters:
+x (np.ndarray) – Audio signal.
+
+Raises:
+RuntimeError – Preemphasis coeff is set to 0.
+
+Returns:
+Decorrelated audio signal.
+
+Return type:
+np.ndarray
+
+compute_f0(x)[source]
+Compute pitch (f0) of a waveform using the same parameters used for computing melspectrogram.
+
+Parameters:
+x (np.ndarray) – Waveform.
+
+Returns:
+Pitch.
+
+Return type:
+np.ndarray
+
+Examples
+
+WAV_FILE = filename = librosa.example('vibeace')
+from TTS.config import BaseAudioConfig
+from TTS.utils.audio import AudioProcessor
+conf = BaseAudioConfig(pitch_fmax=640, pitch_fmin=1)
+ap = AudioProcessor(**conf)
+wav = ap.load_wav(WAV_FILE, sr=ap.sample_rate)[:5 * ap.sample_rate]
+pitch = ap.compute_f0(wav)
+denormalize(S)[source]
+Denormalize spectrogram values.
+
+Parameters:
+S (np.ndarray) – Spectrogram to denormalize.
+
+Raises:
+RuntimeError – Mean and variance are incompatible.
+
+Returns:
+Denormalized spectrogram.
+
+Return type:
+np.ndarray
+
+find_endpoint(wav, min_silence_sec=0.8)[source]
+Find the last point without silence at the end of a audio signal.
+
+Parameters:
+wav (np.ndarray) – Audio signal.
+
+threshold_db (int, optional) – Silence threshold in decibels. Defaults to -40.
+
+min_silence_sec (float, optional) – Ignore silences that are shorter then this in secs. Defaults to 0.8.
+
+Returns:
+Last point without silence.
+
+Return type:
+int
+
+get_duration(filename)[source]
+Get the duration of a wav file using Librosa.
+
+Parameters:
+filename (str) – Path to the wav file.
+
+inv_melspectrogram(mel_spectrogram)[source]
+Convert a melspectrogram to a waveform using Griffi-Lim vocoder.
+
+inv_spectrogram(spectrogram)[source]
+Convert a spectrogram to a waveform using Griffi-Lim vocoder.
+
+load_stats(stats_path)[source]
+Loading mean and variance statistics from a npy file.
+
+Parameters:
+stats_path (str) – Path to the npy file containing
+
+Returns:
+loaded statistics and the config used to
+compute them.
+
+Return type:
+Tuple[np.array, np.array, np.array, np.array, Dict]
+
+load_wav(filename, sr=None)[source]
+Read a wav file using Librosa and optionally resample, silence trim, volume normalize.
+
+Resampling slows down loading the file significantly. Therefore it is recommended to resample the file before.
+
+Parameters:
+filename (str) – Path to the wav file.
+
+sr (int, optional) – Sampling rate for resampling. Defaults to None.
+
+Returns:
+Loaded waveform.
+
+Return type:
+np.ndarray
+
+melspectrogram(y)[source]
+Compute a melspectrogram from a waveform.
+
+normalize(S)[source]
+Normalize values into [0, self.max_norm] or [-self.max_norm, self.max_norm]
+
+Parameters:
+S (np.ndarray) – Spectrogram to normalize.
+
+Raises:
+RuntimeError – Mean and variance is computed from incompatible parameters.
+
+Returns:
+Normalized spectrogram.
+
+Return type:
+np.ndarray
+
+out_linear_to_mel(linear_spec)[source]
+Convert a full scale linear spectrogram output of a network to a melspectrogram.
+
+Parameters:
+linear_spec (np.ndarray) – Normalized full scale linear spectrogram.
+
+Returns:
+Normalized melspectrogram.
+
+Return type:
+np.ndarray
+
+rms_volume_norm(x, db_level=None)[source]
+Normalize the volume based on RMS of the signal.
+
+Parameters:
+x (np.ndarray) – Raw waveform.
+
+Returns:
+RMS normalized waveform.
+
+Return type:
+np.ndarray
+
+save_wav(wav, path, sr=None, pipe_out=None)[source]
+Save a waveform to a file using Scipy.
+
+Parameters:
+wav (np.ndarray) – Waveform to save.
+
+path (str) – Path to a output file.
+
+sr (int, optional) – Sampling rate used for saving to the file. Defaults to None.
+
+pipe_out (BytesIO, optional) – Flag to stdout the generated TTS wav file for shell pipe.
+
+setup_scaler(mel_mean, mel_std, linear_mean, linear_std)[source]
+Initialize scaler objects used in mean-std normalization.
+
+Parameters:
+mel_mean (np.ndarray) – Mean for melspectrograms.
+
+mel_std (np.ndarray) – STD for melspectrograms.
+
+linear_mean (np.ndarray) – Mean for full scale spectrograms.
+
+linear_std (np.ndarray) – STD for full scale spectrograms.
+
+static sound_norm(x)[source]
+Normalize the volume of an audio signal.
+
+Parameters:
+x (np.ndarray) – Raw waveform.
+
+Returns:
+Volume normalized waveform.
+
+Return type:
+np.ndarray
+
+spectrogram(y)[source]
+Compute a spectrogram from a waveform.
+
+Parameters:
+y (np.ndarray) – Waveform.
+
+Returns:
+Spectrogram.
+
+Return type:
+np.ndarray
+
+trim_silence(wav)[source]
+Trim silent parts with a threshold and 0.01 sec margin
+
+BaseAudioConfig
+class TTS.config.shared_configs.BaseAudioConfig(fft_size=1024, win_length=1024, hop_length=256, frame_shift_ms=None, frame_length_ms=None, stft_pad_mode='reflect', sample_rate=22050, resample=False, preemphasis=0.0, ref_level_db=20, do_sound_norm=False, log_func='np.log10', do_trim_silence=True, trim_db=45, do_rms_norm=False, db_level=None, power=1.5, griffin_lim_iters=60, num_mels=80, mel_fmin=0.0, mel_fmax=None, spec_gain=20, do_amp_to_db_linear=True, do_amp_to_db_mel=True, pitch_fmax=640.0, pitch_fmin=1.0, signal_norm=True, min_level_db=-100, symmetric_norm=True, max_norm=4.0, clip_norm=True, stats_path=None)[source]
+Base config to definge audio processing parameters. It is used to initialize `TTS.utils.audio.AudioProcessor.`
+
+Parameters:
+fft_size (int) – Number of STFT frequency levels aka.size of the linear spectogram frame. Defaults to 1024.
+
+win_length (int) – Each frame of audio is windowed by window of length `win_length` and then padded with zeros to match `fft_size`. Defaults to 1024.
+
+hop_length (int) – Number of audio samples between adjacent STFT columns. Defaults to 1024.
+
+frame_shift_ms (int) – Set `hop_length` based on milliseconds and sampling rate.
+
+frame_length_ms (int) – Set `win_length` based on milliseconds and sampling rate.
+
+stft_pad_mode (str) – Padding method used in STFT. ‘reflect’ or ‘center’. Defaults to ‘reflect’.
+
+sample_rate (int) – Audio sampling rate. Defaults to 22050.
+
+resample (bool) – Enable / Disable resampling audio to `sample_rate`. Defaults to `False`.
+
+preemphasis (float) – Preemphasis coefficient. Defaults to 0.0.
+
+ref_level_db (int) – 20 Reference Db level to rebase the audio signal and ignore the level below. 20Db is assumed the sound of air. Defaults to 20.
+
+do_sound_norm (bool) – Enable / Disable sound normalization to reconcile the volume differences among samples. Defaults to False.
+
+log_func (str) – Numpy log function used for amplitude to DB conversion. Defaults to ‘np.log10’.
+
+do_trim_silence (bool) – Enable / Disable trimming silences at the beginning and the end of the audio clip. Defaults to `True`.
+
+do_amp_to_db_linear (bool, optional) – enable/disable amplitude to dB conversion of linear spectrograms. Defaults to True.
+
+do_amp_to_db_mel (bool, optional) – enable/disable amplitude to dB conversion of mel spectrograms. Defaults to True.
+
+pitch_fmax (float, optional) – Maximum frequency of the F0 frames. Defaults to `640`.
+
+pitch_fmin (float, optional) – Minimum frequency of the F0 frames. Defaults to `1`.
+
+trim_db (int) – Silence threshold used for silence trimming. Defaults to 45.
+
+do_rms_norm (bool, optional) – enable/disable RMS volume normalization when loading an audio file. Defaults to False.
+
+db_level (int, optional) – dB level used for rms normalization. The range is -99 to 0. Defaults to None.
+
+power (float) – Exponent used for expanding spectrogra levels before running Griffin Lim. It helps to reduce the artifacts in the synthesized voice. Defaults to 1.5.
+
+griffin_lim_iters (int) – Number of Griffing Lim iterations. Defaults to 60.
+
+num_mels (int) – Number of mel-basis frames that defines the frame lengths of each mel-spectrogram frame. Defaults to 80.
+
+mel_fmin (float) – Min frequency level used for the mel-basis filters. ~50 for male and ~95 for female voices. It needs to be adjusted for a dataset. Defaults to 0.
+
+mel_fmax (float) – Max frequency level used for the mel-basis filters. It needs to be adjusted for a dataset.
+
+spec_gain (int) – Gain applied when converting amplitude to DB. Defaults to 20.
+
+signal_norm (bool) – enable/disable signal normalization. Defaults to True.
+
+min_level_db (int) – minimum db threshold for the computed melspectrograms. Defaults to -100.
+
+symmetric_norm (bool) – enable/disable symmetric normalization. If set True normalization is performed in the range [-k, k] else [0, k], Defaults to True.
+
+max_norm (float) – `k` defining the normalization range. Defaults to 4.0.
+
+clip_norm (bool) – enable/disable clipping the our of range values in the normalized audio signal. Defaults to True.
+
+stats_path (str) – Path to the computed stats file. Defaults to None.
+
+check_values()[source]
+Check config fields

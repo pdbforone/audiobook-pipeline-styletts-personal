@@ -1,0 +1,473 @@
+VITS
+VITS (Conditional Variational Autoencoder with Adversarial Learning for End-to-End Text-to-Speech ) is an End-to-End (encoder -> vocoder together) TTS model that takes advantage of SOTA DL techniques like GANs, VAE, Normalizing Flows. It does not require external alignment annotations and learns the text-to-audio alignment using MAS, as explained in the paper. The model architecture is a combination of GlowTTS encoder and HiFiGAN vocoder. It is a feed-forward model with x67.12 real-time factor on a GPU.
+
+🐸 YourTTS is a multi-speaker and multi-lingual TTS model that can perform voice conversion and zero-shot speaker adaptation. It can also learn a new language or voice with a ~ 1 minute long audio clip. This is a big open gate for training TTS models in low-resources languages. 🐸 YourTTS uses VITS as the backbone architecture coupled with a speaker encoder model.
+
+Important resources & papers
+🐸 YourTTS: https://arxiv.org/abs/2112.02418
+
+VITS: https://arxiv.org/pdf/2106.06103.pdf
+
+Neural Spline Flows: https://arxiv.org/abs/1906.04032
+
+Variational Autoencoder: https://arxiv.org/pdf/1312.6114.pdf
+
+Generative Adversarial Networks: https://arxiv.org/abs/1406.2661
+
+HiFiGAN: https://arxiv.org/abs/2010.05646
+
+Normalizing Flows: https://blog.evjang.com/2018/01/nf1.html
+
+VitsConfig
+class TTS.tts.configs.vits_config.VitsConfig(output_path='output', logger_uri=None, run_name='run', project_name=None, run_description='🐸Coqui trainer run.', print_step=25, plot_step=100, model_param_stats=False, wandb_entity=None, dashboard_logger='tensorboard', save_on_interrupt=True, log_model_step=None, save_step=10000, save_n_checkpoints=5, save_checkpoints=True, save_all_best=False, save_best_after=10000, target_loss=None, print_eval=False, test_delay_epochs=0, run_eval=True, run_eval_steps=None, distributed_backend='nccl', distributed_url='tcp://localhost:54321', mixed_precision=False, precision='fp16', epochs=1000, batch_size=32, eval_batch_size=16, grad_clip=<factory>, scheduler_after_epoch=True, lr=0.001, optimizer='AdamW', optimizer_params=<factory>, lr_scheduler=None, lr_scheduler_params=<factory>, use_grad_scaler=False, allow_tf32=False, cudnn_enable=True, cudnn_deterministic=False, cudnn_benchmark=False, training_seed=54321, model='vits', num_loader_workers=0, num_eval_loader_workers=0, use_noise_augment=False, audio=<factory>, use_phonemes=False, phonemizer=None, phoneme_language=None, compute_input_seq_cache=False, text_cleaner=None, enable_eos_bos_chars=False, test_sentences_file='', phoneme_cache_path=None, characters=None, add_blank=True, batch_group_size=0, loss_masking=None, min_audio_len=1, max_audio_len=inf, min_text_len=1, max_text_len=inf, compute_f0=False, compute_energy=False, compute_linear_spec=True, precompute_num_workers=0, start_by_longest=False, shuffle=False, drop_last=False, datasets=<factory>, test_sentences=<factory>, eval_split_max_size=None, eval_split_size=0.01, use_speaker_weighted_sampler=False, speaker_weighted_sampler_alpha=1.0, use_language_weighted_sampler=False, language_weighted_sampler_alpha=1.0, use_length_weighted_sampler=False, length_weighted_sampler_alpha=1.0, model_args=<factory>, lr_gen=0.0002, lr_disc=0.0002, lr_scheduler_gen='ExponentialLR', lr_scheduler_gen_params=<factory>, lr_scheduler_disc='ExponentialLR', lr_scheduler_disc_params=<factory>, kl_loss_alpha=1.0, disc_loss_alpha=1.0, gen_loss_alpha=1.0, feat_loss_alpha=1.0, mel_loss_alpha=45.0, dur_loss_alpha=1.0, speaker_encoder_loss_alpha=1.0, return_wav=True, use_weighted_sampler=False, weighted_sampler_attrs=<factory>, weighted_sampler_multipliers=<factory>, r=1, num_speakers=0, use_speaker_embedding=False, speakers_file=None, speaker_embedding_channels=256, language_ids_file=None, use_language_embedding=False, use_d_vector_file=False, d_vector_file=None, d_vector_dim=None)[source]
+Defines parameters for VITS End2End TTS model.
+
+Parameters:
+model (str) – Model name. Do not change unless you know what you are doing.
+
+model_args (VitsArgs) – Model architecture arguments. Defaults to VitsArgs().
+
+audio (VitsAudioConfig) – Audio processing configuration. Defaults to VitsAudioConfig().
+
+grad_clip (List) – Gradient clipping thresholds for each optimizer. Defaults to [1000.0, 1000.0].
+
+lr_gen (float) – Initial learning rate for the generator. Defaults to 0.0002.
+
+lr_disc (float) – Initial learning rate for the discriminator. Defaults to 0.0002.
+
+lr_scheduler_gen (str) – Name of the learning rate scheduler for the generator. One of the torch.optim.lr_scheduler.*. Defaults to ExponentialLR.
+
+lr_scheduler_gen_params (dict) – Parameters for the learning rate scheduler of the generator. Defaults to {‘gamma’: 0.999875, “last_epoch”:-1}.
+
+lr_scheduler_disc (str) – Name of the learning rate scheduler for the discriminator. One of the torch.optim.lr_scheduler.*. Defaults to ExponentialLR.
+
+lr_scheduler_disc_params (dict) – Parameters for the learning rate scheduler of the discriminator. Defaults to {‘gamma’: 0.999875, “last_epoch”:-1}.
+
+scheduler_after_epoch (bool) – If true, step the schedulers after each epoch else after each step. Defaults to False.
+
+optimizer (str) – Name of the optimizer to use with both the generator and the discriminator networks. One of the torch.optim.*. Defaults to AdamW.
+
+kl_loss_alpha (float) – Loss weight for KL loss. Defaults to 1.0.
+
+disc_loss_alpha (float) – Loss weight for the discriminator loss. Defaults to 1.0.
+
+gen_loss_alpha (float) – Loss weight for the generator loss. Defaults to 1.0.
+
+feat_loss_alpha (float) – Loss weight for the feature matching loss. Defaults to 1.0.
+
+mel_loss_alpha (float) – Loss weight for the mel loss. Defaults to 45.0.
+
+return_wav (bool) – If true, data loader returns the waveform as well as the other outputs. Do not change. Defaults to True.
+
+compute_linear_spec (bool) – If true, the linear spectrogram is computed and returned alongside the mel output. Do not change. Defaults to True.
+
+use_weighted_sampler (bool) – If true, use weighted sampler with bucketing for balancing samples between datasets used in training. Defaults to False.
+
+weighted_sampler_attrs (dict) – Key retuned by the formatter to be used for weighted sampler. For example {“root_path”: 2.0, “speaker_name”: 1.0} sets sample probabilities by overweighting root_path by 2.0. Defaults to {}.
+
+weighted_sampler_multipliers (dict) – Weight each unique value of a key returned by the formatter for weighted sampling. For example {“root_path”:{“/raid/datasets/libritts-clean-16khz-bwe-coqui_44khz/LibriTTS/train-clean-100/”:1.0, “/raid/datasets/libritts-clean-16khz-bwe-coqui_44khz/LibriTTS/train-clean-360/”: 0.5}. It will sample instances from train-clean-100 2 times more than train-clean-360. Defaults to {}.
+
+r (int) – Number of spectrogram frames to be generated at a time. Do not change. Defaults to 1.
+
+add_blank (bool) – If true, a blank token is added in between every character. Defaults to True.
+
+test_sentences (List[List]) – List of sentences with speaker and language information to be used for testing.
+
+language_ids_file (str) – Path to the language ids file.
+
+use_language_embedding (bool) – If true, language embedding is used. Defaults to False.
+
+Note
+
+Check TTS.tts.configs.shared_configs.BaseTTSConfig for the inherited parameters.
+
+Example
+
+from TTS.tts.configs.vits_config import VitsConfig
+config = VitsConfig()
+VitsArgs
+class TTS.tts.models.vits.VitsArgs(num_chars=100, out_channels=513, spec_segment_size=32, hidden_channels=192, hidden_channels_ffn_text_encoder=768, num_heads_text_encoder=2, num_layers_text_encoder=6, kernel_size_text_encoder=3, dropout_p_text_encoder=0.1, dropout_p_duration_predictor=0.5, kernel_size_posterior_encoder=5, dilation_rate_posterior_encoder=1, num_layers_posterior_encoder=16, kernel_size_flow=5, dilation_rate_flow=1, num_layers_flow=4, resblock_type_decoder='1', resblock_kernel_sizes_decoder=<factory>, resblock_dilation_sizes_decoder=<factory>, upsample_rates_decoder=<factory>, upsample_initial_channel_decoder=512, upsample_kernel_sizes_decoder=<factory>, periods_multi_period_discriminator=<factory>, use_sdp=True, noise_scale=1.0, inference_noise_scale=0.667, length_scale=1, noise_scale_dp=1.0, inference_noise_scale_dp=1.0, max_inference_len=None, init_discriminator=True, use_spectral_norm_disriminator=False, use_speaker_embedding=False, num_speakers=0, speakers_file=None, d_vector_file=None, speaker_embedding_channels=256, use_d_vector_file=False, d_vector_dim=0, detach_dp_input=True, use_language_embedding=False, embedded_language_dim=4, num_languages=0, language_ids_file=None, use_speaker_encoder_as_loss=False, speaker_encoder_config_path='', speaker_encoder_model_path='', condition_dp_on_speaker=True, freeze_encoder=False, freeze_DP=False, freeze_PE=False, freeze_flow_decoder=False, freeze_waveform_decoder=False, encoder_sample_rate=None, interpolate_z=True, reinit_DP=False, reinit_text_encoder=False)[source]
+VITS model arguments.
+
+Parameters:
+num_chars (int) – Number of characters in the vocabulary. Defaults to 100.
+
+out_channels (int) – Number of output channels of the decoder. Defaults to 513.
+
+spec_segment_size (int) – Decoder input segment size. Defaults to 32 (32 * hoplength = waveform length).
+
+hidden_channels (int) – Number of hidden channels of the model. Defaults to 192.
+
+hidden_channels_ffn_text_encoder (int) – Number of hidden channels of the feed-forward layers of the text encoder transformer. Defaults to 256.
+
+num_heads_text_encoder (int) – Number of attention heads of the text encoder transformer. Defaults to 2.
+
+num_layers_text_encoder (int) – Number of transformer layers in the text encoder. Defaults to 6.
+
+kernel_size_text_encoder (int) – Kernel size of the text encoder transformer FFN layers. Defaults to 3.
+
+dropout_p_text_encoder (float) – Dropout rate of the text encoder. Defaults to 0.1.
+
+dropout_p_duration_predictor (float) – Dropout rate of the duration predictor. Defaults to 0.1.
+
+kernel_size_posterior_encoder (int) – Kernel size of the posterior encoder’s WaveNet layers. Defaults to 5.
+
+dilatation_posterior_encoder (int) – Dilation rate of the posterior encoder’s WaveNet layers. Defaults to 1.
+
+num_layers_posterior_encoder (int) – Number of posterior encoder’s WaveNet layers. Defaults to 16.
+
+kernel_size_flow (int) – Kernel size of the Residual Coupling layers of the flow network. Defaults to 5.
+
+dilatation_flow (int) – Dilation rate of the Residual Coupling WaveNet layers of the flow network. Defaults to 1.
+
+num_layers_flow (int) – Number of Residual Coupling WaveNet layers of the flow network. Defaults to 6.
+
+resblock_type_decoder (str) – Type of the residual block in the decoder network. Defaults to “1”.
+
+resblock_kernel_sizes_decoder (List[int]) – Kernel sizes of the residual blocks in the decoder network. Defaults to [3, 7, 11].
+
+resblock_dilation_sizes_decoder (List[List[int]]) – Dilation sizes of the residual blocks in the decoder network. Defaults to [[1, 3, 5], [1, 3, 5], [1, 3, 5]].
+
+upsample_rates_decoder (List[int]) – Upsampling rates for each concecutive upsampling layer in the decoder network. The multiply of these values must be equal to the kop length used for computing spectrograms. Defaults to [8, 8, 2, 2].
+
+upsample_initial_channel_decoder (int) – Number of hidden channels of the first upsampling convolution layer of the decoder network. Defaults to 512.
+
+upsample_kernel_sizes_decoder (List[int]) – Kernel sizes for each upsampling layer of the decoder network. Defaults to [16, 16, 4, 4].
+
+periods_multi_period_discriminator (List[int]) – Periods values for Vits Multi-Period Discriminator. Defaults to [2, 3, 5, 7, 11].
+
+use_sdp (bool) – Use Stochastic Duration Predictor. Defaults to True.
+
+noise_scale (float) – Noise scale used for the sample noise tensor in training. Defaults to 1.0.
+
+inference_noise_scale (float) – Noise scale used for the sample noise tensor in inference. Defaults to 0.667.
+
+length_scale (float) – Scale factor for the predicted duration values. Smaller values result faster speech. Defaults to 1.
+
+noise_scale_dp (float) – Noise scale used by the Stochastic Duration Predictor sample noise in training. Defaults to 1.0.
+
+inference_noise_scale_dp (float) – Noise scale for the Stochastic Duration Predictor in inference. Defaults to 0.8.
+
+max_inference_len (int) – Maximum inference length to limit the memory use. Defaults to None.
+
+init_discriminator (bool) – Initialize the disciminator network if set True. Set False for inference. Defaults to True.
+
+use_spectral_norm_disriminator (bool) – Use spectral normalization over weight norm in the discriminator. Defaults to False.
+
+use_speaker_embedding (bool) – Enable/Disable speaker embedding for multi-speaker models. Defaults to False.
+
+num_speakers (int) – Number of speakers for the speaker embedding layer. Defaults to 0.
+
+speakers_file (str) – Path to the speaker mapping file for the Speaker Manager. Defaults to None.
+
+speaker_embedding_channels (int) – Number of speaker embedding channels. Defaults to 256.
+
+use_d_vector_file (bool) – Enable/Disable the use of d-vectors for multi-speaker training. Defaults to False.
+
+d_vector_file (List[str]) – List of paths to the files including pre-computed speaker embeddings. Defaults to None.
+
+d_vector_dim (int) – Number of d-vector channels. Defaults to 0.
+
+detach_dp_input (bool) – Detach duration predictor’s input from the network for stopping the gradients. Defaults to True.
+
+use_language_embedding (bool) – Enable/Disable language embedding for multilingual models. Defaults to False.
+
+embedded_language_dim (int) – Number of language embedding channels. Defaults to 4.
+
+num_languages (int) – Number of languages for the language embedding layer. Defaults to 0.
+
+language_ids_file (str) – Path to the language mapping file for the Language Manager. Defaults to None.
+
+use_speaker_encoder_as_loss (bool) – Enable/Disable Speaker Consistency Loss (SCL). Defaults to False.
+
+speaker_encoder_config_path (str) – Path to the file speaker encoder config file, to use for SCL. Defaults to “”.
+
+speaker_encoder_model_path (str) – Path to the file speaker encoder checkpoint file, to use for SCL. Defaults to “”.
+
+condition_dp_on_speaker (bool) – Condition the duration predictor on the speaker embedding. Defaults to True.
+
+freeze_encoder (bool) – Freeze the encoder weigths during training. Defaults to False.
+
+freeze_DP (bool) – Freeze the duration predictor weigths during training. Defaults to False.
+
+freeze_PE (bool) – Freeze the posterior encoder weigths during training. Defaults to False.
+
+freeze_flow_encoder (bool) – Freeze the flow encoder weigths during training. Defaults to False.
+
+freeze_waveform_decoder (bool) – Freeze the waveform decoder weigths during training. Defaults to False.
+
+encoder_sample_rate (int) – If not None this sample rate will be used for training the Posterior Encoder, flow, text_encoder and duration predictor. The decoder part (vocoder) will be trained with the config.audio.sample_rate. Defaults to None.
+
+interpolate_z (bool) – If encoder_sample_rate not None and this parameter True the nearest interpolation will be used to upsampling the latent variable z with the sampling rate encoder_sample_rate to the config.audio.sample_rate. If it is False you will need to add extra upsample_rates_decoder to match the shape. Defaults to True.
+
+Vits Model
+class TTS.tts.models.vits.Vits(config, ap=None, tokenizer=None, speaker_manager=None, language_manager=None)[source]
+VITS TTS model
+
+Paper::
+https://arxiv.org/pdf/2106.06103.pdf
+
+Paper Abstract::
+Several recent end-to-end text-to-speech (TTS) models enabling single-stage training and parallel sampling have been proposed, but their sample quality does not match that of two-stage TTS systems. In this work, we present a parallel endto-end TTS method that generates more natural sounding audio than current two-stage models. Our method adopts variational inference augmented with normalizing flows and an adversarial training process, which improves the expressive power of generative modeling. We also propose a stochastic duration predictor to synthesize speech with diverse rhythms from input text. With the uncertainty modeling over latent variables and the stochastic duration predictor, our method expresses the natural one-to-many relationship in which a text input can be spoken in multiple ways with different pitches and rhythms. A subjective human evaluation (mean opinion score, or MOS) on the LJ Speech, a single speaker dataset, shows that our method outperforms the best publicly available TTS systems and achieves a MOS comparable to ground truth.
+
+Check TTS.tts.configs.vits_config.VitsConfig for class arguments.
+
+Examples
+
+from TTS.tts.configs.vits_config import VitsConfig
+from TTS.tts.models.vits import Vits
+config = VitsConfig()
+model = Vits(config)
+export_onnx(output_path='coqui_vits.onnx', verbose=True)[source]
+Export model to ONNX format for inference
+
+Parameters:
+output_path (str) – Path to save the exported model.
+
+verbose (bool) – Print verbose information. Defaults to True.
+
+format_batch(batch)[source]
+Compute speaker, langugage IDs and d_vector for the batch if necessary.
+
+format_batch_on_device(batch)[source]
+Compute spectrograms on the device.
+
+forward(x, x_lengths, y, y_lengths, waveform, aux_input={'d_vectors': None, 'language_ids': None, 'speaker_ids': None})[source]
+Forward pass of the model.
+
+Parameters:
+x (torch.tensor) – Batch of input character sequence IDs.
+
+x_lengths (torch.tensor) – Batch of input character sequence lengths.
+
+y (torch.tensor) – Batch of input spectrograms.
+
+y_lengths (torch.tensor) – Batch of input spectrogram lengths.
+
+waveform (torch.tensor) – Batch of ground truth waveforms per sample.
+
+aux_input (dict, optional) – Auxiliary inputs for multi-speaker and multi-lingual training. Defaults to {“d_vectors”: None, “speaker_ids”: None, “language_ids”: None}.
+
+Returns:
+model outputs keyed by the output name.
+
+Return type:
+Dict
+
+Shapes
+
+x: 
+
+x_lengths: 
+
+y: 
+
+y_lengths: 
+
+waveform: 
+
+d_vectors: 
+
+speaker_ids: 
+
+language_ids: 
+
+Return Shapes:
+model_outputs: 
+
+alignments: 
+
+z: 
+
+z_p: 
+
+m_p: 
+
+logs_p: 
+
+m_q: 
+
+logs_q: 
+
+waveform_seg: 
+
+gt_spk_emb: 
+
+syn_spk_emb: 
+
+get_criterion()[source]
+Get criterions for each optimizer. The index in the output list matches the optimizer idx used in train_step()
+
+get_lr()[source]
+Set the initial learning rates for each optimizer.
+
+Returns:
+learning rates for each optimizer.
+
+Return type:
+List
+
+get_optimizer()[source]
+Initiate and return the GAN optimizers based on the config parameters. It returnes 2 optimizers in a list. First one is for the generator and the second one is for the discriminator. :returns: optimizers. :rtype: List
+
+get_scheduler(optimizer)[source]
+Set the schedulers for each optimizer.
+
+Parameters:
+optimizer (List[torch.optim.Optimizer]) – List of optimizers.
+
+Returns:
+Schedulers, one for each optimizer.
+
+Return type:
+List
+
+inference(x, aux_input={'d_vectors': None, 'durations': None, 'language_ids': None, 'speaker_ids': None, 'x_lengths': None})[source]
+Note
+
+To run in batch mode, provide x_lengths else model assumes that the batch size is 1.
+
+Shapes
+
+x: 
+
+x_lengths: 
+
+d_vectors: 
+
+speaker_ids: 
+
+Return Shapes:
+model_outputs: 
+
+alignments: 
+
+z: 
+
+z_p: 
+
+m_p: 
+
+logs_p: 
+
+inference_onnx(x, x_lengths=None, speaker_id=None, language_id=None)[source]
+ONNX inference
+
+inference_voice_conversion(reference_wav, speaker_id=None, d_vector=None, reference_speaker_id=None, reference_d_vector=None)[source]
+Inference for voice conversion
+
+Parameters:
+reference_wav (Tensor) – Reference wavform. Tensor of shape [B, T]
+
+speaker_id (Tensor) – speaker_id of the target speaker. Tensor of shape [B]
+
+d_vector (Tensor) – d_vector embedding of target speaker. Tensor of shape [B, C]
+
+reference_speaker_id (Tensor) – speaker_id of the reference_wav speaker. Tensor of shape [B]
+
+reference_d_vector (Tensor) – d_vector embedding of the reference_wav speaker. Tensor of shape [B, C]
+
+static init_from_config(config, samples=None, verbose=True)[source]
+Initiate model from config
+
+Parameters:
+config (VitsConfig) – Model config.
+
+samples (Union[List[List], List[Dict]]) – Training samples to parse speaker ids for training. Defaults to None.
+
+init_multilingual(config)[source]
+Initialize multilingual modules of a model.
+
+Parameters:
+config (Coqpit) – Model configuration.
+
+init_multispeaker(config)[source]
+Initialize multi-speaker modules of a model. A model can be trained either with a speaker embedding layer or with external d_vectors computed from a speaker encoder model.
+
+You must provide a speaker_manager at initialization to set up the multi-speaker modules.
+
+Parameters:
+config (Coqpit) – Model configuration.
+
+data (List, optional) – Dataset items to infer number of speakers. Defaults to None.
+
+init_upsampling()[source]
+Initialize upsampling modules of a model.
+
+load_checkpoint(config, checkpoint_path, eval=False, strict=True, cache=False)[source]
+Load the model checkpoint and setup for training or inference
+
+load_fairseq_checkpoint(config, checkpoint_dir, eval=False, strict=True)[source]
+Load VITS checkpoints released by fairseq here: https://github.com/facebookresearch/fairseq/tree/main/examples/mms Performs some changes for compatibility.
+
+Parameters:
+config (Coqpit) – 🐸TTS model config.
+
+checkpoint_dir (str) – Path to the checkpoint directory.
+
+eval (bool, optional) – Set to True for evaluation. Defaults to False.
+
+on_epoch_start(trainer)[source]
+Freeze layers at the beginning of an epoch
+
+on_init_end(trainer)[source]
+Reinit layes if needed
+
+test_run(assets)[source]
+Generic test run for tts models used by Trainer.
+
+You can override this for a different behaviour.
+
+Returns:
+Test figures and audios to be projected to Tensorboard.
+
+Return type:
+Tuple[Dict, Dict]
+
+train_log(batch, outputs, logger, assets, steps)[source]
+Create visualizations and waveform examples.
+
+For example, here you can plot spectrograms and generate sample sample waveforms from these spectrograms to be projected onto Tensorboard.
+
+Parameters:
+ap (AudioProcessor) – audio processor used at training.
+
+batch (Dict) – Model inputs used at the previous training step.
+
+outputs (Dict) – Model outputs generated at the previoud training step.
+
+Returns:
+training plots and output waveform.
+
+Return type:
+Tuple[Dict, np.ndarray]
+
+train_step(batch, criterion, optimizer_idx)[source]
+Perform a single training step. Run the model forward pass and compute losses.
+
+Parameters:
+batch (Dict) – Input tensors.
+
+criterion (nn.Module) – Loss layer designed for the model.
+
+optimizer_idx (int) – Index of optimizer to use. 0 for the generator and 1 for the discriminator networks.
+
+Returns:
+Model ouputs and computed losses.
+
+Return type:
+Tuple[Dict, Dict]
+
+voice_conversion(y, y_lengths, speaker_cond_src, speaker_cond_tgt)[source]
+Forward pass for voice conversion
+
+TODO: create an end-point for voice conversion
+
+Parameters:
+y (Tensor) – Reference spectrograms. Tensor of shape [B, T, C]
+
+y_lengths (Tensor) – Length of each reference spectrogram. Tensor of shape [B]
+
+speaker_cond_src (Tensor) – Reference speaker ID. Tensor of shape [B,]
+
+speaker_cond_tgt (Tensor) – Target speaker ID. Tensor of shape [B,]

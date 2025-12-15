@@ -1,0 +1,295 @@
+Training a Model
+Decide the model you want to use.
+
+Each model has a different set of pros and cons that define the run-time efficiency and the voice quality. It is up to you to decide what model serves your needs. Other than referring to the papers, one easy way is to test the 🐸TTS community models and see how fast and good each of the models. Or you can start a discussion on our communication channels.
+
+Understand the configuration, its fields and values.
+
+For instance, if you want to train a Tacotron model then see the TacotronConfig class and make sure you understand it.
+
+Check the recipes.
+
+Recipes are located under TTS/recipes/. They do not promise perfect models but they provide a good start point for Nervous Beginners. A recipe for GlowTTS using LJSpeech dataset looks like below. Let’s be creative and call this train_glowtts.py.
+
+import os
+
+# Trainer: Where the ✨️ happens.
+# TrainingArgs: Defines the set of arguments of the Trainer.
+from trainer import Trainer, TrainerArgs
+
+# GlowTTSConfig: all model related values for training, validating and testing.
+from TTS.tts.configs.glow_tts_config import GlowTTSConfig
+
+# BaseDatasetConfig: defines name, formatter and path of the dataset.
+from TTS.tts.configs.shared_configs import BaseDatasetConfig
+from TTS.tts.datasets import load_tts_samples
+from TTS.tts.models.glow_tts import GlowTTS
+from TTS.tts.utils.text.tokenizer import TTSTokenizer
+from TTS.utils.audio import AudioProcessor
+
+# we use the same path as this script as our training folder.
+output_path = os.path.dirname(os.path.abspath(__file__))
+
+# DEFINE DATASET CONFIG
+# Set LJSpeech as our target dataset and define its path.
+# You can also use a simple Dict to define the dataset and pass it to your custom formatter.
+dataset_config = BaseDatasetConfig(
+    formatter="ljspeech", meta_file_train="metadata.csv", path=os.path.join(output_path, "../LJSpeech-1.1/")
+)
+
+# INITIALIZE THE TRAINING CONFIGURATION
+# Configure the model. Every config class inherits the BaseTTSConfig.
+config = GlowTTSConfig(
+    batch_size=32,
+    eval_batch_size=16,
+    num_loader_workers=4,
+    num_eval_loader_workers=4,
+    run_eval=True,
+    test_delay_epochs=-1,
+    epochs=1000,
+    text_cleaner="phoneme_cleaners",
+    use_phonemes=True,
+    phoneme_language="en-us",
+    phoneme_cache_path=os.path.join(output_path, "phoneme_cache"),
+    print_step=25,
+    print_eval=False,
+    mixed_precision=True,
+    output_path=output_path,
+    datasets=[dataset_config],
+)
+
+# INITIALIZE THE AUDIO PROCESSOR
+# Audio processor is used for feature extraction and audio I/O.
+# It mainly serves to the dataloader and the training loggers.
+ap = AudioProcessor.init_from_config(config)
+
+# INITIALIZE THE TOKENIZER
+# Tokenizer is used to convert text to sequences of token IDs.
+# If characters are not defined in the config, default characters are passed to the config
+tokenizer, config = TTSTokenizer.init_from_config(config)
+
+# LOAD DATA SAMPLES
+# Each sample is a list of ```[text, audio_file_path, speaker_name]```
+# You can define your custom sample loader returning the list of samples.
+# Or define your custom formatter and pass it to the `load_tts_samples`.
+# Check `TTS.tts.datasets.load_tts_samples` for more details.
+train_samples, eval_samples = load_tts_samples(
+    dataset_config,
+    eval_split=True,
+    eval_split_max_size=config.eval_split_max_size,
+    eval_split_size=config.eval_split_size,
+)
+
+# INITIALIZE THE MODEL
+# Models take a config object and a speaker manager as input
+# Config defines the details of the model like the number of layers, the size of the embedding, etc.
+# Speaker manager is used by multi-speaker models.
+model = GlowTTS(config, ap, tokenizer, speaker_manager=None)
+
+# INITIALIZE THE TRAINER
+# Trainer provides a generic API to train all the 🐸TTS models with all its perks like mixed-precision training,
+# distributed training, etc.
+trainer = Trainer(
+    TrainerArgs(), config, output_path, model=model, train_samples=train_samples, eval_samples=eval_samples
+)
+
+# AND... 3,2,1... 🚀
+trainer.fit()
+You need to change fields of the BaseDatasetConfig to match your dataset and then update GlowTTSConfig fields as you need.
+
+Run the training.
+
+$ CUDA_VISIBLE_DEVICES="0" python train_glowtts.py
+Notice that we set the GPU for the training by CUDA_VISIBLE_DEVICES environment variable. To see available GPUs on your system, you can use nvidia-smi command on the terminal.
+
+If you like to run a multi-gpu training using DDP back-end,
+
+$ CUDA_VISIBLE_DEVICES="0, 1, 2" python -m trainer.distribute --script <path_to_your_script>/train_glowtts.py
+The example above runs a multi-gpu training using GPUs 0, 1, 2.
+
+Beginning of a training log looks like this:
+
+> Experiment folder: /your/output_path/-Juni-23-2021_02+52-78899209
+> Using CUDA:  True
+> Number of GPUs:  1
+> Setting up Audio Processor...
+| > sample_rate:22050
+| > resample:False
+| > num_mels:80
+| > min_level_db:-100
+| > frame_shift_ms:None
+| > frame_length_ms:None
+| > ref_level_db:20
+| > fft_size:1024
+| > power:1.5
+| > preemphasis:0.0
+| > griffin_lim_iters:60
+| > signal_norm:True
+| > symmetric_norm:True
+| > mel_fmin:0
+| > mel_fmax:None
+| > spec_gain:20.0
+| > stft_pad_mode:reflect
+| > max_norm:4.0
+| > clip_norm:True
+| > do_trim_silence:True
+| > trim_db:45
+| > do_sound_norm:False
+| > stats_path:None
+| > base:10
+| > hop_length:256
+| > win_length:1024
+| > Found 13100 files in /your/dataset/path/ljspeech/LJSpeech-1.1
+> Using model: glow_tts
+
+> Model has 28356129 parameters
+
+> EPOCH: 0/1000
+
+> DataLoader initialization
+| > Use phonemes: False
+| > Number of instances : 12969
+| > Max length sequence: 187
+| > Min length sequence: 5
+| > Avg length sequence: 98.3403500655409
+| > Num. instances discarded by max-min (max=500, min=3) seq limits: 0
+| > Batch group size: 0.
+
+> TRAINING (2021-06-23 14:52:54)
+
+--> STEP: 0/405 -- GLOBAL_STEP: 0
+    | > loss: 2.34670
+    | > log_mle: 1.61872
+    | > loss_dur: 0.72798
+    | > align_error: 0.52744
+    | > current_lr: 2.5e-07
+    | > grad_norm: 5.036039352416992
+    | > step_time: 5.8815
+    | > loader_time: 0.0065
+...
+Run the Tensorboard.
+
+$ tensorboard --logdir=<path to your training directory>
+Monitor the training progress.
+
+On the terminal and Tensorboard, you can monitor the progress of your model. Also Tensorboard provides certain figures and sample outputs.
+
+Note that different models have different metrics, visuals and outputs.
+
+You should also check the FAQ page for common problems and solutions that occur in a training.
+
+Use your best model for inference.
+
+Use tts or tts-server commands for testing your models.
+
+$ tts --text "Text for TTS" \
+      --model_path path/to/checkpoint_x.pth \
+      --config_path path/to/config.json \
+      --out_path folder/to/save/output.wav
+Return to the step 1 and reiterate for training a vocoder model.
+
+In the example above, we trained a GlowTTS model, but the same workflow applies to all the other 🐸TTS models.
+
+Multi-speaker Training
+Training a multi-speaker model is mostly the same as training a single-speaker model. You need to specify a couple of configuration parameters, initiate a SpeakerManager instance and pass it to the model.
+
+The configuration parameters define whether you want to train the model with a speaker-embedding layer or pre-computed d-vectors. For using d-vectors, you first need to compute the d-vectors using the SpeakerEncoder.
+
+The same Glow-TTS model above can be trained on a multi-speaker VCTK dataset with the script below.
+
+import os
+
+from trainer import Trainer, TrainerArgs
+
+from TTS.config.shared_configs import BaseAudioConfig
+from TTS.tts.configs.glow_tts_config import GlowTTSConfig
+from TTS.tts.configs.shared_configs import BaseDatasetConfig
+from TTS.tts.datasets import load_tts_samples
+from TTS.tts.models.glow_tts import GlowTTS
+from TTS.tts.utils.speakers import SpeakerManager
+from TTS.tts.utils.text.tokenizer import TTSTokenizer
+from TTS.utils.audio import AudioProcessor
+
+# set experiment paths
+output_path = os.path.dirname(os.path.abspath(__file__))
+dataset_path = os.path.join(output_path, "../VCTK/")
+
+# download the dataset if not downloaded
+if not os.path.exists(dataset_path):
+    from TTS.utils.downloaders import download_vctk
+
+    download_vctk(dataset_path)
+
+# define dataset config
+dataset_config = BaseDatasetConfig(formatter="vctk", meta_file_train="", path=dataset_path)
+
+# define audio config
+# ❗ resample the dataset externally using `TTS/bin/resample.py` and set `resample=False` for faster training
+audio_config = BaseAudioConfig(sample_rate=22050, resample=True, do_trim_silence=True, trim_db=23.0)
+
+# define model config
+config = GlowTTSConfig(
+    batch_size=64,
+    eval_batch_size=16,
+    num_loader_workers=4,
+    num_eval_loader_workers=4,
+    precompute_num_workers=4,
+    run_eval=True,
+    test_delay_epochs=-1,
+    epochs=1000,
+    text_cleaner="phoneme_cleaners",
+    use_phonemes=True,
+    phoneme_language="en-us",
+    phoneme_cache_path=os.path.join(output_path, "phoneme_cache"),
+    print_step=25,
+    print_eval=False,
+    mixed_precision=True,
+    output_path=output_path,
+    datasets=[dataset_config],
+    use_speaker_embedding=True,
+    min_text_len=0,
+    max_text_len=500,
+    min_audio_len=0,
+    max_audio_len=500000,
+)
+
+# INITIALIZE THE AUDIO PROCESSOR
+# Audio processor is used for feature extraction and audio I/O.
+# It mainly serves to the dataloader and the training loggers.
+ap = AudioProcessor.init_from_config(config)
+
+# INITIALIZE THE TOKENIZER
+# Tokenizer is used to convert text to sequences of token IDs.
+# If characters are not defined in the config, default characters are passed to the config
+tokenizer, config = TTSTokenizer.init_from_config(config)
+
+# LOAD DATA SAMPLES
+# Each sample is a list of ```[text, audio_file_path, speaker_name]```
+# You can define your custom sample loader returning the list of samples.
+# Or define your custom formatter and pass it to the `load_tts_samples`.
+# Check `TTS.tts.datasets.load_tts_samples` for more details.
+train_samples, eval_samples = load_tts_samples(
+    dataset_config,
+    eval_split=True,
+    eval_split_max_size=config.eval_split_max_size,
+    eval_split_size=config.eval_split_size,
+)
+
+# init speaker manager for multi-speaker training
+# it maps speaker-id to speaker-name in the model and data-loader
+speaker_manager = SpeakerManager()
+speaker_manager.set_ids_from_data(train_samples + eval_samples, parse_key="speaker_name")
+config.num_speakers = speaker_manager.num_speakers
+
+# init model
+model = GlowTTS(config, ap, tokenizer, speaker_manager=speaker_manager)
+
+# INITIALIZE THE TRAINER
+# Trainer provides a generic API to train all the 🐸TTS models with all its perks like mixed-precision training,
+# distributed training, etc.
+trainer = Trainer(
+    TrainerArgs(), config, output_path, model=model, train_samples=train_samples, eval_samples=eval_samples
+)
+
+# AND... 3,2,1... 🚀
+trainer.fit()

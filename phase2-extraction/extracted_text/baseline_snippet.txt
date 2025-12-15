@@ -1,1 +1,0 @@
-This is a short sample passage for baseline verification. It keeps the test lightweight while still exercising the pipeline phases and audio synthesis without heavy compute. This is a short sample passage for baseline verification. It keeps the test lightweight while still exercising the pipeline phases and audio synthesis without heavy compute.

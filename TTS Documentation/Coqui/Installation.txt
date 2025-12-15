@@ -1,0 +1,192 @@
+Installation
+Installation
+🐸TTS supports python >=3.7 <3.11.0 and tested on Ubuntu 18.10, 19.10, 20.10.
+
+Using pip
+pip is recommended if you want to use 🐸TTS only for inference.
+
+You can install from PyPI as follows:
+
+pip install TTS  # from PyPI
+Or install from Github:
+
+pip install git+https://github.com/coqui-ai/TTS  # from Github
+Installing From Source
+This is recommended for development and more control over 🐸TTS.
+
+git clone https://github.com/coqui-ai/TTS/
+cd TTS
+make system-deps  # only on Linux systems.
+make install
+On Windows
+If you are on Windows, 👑@GuyPaddock wrote installation instructions [here](https://stackoverflow.com/questions/66726331/
+
+Here's what to install/do:
+
+Download and install Python 3.8 (not 3.9+) for Windows. During the installation, ensure that you:
+Opt to install it for all users.
+Opt to add Python to the PATH.
+Download and install CUDA Toolkit 10.1 (not 11.0+).
+Download "cuDNN v7.6.5 (November 5th, 2019), for CUDA 10.1" (not cuDNN v8+), extract it, and then copy what's inside the cuda folder into C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.1.
+Download the latest 64-bit version of eSpeak NG (no version constraints :-) ).
+Download the latest 64-bit version of Git for Windows (no version constraints :-) ).
+Open a PowerShell prompt to a folder where you'd like to install Coqui TTS.
+Run git clone https://github.com/coqui-ai/TTS.git.
+Run cd TTS.
+Run python -m venv ..
+Run .\Scripts\pip install -e ..
+Run the following command (this differs from the command you get from the PyTorch website because of a known issue):
+.\Scripts\pip install torch==1.8.0+cu101 torchvision==0.9.0+cu101 torchaudio===0.8.0 -f https://download.pytorch.org/whl/torch_stable.html
+Put the following into a script called "test_cuda.py" in the TTS folder:
+import torch
+x = torch.rand(5, 3)
+print(x)
+print(torch.cuda.is_available())
+Run the script via .\Scripts\python ./test_cuda.py and confirm the output looks like this (the first part should have just random numbers, but the last line must read True; if it does not, CUDA is not installed properly):
+tensor([[0.2141, 0.7808, 0.9298],
+        [0.3107, 0.8569, 0.9562],
+        [0.2878, 0.7515, 0.5547],
+        [0.5007, 0.6904, 0.4136],
+        [0.2443, 0.4158, 0.4245]])
+True
+Put the following into a script called "train.bat" in the TTS folder, and then customize it for your configuration file:
+set PYTHONIOENCODING=UTF-8
+set PYTHONLEGACYWINDOWSSTDIO=UTF-8
+set PHONEMIZER_ESPEAK_PATH=C:/Program Files/eSpeak NG/espeak-ng.exe
+
+.\Scripts\python.exe ./TTS/bin/train_tacotron.py --config_path "C:/path/to/your/config.json"
+Run the script via .\train.bat.
+If you are using a different model than Tacotron or need to pass other parameters into the training script, feel free to further customize train.bat.
+
+If you are just getting started with TTS training in general, take a peek at How do I get started training a custom voice model with Mozilla TTS on Ubuntu 20.04?.
+
+Share
+Improve this answer
+Follow
+answered Mar 20, 2021 at 20:48
+GuyPaddock's user avatar
+GuyPaddock
+2,62722 gold badges3131 silver badges3434 bronze badges
+Sign up to request clarification or add additional context in comments.
+
+7 Comments
+
+
+GuyPaddock
+Over a year ago
+If you get "UnicodeEncodeError: ‘charmap’ codec can’t encode characters in position : character maps to <undefined>" during training, you may need to apply changes from github.com/coqui-ai/TTS/pull/394
+
+para
+Over a year ago
+i had to additionally do .\Scripts\pip install networkx==2.8.8 because gruut requires networkx <3 and by the given command above by default, networkx was installed in version 3
+
+Tessa Painter
+Over a year ago
+I have followed these steps very carefully, but I'm still getting False to CUDA being available. I've moved the folder as well as installed the CUDA toolkit. My GPU is a 1070 Ti if that matters. Any idea?
+
+BrunoLM
+Over a year ago
+Any chance this could get an update? There are too many conflicting versions with packages now.
+
+GuyPaddock
+Over a year ago
+I haven't been doing anything with TTS since 2021 and I have an older card so I don't have the context for the updates, but if someone has updates to suggest (or even a video) I would be happy to update these steps.
+Add a comment
+|
+Show 2 more comments
+15
+
+For those looking for an updated solution, this is how I adapted GuyPaddock's instructions to run CoquiTTS training for voice cloning on Windows 11 with CUDA 11:
+
+Download and install Python 3.11
+Download and install CUDA Toolkit 11.8
+Download CUDNN v9.0.0 for CUDA 11.8, extract, then copy folder contents into C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8
+Added the following to a new system variable named CUDA_PATH: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8
+Add the following to system variable Path and a new system variable CUDNN:
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8;
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin;
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\include;
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\lib\x64;
+Download and install the latest 64-bit version of eSpeak NG
+
+Download and install the latest 64-bit version of Git for Windows
+
+Open a PowerShell prompt to a new working directory Run git clone https://github.com/coqui-ai/TTS.git
+
+Run cd TTS
+
+Run python -m venv .
+
+Run .\Scripts\pip install -e .
+
+Run the following command .\Scripts\pip install torch==2.2.0+cu118 torchvision==0.17.0+cu118 torchaudio==2.2.0 -f https://download.pytorch.org/whl/torch_stable.html
+
+Create script main.py with the following code:
+
+import torch
+from TTS.api import TTS
+
+# Check if CUDA is installed
+if torch.cuda.is_available():
+    print("CUDA installed successfully\n") 
+else:
+    print("CUDA not properly installed. Stopping process...")
+    quit()
+
+# Print available TTS models
+view_models = input("View models? [y/n]\n")
+if view_models == "y":
+tts_manager = TTS().list_models()
+all_models = tts_manager.list_models()
+print("TTS models:\n", all_models, "\n", sep = "")
+
+# Prompt model selection
+model = input("Enter model:\n")
+# for example, tts_models/multilingual/multi-dataset/xtts_v2
+
+# Example voice cloning with selected model
+tts = TTS((model), progress_bar=True).to(device)
+tts.tts_to_file("This is a voice cloning test", speaker_wav="train-audio.wav",
+                language="en", file_path="output.wav")
+Run the script via .\Scripts\python ./main.py
+Share
+Improve this answer
+Follow
+edited Aug 18, 2024 at 17:34
+SWPhantom's user avatar
+SWPhantom
+68855 silver badges1919 bronze badges
+answered Mar 11, 2024 at 1:15
+Noah J's user avatar
+Noah J
+17311 silver badge66 bronze badges
+Comments
+
+1
+
+2025: This worked for me on Windows 11 with Cuda 12.7 via powershell
+conda create -n coqui-tts python=3.10 -y
+conda activate coqui-tts
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+pip install TTS
+Test with:
+
+TTS --text "Hello, this is a Coqui TTS test from PowerShell." --model_name "tts_models/en/ljspeech/tacotron2-DDC" --out_path "test.wav"
+Share
+Improve this answer
+Follow
+edited Sep 23 at 9:12
+answered Sep 18 at 13:16
+Paul George's user avatar
+Paul George
+1,82711 gold badge2020 silver badges3333 bronze badges
+2 Comments
+
+
+Alexey Podlasov
+Sep 21 at 10:55
+Maybe 'conda create -n' not 'conda create -b'?
+
+Paul George
+Sep 23 at 9:12
+Yes, thank you. Updated!
