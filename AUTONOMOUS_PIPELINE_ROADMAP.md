@@ -5,7 +5,60 @@
 
 ---
 
-## Latest Updates (2025-12-12)
+## Latest Updates (2025-12-16)
+
+### ✅ CRITICAL: XTTS Audio Truncation/Duplication Fix (Comprehensive)
+
+**Problem Identified:**
+Users experienced systematic audio truncation and duplication with XTTS, affecting both voice cloning AND built-in speakers.
+
+**Multiple Root Causes Identified:**
+
+1. **Voice Cloning Double-Split** (Primary)
+   - `model.tts()` defaults `split_sentences=True`
+   - Our external splitting was being undermined by XTTS's internal splitting
+   - **Fix:** Added `split_sentences=False` to both voice cloning paths
+
+2. **First Sentence Never Split** (Secondary - CRITICAL BUG)
+   - `_split_text_for_safe_synthesis()` had logic bug:
+   ```python
+   # OLD CODE - BUG: First sentence never checked!
+   if current_segment and len(current_segment) + len(sentence) + 1 > max_chars:
+       # Only entered when current_segment is non-empty
+   ```
+   - First sentence of each chunk was NEVER split, even if 359 chars!
+   - This triggered XTTS warning: `[!] Warning: The text length exceeds the character limit of 250`
+   - **Fix:** Check sentence length BEFORE adding to current_segment
+
+3. **Missing Safety Checks**
+   - No final pass to catch oversized segments
+   - **Fix:** Added safety loop to force-split any remaining >280 char segments
+
+4. **Built-in Speakers Missing Inference Parameters**
+   - `tts_model.inference()` was not explicitly setting `repetition_penalty`
+   - **Fix:** Added explicit `repetition_penalty=10.0`, `length_penalty=1.0`, `top_k=50`, `top_p=0.85`
+
+**Diagnostic Logging Added:**
+- Duration ratio checks per segment (warn if >2x or <0.3x expected)
+- Total synthesis summary with ratio analysis
+- Helps identify truncation/duplication at segment level
+
+**Files Modified:**
+- `phase4_tts/engines/xtts_engine.py` - Comprehensive fixes
+
+**Test Added:**
+- `phase4_tts/tests/test_xtts_no_duplication.py` - Verifies split_sentences=False is present
+
+**Known Remaining Issue:**
+Log analysis revealed possible **Phase 3 chunk content duplication** (same text appearing in consecutive chunks with identical segment length patterns). This is a separate issue requiring investigation in Phase 3 chunking or Phase 2 text extraction.
+
+**Sources:**
+- [Coqui TTS Documentation](https://docs.coqui.ai/en/latest/models/xtts.html)
+- [GitHub Issue #3826](https://github.com/coqui-ai/TTS/issues/3826)
+
+---
+
+## Updates (2025-12-12)
 
 ### ✅ CRITICAL: XTTS Engine Segment-Level Synthesis (Anti-Repetition Fix)
 

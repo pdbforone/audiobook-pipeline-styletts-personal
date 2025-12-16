@@ -121,21 +121,28 @@ class XTTSEngine(TTSEngine):
         current_segment = ""
 
         for sentence in sentences:
-            # If adding this sentence would exceed limit
-            if current_segment and len(current_segment) + len(sentence) + 1 > max_chars:
-                # Save current segment
-                if current_segment:
+            # FIRST: Check if the sentence itself is too long and needs splitting
+            # This must happen BEFORE we try to add it to current_segment
+            if len(sentence) > max_chars:
+                # Save any accumulated segment first
+                if current_segment.strip():
                     segments.append(current_segment.strip())
+                    current_segment = ""
 
-                # If the sentence itself is too long, split it further
-                if len(sentence) > max_chars:
-                    sub_segments = self._split_long_sentence(sentence, max_chars)
+                # Split the long sentence into sub-segments
+                sub_segments = self._split_long_sentence(sentence, max_chars)
+                if sub_segments:
                     # Add all but the last as complete segments
                     segments.extend(sub_segments[:-1])
                     # Keep the last one as the start of next segment
-                    current_segment = sub_segments[-1] if sub_segments else ""
-                else:
-                    current_segment = sentence
+                    current_segment = sub_segments[-1]
+                continue
+
+            # If adding this sentence would exceed limit
+            if current_segment and len(current_segment) + len(sentence) + 1 > max_chars:
+                # Save current segment and start fresh
+                segments.append(current_segment.strip())
+                current_segment = sentence
             else:
                 # Add sentence to current segment
                 if current_segment:
@@ -147,14 +154,42 @@ class XTTSEngine(TTSEngine):
         if current_segment.strip():
             segments.append(current_segment.strip())
 
+        # SAFETY CHECK: Ensure ALL segments are under the limit
+        # If any are still too long, force-split them at word boundaries
+        final_segments = []
+        for seg in segments:
+            if len(seg) <= XTTS_MAX_SEGMENT_CHARS:
+                final_segments.append(seg)
+            else:
+                # Force split at word boundary - this shouldn't happen but safety first
+                logger.warning(
+                    f"Segment still too long ({len(seg)} chars), force-splitting: '{seg[:50]}...'"
+                )
+                words = seg.split()
+                current = ""
+                for word in words:
+                    if current and len(current) + len(word) + 1 > max_chars:
+                        final_segments.append(current.strip())
+                        current = word
+                    else:
+                        current = f"{current} {word}".strip() if current else word
+                if current.strip():
+                    final_segments.append(current.strip())
+
         # Log what we did
-        if len(segments) > 1:
+        if len(final_segments) > 1:
+            oversized = [len(s) for s in final_segments if len(s) > XTTS_SAFE_SEGMENT_CHARS]
+            if oversized:
+                logger.warning(
+                    f"Pre-split text into {len(final_segments)} segments but {len(oversized)} "
+                    f"exceed soft limit ({XTTS_SAFE_SEGMENT_CHARS}): {oversized}"
+                )
             logger.info(
-                f"Pre-split text into {len(segments)} segments for safe XTTS synthesis "
-                f"(original: {len(text)} chars, segments: {[len(s) for s in segments]})"
+                f"Pre-split text into {len(final_segments)} segments for safe XTTS synthesis "
+                f"(original: {len(text)} chars, segments: {[len(s) for s in final_segments]})"
             )
 
-        return segments
+        return final_segments
 
     def _split_long_sentence(self, sentence: str, max_chars: int) -> List[str]:
         """
@@ -448,12 +483,19 @@ class XTTSEngine(TTSEngine):
 
         # Synthesize each segment individually
         audio_segments = []
+        total_expected_dur = 0.0
+        total_actual_dur = 0.0
+
         for i, segment_text in enumerate(segments):
             try:
+                # Estimate expected duration (~15 chars/second for speech)
+                expected_dur = len(segment_text) / 15.0
+                total_expected_dur += expected_dur
+
                 if len(segments) > 1:
                     logger.debug(
                         f"Synthesizing segment {i+1}/{len(segments)}: "
-                        f"{len(segment_text)} chars"
+                        f"{len(segment_text)} chars, expected ~{expected_dur:.1f}s"
                     )
 
                 wav = self._synthesize_single_segment(
@@ -475,6 +517,29 @@ class XTTSEngine(TTSEngine):
                 if audio.ndim > 1:
                     audio = audio.mean(axis=0)
 
+                # Calculate actual duration and check for anomalies
+                actual_dur = len(audio) / self.sample_rate_val
+                total_actual_dur += actual_dur
+
+                # Warn if duration is suspiciously long (>2x expected) or short (<0.3x)
+                ratio = actual_dur / expected_dur if expected_dur > 0 else 0
+                if ratio > 2.0:
+                    logger.warning(
+                        f"Segment {i+1}/{len(segments)} SUSPICIOUSLY LONG: "
+                        f"{actual_dur:.1f}s vs expected {expected_dur:.1f}s (ratio {ratio:.1f}x) - "
+                        f"possible duplication. Text: '{segment_text[:50]}...'"
+                    )
+                elif ratio < 0.3:
+                    logger.warning(
+                        f"Segment {i+1}/{len(segments)} SUSPICIOUSLY SHORT: "
+                        f"{actual_dur:.1f}s vs expected {expected_dur:.1f}s (ratio {ratio:.1f}x) - "
+                        f"possible truncation. Text: '{segment_text[:50]}...'"
+                    )
+                elif len(segments) > 1:
+                    logger.debug(
+                        f"Segment {i+1}/{len(segments)} OK: {actual_dur:.1f}s (ratio {ratio:.1f}x)"
+                    )
+
                 audio_segments.append(audio)
 
             except Exception as e:
@@ -483,6 +548,18 @@ class XTTSEngine(TTSEngine):
                 )
                 # Re-raise - let caller handle the failure
                 raise
+
+        # Log total duration summary
+        if len(segments) > 1:
+            total_ratio = total_actual_dur / total_expected_dur if total_expected_dur > 0 else 0
+            logger.info(
+                f"XTTS synthesis complete: {len(segments)} segments, "
+                f"total {total_actual_dur:.1f}s (expected ~{total_expected_dur:.1f}s, ratio {total_ratio:.1f}x)"
+            )
+            if total_ratio > 1.8:
+                logger.warning(
+                    f"Total audio duration is {total_ratio:.1f}x expected - possible duplication issue!"
+                )
 
         # Concatenate all segments with brief silence gaps
         combined_audio = self._concatenate_audio_segments(audio_segments)
@@ -507,6 +584,12 @@ class XTTSEngine(TTSEngine):
 
         This method handles the actual XTTS API call for a single segment
         that is known to be within safe limits.
+
+        CRITICAL: All synthesis calls use split_sentences=False (for model.tts())
+        or enable_text_splitting=False (for tts_model.inference()) to prevent
+        XTTS from doing its own internal sentence splitting. Our external
+        splitting via _split_text_for_safe_synthesis() already handles this,
+        and double-splitting causes audio truncation and duplication issues.
 
         Args:
             text: Text segment to synthesize (should be < 250 chars)
@@ -544,8 +627,12 @@ class XTTSEngine(TTSEngine):
                 speaker_embedding=speaker_embedding,
                 temperature=temperature,
                 speed=speed,
-                # Enable text splitting for safety (handles any remaining long text)
-                enable_text_splitting=False,  # We already split externally
+                # Prevent repetition/truncation issues
+                repetition_penalty=10.0,  # Default, but explicit to ensure it's used
+                length_penalty=1.0,
+                top_k=50,
+                top_p=0.85,
+                enable_text_splitting=False,  # We already split externally - CRITICAL
             )
 
             # Result is a dict with 'wav' key
@@ -565,6 +652,7 @@ class XTTSEngine(TTSEngine):
                 language=language,
                 speed=speed,
                 temperature=temperature,
+                split_sentences=False,  # We already split externally - prevent double splitting
             )
 
         # Mode 3: Fallback - try default reference if available
@@ -578,6 +666,7 @@ class XTTSEngine(TTSEngine):
                 language=language,
                 speed=speed,
                 temperature=temperature,
+                split_sentences=False,  # We already split externally - prevent double splitting
             )
 
         # Mode 4: Last resort - this will likely fail but let XTTS try
