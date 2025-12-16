@@ -150,6 +150,121 @@ def _get_llama_reasoner():
     return _LLAMA_REASONER if _LLAMA_REASONER else None
 
 
+# Ollama/LLM startup state
+_OLLAMA_STATUS = None  # None = unchecked, dict = status
+
+
+def ensure_ollama_ready(model: str = "llama3.1:8b-instruct-q4_K_M") -> dict:
+    """
+    Ensure Ollama is ready for LLM-powered features (chunking, reasoning, etc).
+
+    This runs at orchestrator startup to:
+    1. Check if ollama Python package is installed
+    2. Check if Ollama server is running (start if not)
+    3. Check if required model is available (pull if not)
+
+    Returns:
+        dict with keys: available (bool), model (str), message (str)
+    """
+    global _OLLAMA_STATUS
+
+    if _OLLAMA_STATUS is not None:
+        return _OLLAMA_STATUS
+
+    status = {"available": False, "model": model, "message": ""}
+
+    # Step 1: Check if ollama Python package is installed
+    try:
+        import ollama
+    except ImportError:
+        status["message"] = (
+            "❌ Ollama Python package not installed. "
+            "Run: pip install ollama"
+        )
+        logger.warning(status["message"])
+        _OLLAMA_STATUS = status
+        return status
+
+    # Step 2: Check if Ollama server is running
+    try:
+        models = ollama.list()
+        logger.debug(f"Ollama server is running, {len(models.get('models', []))} models available")
+    except Exception as e:
+        # Try to start Ollama server
+        logger.info("🔄 Ollama server not running, attempting to start...")
+        try:
+            import subprocess
+            import time
+
+            # Start ollama serve in background
+            subprocess.Popen(
+                ["ollama", "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+            # Wait for server to start
+            for i in range(10):
+                time.sleep(1)
+                try:
+                    ollama.list()
+                    logger.info("✅ Ollama server started successfully")
+                    break
+                except Exception:
+                    continue
+            else:
+                status["message"] = (
+                    "❌ Could not start Ollama server. "
+                    "Run manually: ollama serve"
+                )
+                logger.warning(status["message"])
+                _OLLAMA_STATUS = status
+                return status
+        except FileNotFoundError:
+            status["message"] = (
+                "❌ Ollama not installed. "
+                "Install from: https://ollama.ai"
+            )
+            logger.warning(status["message"])
+            _OLLAMA_STATUS = status
+            return status
+
+    # Step 3: Check if required model is available
+    try:
+        models = ollama.list()
+        model_names = [m.get("name", "").split(":")[0] for m in models.get("models", [])]
+        model_base = model.split(":")[0]
+
+        if model_base not in model_names and model not in [m.get("name", "") for m in models.get("models", [])]:
+            logger.info(f"🔄 Model '{model}' not found, pulling...")
+            try:
+                # Pull model (this can take a while)
+                ollama.pull(model)
+                logger.info(f"✅ Model '{model}' pulled successfully")
+            except Exception as e:
+                status["message"] = (
+                    f"❌ Failed to pull model '{model}': {e}. "
+                    f"Run manually: ollama pull {model}"
+                )
+                logger.warning(status["message"])
+                _OLLAMA_STATUS = status
+                return status
+        else:
+            logger.debug(f"Model '{model}' is available")
+    except Exception as e:
+        status["message"] = f"❌ Error checking models: {e}"
+        logger.warning(status["message"])
+        _OLLAMA_STATUS = status
+        return status
+
+    # All checks passed
+    status["available"] = True
+    status["message"] = f"✅ Ollama ready with model '{model}'"
+    logger.info(status["message"])
+    _OLLAMA_STATUS = status
+    return status
+
+
 def _store_phase_error(error_text: str) -> None:
     """Store error text for later AI analysis."""
     global _LAST_PHASE_ERROR
@@ -3758,6 +3873,21 @@ def run_pipeline(
         pipeline_json = Path(pipeline_json).resolve()
 
     orchestrator_config = get_orchestrator_config()
+
+    # Initialize Ollama/LLM for AI-powered features (LlamaChunker, LlamaReasoner, etc.)
+    # This checks: ollama package installed, server running, model available
+    # Non-blocking - pipeline continues even if Ollama unavailable
+    llm_config = getattr(orchestrator_config, "llm", None) or {}
+    if llm_config.get("enable", True):
+        llm_model = llm_config.get("model", "llama3.1:8b-instruct-q4_K_M")
+        ollama_status = ensure_ollama_ready(model=llm_model)
+        if ollama_status["available"]:
+            logger.info(f"🤖 LLM features enabled: {ollama_status['model']}")
+        else:
+            logger.warning(f"🤖 LLM features disabled: {ollama_status['message']}")
+    else:
+        logger.info("🤖 LLM features disabled in config")
+
     if policy_engine is None:
         policy_config = orchestrator_config.policy_engine or {}
         policy_engine = PolicyEngine(
