@@ -4,15 +4,24 @@ Metadata pipeline (opt-in) powered by LlamaMetadataGenerator.
 This module is non-destructive and does not affect TTS behavior.
 It can be called after a run to generate summaries, tags, and
 YouTube-ready metadata.
+
+Requires: pip install ollama && ollama pull llama3.1:8b-instruct-q4_K_M
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from agents.llama_metadata import LlamaMetadataGenerator
+logger = logging.getLogger(__name__)
+
+# Lazy import to avoid errors if ollama not installed
+_LLAMA_METADATA_GENERATOR = None
+
+if TYPE_CHECKING:
+    from agents.llama_metadata import LlamaMetadataGenerator
 
 
 @dataclass
@@ -57,8 +66,24 @@ class BookMetadata:
     notes: str
 
 
-def _metadata_agent() -> LlamaMetadataGenerator:
-    return LlamaMetadataGenerator()
+def _metadata_agent() -> "LlamaMetadataGenerator":
+    """Lazy-load metadata agent to avoid import errors if ollama not installed."""
+    global _LLAMA_METADATA_GENERATOR
+    if _LLAMA_METADATA_GENERATOR is None:
+        try:
+            from agents.llama_metadata import LlamaMetadataGenerator
+            _LLAMA_METADATA_GENERATOR = LlamaMetadataGenerator()
+            logger.info("✅ LlamaMetadataGenerator initialized")
+        except ImportError as e:
+            logger.warning(
+                f"⚠️  LlamaMetadataGenerator unavailable: {e}. "
+                "To enable: pip install ollama && ollama pull llama3.1:8b-instruct-q4_K_M"
+            )
+            raise RuntimeError("LlamaMetadataGenerator not available") from e
+        except Exception as e:
+            logger.warning(f"⚠️  LlamaMetadataGenerator init failed: {e}")
+            raise RuntimeError("LlamaMetadataGenerator initialization failed") from e
+    return _LLAMA_METADATA_GENERATOR
 
 
 def generate_book_metadata(book: ProcessedBook) -> BookMetadata:
