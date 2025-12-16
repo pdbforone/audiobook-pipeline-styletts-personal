@@ -7,6 +7,61 @@
 
 ## Latest Updates (2025-12-16)
 
+### ✅ CRITICAL: Phase 3 Chunk Content Duplication Fix
+
+**Problem Identified:**
+Consecutive chunks contained overlapping text content. Analysis showed identical segment length patterns like `[94, 173, 169, 79, 132, 159]` appearing in both chunk N and chunk N+1, indicating the same sentences were being added to multiple chunks.
+
+**Root Cause Analysis:**
+
+In `_chunk_by_char_count_optimized()` (utils.py), the "exceeds hard limit" branch had a critical bug:
+
+```python
+# OLD CODE - TWO BUGS:
+if success:
+    chunks.append(completed_text)
+    sentences_used = len(sentences[i:]) - len(remaining)
+    i += sentences_used  # Bug 1: Advances past consumed sentences
+# Then ALWAYS executed regardless of success:
+current_chunk = [sent]   # Bug 2: Adds 'sent' which was already consumed!
+i += 1                   # Bug 3: Double-increments index!
+```
+
+**Impact:**
+1. **Duplication**: The sentence `sent` (which triggered the hard limit flush) was passed to `try_complete_chunk()` via `sentences[i:]`. If consumed during completion, it ended up in BOTH the completed chunk AND the next chunk's `current_chunk = [sent]`
+2. **Skipping**: Index was incremented twice (`i += sentences_used` then `i += 1`), causing sentences to be skipped
+
+**Fix Applied:**
+
+```python
+# NEW CODE - Proper branching:
+if success:
+    chunks.append(completed_text)
+    sentences_used = len(sentences[i:]) - len(remaining)
+    i += sentences_used
+    # Don't put 'sent' in next chunk - it was already consumed!
+    current_chunk = []
+    current_char_count = 0
+else:
+    # merge_backwards handling...
+    # Start fresh chunk with sentence that couldn't fit
+    current_chunk = [sent]
+    current_char_count = sent_len
+    i += 1
+```
+
+**Secondary Fix:**
+`validate_chunks()` also had a bug where setting `chunks[i+1] = ""` to mark merged chunks would cause empty strings to be processed in subsequent iterations. Fixed by using a `skip_next` flag instead.
+
+**Files Modified:**
+- `phase3-chunking/src/phase3_chunking/utils.py` - Main fixes
+
+**Tests Added:**
+- `test_no_sentence_duplication_on_completion()` - Verifies no sentence appears twice
+- `test_no_sentence_skipping_on_completion()` - Verifies all sentences are present
+
+---
+
 ### ✅ CRITICAL: XTTS Audio Truncation/Duplication Fix (Comprehensive)
 
 **Problem Identified:**
@@ -50,7 +105,7 @@ Users experienced systematic audio truncation and duplication with XTTS, affecti
 - `phase4_tts/tests/test_xtts_no_duplication.py` - Verifies split_sentences=False is present
 
 **Known Remaining Issue:**
-Log analysis revealed possible **Phase 3 chunk content duplication** (same text appearing in consecutive chunks with identical segment length patterns). This is a separate issue requiring investigation in Phase 3 chunking or Phase 2 text extraction.
+~~Log analysis revealed possible **Phase 3 chunk content duplication** (same text appearing in consecutive chunks with identical segment length patterns). This is a separate issue requiring investigation in Phase 3 chunking or Phase 2 text extraction.~~ **RESOLVED** - See "Phase 3 Chunk Content Duplication Fix" above.
 
 **Sources:**
 - [Coqui TTS Documentation](https://docs.coqui.ai/en/latest/models/xtts.html)

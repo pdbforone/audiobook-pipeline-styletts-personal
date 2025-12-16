@@ -1098,6 +1098,10 @@ def _chunk_by_char_count_optimized(
                         )
                         sentences_used = len(sentences[i:]) - len(remaining)
                         i += sentences_used
+                        # BUG FIX: Don't put 'sent' in next chunk - it was already consumed!
+                        # Don't increment i again - sentences_used already accounts for it
+                        current_chunk = []
+                        current_char_count = 0
                     else:
                         # Could not complete - merge backwards
                         logger.warning(
@@ -1109,16 +1113,20 @@ def _chunk_by_char_count_optimized(
                             emergency_limit,
                             emergency_duration,
                         )
+                        # Start fresh chunk with the sentence that couldn't fit
+                        current_chunk = [sent]
+                        current_char_count = sent_len
+                        i += 1
                 else:
                     # Complete chunk - flush it
                     chunks.append(chunk_text)
                     logger.debug(
                         f"✓ Flushed complete chunk ({len(chunk_text)} chars)"
                     )
-
-                current_chunk = [sent]
-                current_char_count = sent_len
-                i += 1
+                    # Start fresh chunk with the sentence that triggered the flush
+                    current_chunk = [sent]
+                    current_char_count = sent_len
+                    i += 1
             else:
                 # Current chunk too small - just add this sentence
                 current_chunk.append(sent)
@@ -1170,8 +1178,18 @@ def validate_chunks(chunks: List[str]) -> List[str]:
     """
     validated = []
     incomplete_count = 0
+    skip_next = False  # Track if we should skip the next chunk (already merged)
 
     for i, chunk in enumerate(chunks):
+        # Skip chunks that were already merged forward
+        if skip_next:
+            skip_next = False
+            continue
+
+        # Skip empty chunks (safety check)
+        if not chunk or not chunk.strip():
+            continue
+
         is_complete, reason = is_complete_chunk(chunk)
 
         if not is_complete:
@@ -1189,8 +1207,7 @@ def validate_chunks(chunks: List[str]) -> List[str]:
                         f"✓ Merged incomplete chunk {i+1} with chunk {i+2}"
                     )
                     validated.append(merged)
-                    # Skip next chunk since we merged it
-                    chunks[i + 1] = ""  # Mark as used
+                    skip_next = True  # Skip the next chunk since we merged it
                 else:
                     # Can't merge forward - accept incomplete
                     logger.error(
