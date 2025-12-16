@@ -1622,6 +1622,7 @@ def run_phase_with_retry(
     tts_engine: Optional[str] = None,
     policy_engine: Optional[PolicyEngine] = None,
     runtime_overrides: Optional[Dict[str, Any]] = None,
+    resume_enabled: bool = True,
 ) -> bool:
     """
     Run a phase with retry logic.
@@ -1704,6 +1705,7 @@ def run_phase_with_retry(
             state=state,
             runtime_overrides=runtime_overrides,
             policy_engine=policy_engine,
+            resume_enabled=resume_enabled,
         )
 
         if success:
@@ -1729,6 +1731,7 @@ def run_phase(
     state: PipelineState,
     runtime_overrides: Optional[Dict[str, Any]] = None,
     policy_engine: Optional[PolicyEngine] = None,
+    resume_enabled: bool = True,
 ) -> bool:
     """
     Run a single phase.
@@ -1802,6 +1805,7 @@ def run_phase(
             pipeline_mode,
             config=config,
             chunk_hash=chunk_hash,
+            resume_enabled=resume_enabled,
         )
 
     if phase_num == 5 and config.strict_chunk_integrity:
@@ -2082,6 +2086,7 @@ def run_phase4_multi_engine(
     pipeline_mode: str = "commercial",
     config: Optional[OrchestratorConfig] = None,
     chunk_hash: Optional[str] = None,
+    resume_enabled: bool = True,
 ) -> bool:
     """
     Run Phase 4 with multi-engine support (XTTS v2 primary, Kokoro fallback).
@@ -2122,8 +2127,9 @@ def run_phase4_multi_engine(
             cmd.append("--disable_fallback")
         if chunk_index is not None:
             cmd.append(f"--chunk_id={chunk_index}")
-        # Always enable resume to skip existing chunks
-        cmd.append("--resume")
+        # Only enable resume if not doing a fresh run
+        if resume_enabled:
+            cmd.append("--resume")
         return cmd
 
     def collect_failed_chunks() -> List[str]:
@@ -3992,6 +3998,7 @@ def run_pipeline(
             tts_engine=tts_engine,
             policy_engine=policy_engine,
             runtime_overrides=runtime_overrides,
+            resume_enabled=resume_enabled,
         )
 
         if not success:
