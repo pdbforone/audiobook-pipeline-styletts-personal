@@ -170,12 +170,20 @@ def _get_llama_chunker(model: str = "llama3.1:8b-instruct-q4_K_M"):
 
         from agents import LlamaChunker
         _LLAMA_CHUNKER = LlamaChunker(model=model)
-        logger.info(f"LlamaChunker initialized with model: {model}")
+        logger.info(f"✅ LlamaChunker initialized with model: {model}")
     except ImportError as e:
-        logger.warning(f"LlamaChunker unavailable (import failed): {e}")
+        # Likely missing 'ollama' package or agents module
+        logger.warning(
+            f"⚠️  LlamaChunker unavailable: {e}. "
+            "To enable LLM-powered chunking: pip install ollama && ollama pull llama3.1:8b-instruct-q4_K_M"
+        )
         _LLAMA_CHUNKER = None
     except Exception as e:
-        logger.warning(f"LlamaChunker initialization failed: {e}")
+        # Could be Ollama server not running, model not pulled, etc.
+        logger.warning(
+            f"⚠️  LlamaChunker initialization failed: {e}. "
+            "Ensure Ollama is running (ollama serve) and model is pulled."
+        )
         _LLAMA_CHUNKER = None
 
     return _LLAMA_CHUNKER
