@@ -508,6 +508,12 @@ class XTTSEngine(TTSEngine):
         This method handles the actual XTTS API call for a single segment
         that is known to be within safe limits.
 
+        CRITICAL: All synthesis calls use split_sentences=False (for model.tts())
+        or enable_text_splitting=False (for tts_model.inference()) to prevent
+        XTTS from doing its own internal sentence splitting. Our external
+        splitting via _split_text_for_safe_synthesis() already handles this,
+        and double-splitting causes audio truncation and duplication issues.
+
         Args:
             text: Text segment to synthesize (should be < 250 chars)
             ref_to_use: Reference audio path for voice cloning
@@ -565,6 +571,7 @@ class XTTSEngine(TTSEngine):
                 language=language,
                 speed=speed,
                 temperature=temperature,
+                split_sentences=False,  # We already split externally - prevent double splitting
             )
 
         # Mode 3: Fallback - try default reference if available
@@ -578,6 +585,7 @@ class XTTSEngine(TTSEngine):
                 language=language,
                 speed=speed,
                 temperature=temperature,
+                split_sentences=False,  # We already split externally - prevent double splitting
             )
 
         # Mode 4: Last resort - this will likely fail but let XTTS try

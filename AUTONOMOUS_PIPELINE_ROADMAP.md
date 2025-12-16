@@ -5,7 +5,54 @@
 
 ---
 
-## Latest Updates (2025-12-12)
+## Latest Updates (2025-12-16)
+
+### ✅ CRITICAL: XTTS Voice Cloning Double-Split Fix
+
+**Problem Identified:**
+Despite implementing segment-level synthesis (2025-12-12), users continued to experience audio truncation and duplication when using **voice cloning mode** (custom reference audio).
+
+**Root Cause Analysis:**
+The `model.tts()` API from Coqui TTS has a `split_sentences` parameter that **defaults to True**. Our external splitting via `_split_text_for_safe_synthesis()` was being undermined by XTTS's internal splitting:
+
+1. Our code split text into ~220 char segments
+2. Each segment was passed to `model.tts(text, speaker_wav=...)`
+3. `model.tts()` with default `split_sentences=True` split the text AGAIN internally
+4. Double-splitting caused duplication and truncation
+
+**Critical Finding:**
+- Built-in speakers used `tts_model.inference()` with `enable_text_splitting=False` ✅
+- Voice cloning used `model.tts()` WITHOUT `split_sentences=False` ❌
+
+**Solution:**
+Added `split_sentences=False` to both voice cloning paths in `_synthesize_single_segment()`:
+
+```python
+# Mode 2: Voice cloning with reference audio
+return self.model.tts(
+    text=text,
+    speaker_wav=str(ref_to_use),
+    language=language,
+    speed=speed,
+    temperature=temperature,
+    split_sentences=False,  # CRITICAL: prevent double splitting
+)
+```
+
+**Files Modified:**
+- `phase4_tts/engines/xtts_engine.py:562-568` - Mode 2 (voice cloning)
+- `phase4_tts/engines/xtts_engine.py:576-582` - Mode 3 (default reference fallback)
+
+**Test Added:**
+- `phase4_tts/tests/test_xtts_no_duplication.py` - Verifies split_sentences=False is present
+
+**Sources:**
+- [Coqui TTS Documentation](https://docs.coqui.ai/en/latest/models/xtts.html)
+- [GitHub Issue #3826](https://github.com/coqui-ai/TTS/issues/3826)
+
+---
+
+## Updates (2025-12-12)
 
 ### ✅ CRITICAL: XTTS Engine Segment-Level Synthesis (Anti-Repetition Fix)
 
