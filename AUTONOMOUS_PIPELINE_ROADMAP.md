@@ -7,6 +7,56 @@
 
 ## Latest Updates (2025-12-16)
 
+### ✅ Ollama Auto-Start in Visible Terminal
+
+**Feature:** When the orchestrator starts, it now automatically:
+1. Checks if Ollama Python package is installed
+2. Checks if Ollama server is running
+3. **Starts Ollama in a visible terminal window** (if not running)
+4. Waits for server to be ready (up to 15 seconds)
+5. Pulls the required model if not available
+
+**Terminal Emulators Supported:**
+- gnome-terminal (Ubuntu, GNOME)
+- konsole (KDE)
+- xfce4-terminal (XFCE)
+- xterm (fallback)
+- x-terminal-emulator (Debian/Ubuntu)
+
+Falls back to background process if no terminal emulator is found.
+
+**Configuration** (`phase6_orchestrator/config.yaml`):
+```yaml
+llm:
+  enable: true
+  model: "llama3.1:8b-instruct-q4_K_M"
+  auto_start_server: true
+  auto_pull_model: true
+```
+
+**Files Modified:**
+- `phase6_orchestrator/orchestrator.py` - Added `_start_ollama_in_terminal()` function
+
+---
+
+### ✅ Llama Agent Integration Verification
+
+All Llama agents are properly wired and working according to the roadmap:
+
+| Agent | Location | Wired In | Trigger |
+|-------|----------|----------|---------|
+| **LlamaChunker** | `agents/llama_chunker.py` | Phase 3 `main.py:832` | `use_llama_chunker: true` in config |
+| **LlamaReasoner** | `agents/llama_reasoner.py` | Orchestrator `orchestrator.py:1893` | Phase failure after all retries |
+| **LlamaRewriter** | `agents/llama_rewriter.py` | Phase 4 `main_multi_engine.py:1311` | ASR validation fails with `recommendation: "rewrite"` |
+| **LlamaMetadataGenerator** | `agents/llama_metadata.py` | `metadata/metadata_pipeline.py` | Opt-in via `enable_llama_metadata: true` |
+
+**Fallback Behavior:**
+- **LlamaChunker**: Falls back to structure-aware or sentence-based chunking if Ollama unavailable
+- **LlamaRewriter**: Falls back to engine switching if rewrite doesn't improve WER
+- **LlamaReasoner**: Gracefully skipped if Ollama unavailable (pipeline continues without AI analysis)
+
+---
+
 ### ✅ CRITICAL: Phase 3 Chunk Content Duplication Fix
 
 **Problem Identified:**

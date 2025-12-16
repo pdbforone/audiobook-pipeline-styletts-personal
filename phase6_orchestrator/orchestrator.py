@@ -154,13 +154,68 @@ def _get_llama_reasoner():
 _OLLAMA_STATUS = None  # None = unchecked, dict = status
 
 
+def _start_ollama_in_terminal() -> bool:
+    """
+    Start Ollama server in a visible terminal window.
+
+    Tries multiple terminal emulators in order of preference.
+    Returns True if successfully started, False otherwise.
+    """
+    import subprocess
+    import shutil
+
+    # Terminal emulators to try (in order of preference)
+    terminal_commands = [
+        # gnome-terminal (Ubuntu, GNOME)
+        ["gnome-terminal", "--title=Ollama Server", "--", "ollama", "serve"],
+        # konsole (KDE)
+        ["konsole", "--title", "Ollama Server", "-e", "ollama", "serve"],
+        # xfce4-terminal (XFCE)
+        ["xfce4-terminal", "--title=Ollama Server", "-e", "ollama serve"],
+        # xterm (fallback, usually available)
+        ["xterm", "-title", "Ollama Server", "-e", "ollama", "serve"],
+        # x-terminal-emulator (Debian/Ubuntu alternative)
+        ["x-terminal-emulator", "-e", "ollama", "serve"],
+    ]
+
+    for cmd in terminal_commands:
+        terminal_bin = cmd[0]
+        if shutil.which(terminal_bin):
+            try:
+                subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,  # Detach from parent process
+                )
+                logger.info(f"🖥️  Started Ollama server in {terminal_bin}")
+                return True
+            except Exception as e:
+                logger.debug(f"Failed to start with {terminal_bin}: {e}")
+                continue
+
+    # No terminal emulator found, fall back to background process
+    logger.info("No terminal emulator found, starting Ollama in background...")
+    try:
+        subprocess.Popen(
+            ["ollama", "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to start Ollama: {e}")
+        return False
+
+
 def ensure_ollama_ready(model: str = "llama3.1:8b-instruct-q4_K_M") -> dict:
     """
     Ensure Ollama is ready for LLM-powered features (chunking, reasoning, etc).
 
     This runs at orchestrator startup to:
     1. Check if ollama Python package is installed
-    2. Check if Ollama server is running (start if not)
+    2. Check if Ollama server is running (start in visible terminal if not)
     3. Check if required model is available (pull if not)
 
     Returns:
@@ -190,40 +245,46 @@ def ensure_ollama_ready(model: str = "llama3.1:8b-instruct-q4_K_M") -> dict:
         models = ollama.list()
         logger.debug(f"Ollama server is running, {len(models.get('models', []))} models available")
     except Exception as e:
-        # Try to start Ollama server
-        logger.info("🔄 Ollama server not running, attempting to start...")
-        try:
-            import subprocess
-            import time
+        # Try to start Ollama server in a visible terminal
+        logger.info("🔄 Ollama server not running, attempting to start in terminal...")
 
-            # Start ollama serve in background
-            subprocess.Popen(
-                ["ollama", "serve"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-
-            # Wait for server to start
-            for i in range(10):
-                time.sleep(1)
-                try:
-                    ollama.list()
-                    logger.info("✅ Ollama server started successfully")
-                    break
-                except Exception:
-                    continue
-            else:
-                status["message"] = (
-                    "❌ Could not start Ollama server. "
-                    "Run manually: ollama serve"
-                )
-                logger.warning(status["message"])
-                _OLLAMA_STATUS = status
-                return status
-        except FileNotFoundError:
+        # First check if ollama binary is installed
+        import shutil
+        if not shutil.which("ollama"):
             status["message"] = (
                 "❌ Ollama not installed. "
                 "Install from: https://ollama.ai"
+            )
+            logger.warning(status["message"])
+            _OLLAMA_STATUS = status
+            return status
+
+        # Start Ollama server
+        if not _start_ollama_in_terminal():
+            status["message"] = (
+                "❌ Could not start Ollama server. "
+                "Run manually: ollama serve"
+            )
+            logger.warning(status["message"])
+            _OLLAMA_STATUS = status
+            return status
+
+        # Wait for server to start
+        import time
+        for i in range(15):  # Wait up to 15 seconds
+            time.sleep(1)
+            try:
+                ollama.list()
+                logger.info("✅ Ollama server started successfully")
+                break
+            except Exception:
+                if i < 14:
+                    logger.debug(f"Waiting for Ollama server... ({i+1}/15)")
+                continue
+        else:
+            status["message"] = (
+                "❌ Ollama server started but not responding. "
+                "Check the Ollama terminal window for errors."
             )
             logger.warning(status["message"])
             _OLLAMA_STATUS = status
@@ -236,7 +297,7 @@ def ensure_ollama_ready(model: str = "llama3.1:8b-instruct-q4_K_M") -> dict:
         model_base = model.split(":")[0]
 
         if model_base not in model_names and model not in [m.get("name", "") for m in models.get("models", [])]:
-            logger.info(f"🔄 Model '{model}' not found, pulling...")
+            logger.info(f"🔄 Model '{model}' not found, pulling (this may take a few minutes)...")
             try:
                 # Pull model (this can take a while)
                 ollama.pull(model)
