@@ -134,6 +134,13 @@ self_repair:
   enable_engine_retry: false
   retry_confidence_threshold: 0.85
 
+# LLM/Ollama configuration for AI-powered features
+llm:
+  enable: true
+  model: "llama3.1:8b-instruct-q4_K_M"  # Default model for all LLM features
+  auto_start_server: true               # Start Ollama server if not running
+  auto_pull_model: true                 # Pull model if not available
+
 reasoning:
   enable: false
   version: "phaseH"

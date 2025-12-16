@@ -4,6 +4,10 @@ phase3_profile: full  # options: full | no_embeddings | fast_cpu
 use_structure_chunking: true
 min_structure_nodes: 10
 
+# LlamaChunker - LLM-powered semantic chunking (requires Ollama)
+use_llama_chunker: true
+llama_model: "llama3.1:8b-instruct-q4_K_M"  # Recommended: 4.9GB quantized model
+
 json_path: pipeline.json
 chunks_dir: chunks
 
