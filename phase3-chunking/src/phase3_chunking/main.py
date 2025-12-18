@@ -829,7 +829,9 @@ def run_phase3(
     timers["llama"] = 0.0
 
     # Option 1: LlamaChunker (LLM-powered semantic chunking)
-    if config.use_llama_chunker:
+    # Check env var override (UI can disable via DISABLE_LLAMA_CHUNKER=1)
+    use_llama = config.use_llama_chunker and not os.environ.get("DISABLE_LLAMA_CHUNKER", "").lower() in ("1", "true", "yes")
+    if use_llama:
         llama_start = perf_counter()
         try:
             chunks, coherence = _llama_chunk_text(

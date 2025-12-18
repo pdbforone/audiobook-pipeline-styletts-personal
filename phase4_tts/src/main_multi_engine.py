@@ -1294,14 +1294,15 @@ def synthesize_chunk_with_engine(
                     )
 
                     # Strategy 1: Try Llama rewrite first (if recommendation is "rewrite")
+                    # Check env var override (UI can disable via DISABLE_LLAMA_REWRITER=1)
+                    llama_rewriter_enabled = (
+                        (validation_config.enable_llama_asr_rewrite if hasattr(validation_config, "enable_llama_asr_rewrite") else False)
+                        and not os.environ.get("DISABLE_LLAMA_REWRITER", "").lower() in ("1", "true", "yes")
+                    )
                     if (
                         asr_result["recommendation"] == "rewrite"
                         and LlamaRewriter is not None
-                        and (
-                            validation_config.enable_llama_asr_rewrite
-                            if hasattr(validation_config, "enable_llama_asr_rewrite")
-                            else False
-                        )
+                        and llama_rewriter_enabled
                     ):
                         logger.info(
                             "Chunk %s attempting Llama rewrite based on ASR feedback",

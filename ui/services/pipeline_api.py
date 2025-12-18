@@ -438,6 +438,8 @@ class PipelineAPI:
         no_resume: bool,
         concat_only: bool,
         auto_mode: bool,
+        enable_llama_chunker: bool = True,
+        enable_llama_rewriter: bool = True,
         progress_callback: Any = None,
         cancel_event: Optional[threading.Event] = None,
     ) -> Dict[str, Any]:
@@ -457,6 +459,8 @@ class PipelineAPI:
                 no_resume,
                 concat_only,
                 auto_mode,
+                enable_llama_chunker,
+                enable_llama_rewriter,
                 progress_callback,
                 cancel_handle,
             )
@@ -476,6 +480,8 @@ class PipelineAPI:
         no_resume: bool,
         concat_only: bool,
         auto_mode: bool,
+        enable_llama_chunker: bool,
+        enable_llama_rewriter: bool,
         progress_callback: Any,
         cancel_handle: threading.Event,
     ) -> Dict[str, Any]:
@@ -508,6 +514,8 @@ class PipelineAPI:
                 progress_callback=wrapped_progress,
                 concat_only=concat_only,
                 auto_mode=auto_mode,
+                enable_llama_chunker=enable_llama_chunker,
+                enable_llama_rewriter=enable_llama_rewriter,
             )
         except KeyboardInterrupt:
             logger.info("Pipeline run cancelled by user")

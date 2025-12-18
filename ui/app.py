@@ -897,6 +897,8 @@ You can:
         concat_only: bool,
         auto_mode: bool,
         phase_choices: List[str],
+        enable_llama_chunker: bool = True,
+        enable_llama_rewriter: bool = True,
         progress=gr.Progress(track_tqdm=True),
     ) -> Tuple[Optional[str], str, UIState]:
         if not book_file:
@@ -961,6 +963,8 @@ You can:
                 no_resume=no_resume,
                 concat_only=bool(concat_only),
                 auto_mode=bool(auto_mode),
+                enable_llama_chunker=bool(enable_llama_chunker),
+                enable_llama_rewriter=bool(enable_llama_rewriter),
                 progress_callback=progress_hook,
                 cancel_event=cancel_event,
             )
@@ -1315,6 +1319,10 @@ You can:
         enable_gpu: bool,
         input_dir: str,
         output_dir: str,
+        llm_enable: bool = True,
+        llm_model: str = "llama3.1:8b-instruct-q4_K_M",
+        llm_auto_start: bool = True,
+        llm_auto_pull: bool = True,
     ) -> str:
         self.settings = UISettings(
             sample_rate=int(sample_rate),
@@ -1323,6 +1331,10 @@ You can:
             enable_gpu=bool(enable_gpu),
             input_dir=input_dir,
             output_dir=output_dir,
+            llm_enable=bool(llm_enable),
+            llm_model=str(llm_model),
+            llm_auto_start_server=bool(llm_auto_start),
+            llm_auto_pull_model=bool(llm_auto_pull),
         )
         saved = self.settings_manager.save(self.settings)
         return "✅ Settings saved successfully!" if saved else "❌ Failed to save settings."
@@ -1500,6 +1512,19 @@ You can:
                                     info="Skip re-enhancement when enhanced WAVs already exist",
                                 )
 
+                            gr.Markdown("**🤖 LLM Features (requires Ollama):**")
+                            with gr.Row():
+                                enable_llama_chunker = gr.Checkbox(
+                                    label="LlamaChunker (semantic chunking)",
+                                    value=self.settings.llm_enable,
+                                    info="Use LLM for intelligent text chunking in Phase 3",
+                                )
+                                enable_llama_rewriter = gr.Checkbox(
+                                    label="LlamaRewriter (ASR-driven fixes)",
+                                    value=self.settings.llm_enable,
+                                    info="Use LLM to fix text when ASR detects issues in Phase 4",
+                                )
+
                             gr.Markdown(
                                 "Tip: When launching from CLI, use `--phase5-concat-only` to reuse enhanced WAVs without reprocessing.",
                                 elem_classes=["text-sm"],
@@ -1544,6 +1569,8 @@ You can:
                         concat_only,
                         auto_mode,
                         phase_selector,
+                        enable_llama_chunker,
+                        enable_llama_rewriter,
                     ],
                     outputs=[audio_output, status_output, ui_state],
                 )
@@ -1701,11 +1728,48 @@ You can:
                         value=self.settings.output_dir or str(PROJECT_ROOT / "phase5_enhancement" / "processed"),
                     )
 
+                with gr.Accordion("🤖 LLM / Ollama", open=False):
+                    gr.Markdown(
+                        "Configure AI-powered features (LlamaChunker, LlamaRewriter, LlamaReasoner). "
+                        "Requires [Ollama](https://ollama.ai) installed locally."
+                    )
+                    llm_enable = gr.Checkbox(
+                        label="Enable LLM Features",
+                        value=self.settings.llm_enable,
+                        info="Master toggle for all LLM-powered features",
+                    )
+                    llm_model = gr.Dropdown(
+                        label="LLM Model",
+                        choices=[
+                            "llama3.1:8b-instruct-q4_K_M",
+                            "llama3.2:3b",
+                            "mistral:7b-instruct-q4_K_M",
+                            "phi3:mini",
+                        ],
+                        value=self.settings.llm_model,
+                        allow_custom_value=True,
+                        info="Model to use for LLM features (4.9GB default)",
+                    )
+                    with gr.Row():
+                        llm_auto_start = gr.Checkbox(
+                            label="Auto-start Ollama server",
+                            value=self.settings.llm_auto_start_server,
+                            info="Start Ollama server automatically if not running",
+                        )
+                        llm_auto_pull = gr.Checkbox(
+                            label="Auto-pull model",
+                            value=self.settings.llm_auto_pull_model,
+                            info="Download model automatically if not available",
+                        )
+
                 save_settings_btn = gr.Button("💾 Save Settings", variant="primary")
                 settings_status = gr.Markdown()
                 save_settings_btn.click(
                     fn=self.handle_save_settings,
-                    inputs=[sample_rate, lufs_target, max_workers, enable_gpu, input_dir, output_dir],
+                    inputs=[
+                        sample_rate, lufs_target, max_workers, enable_gpu, input_dir, output_dir,
+                        llm_enable, llm_model, llm_auto_start, llm_auto_pull,
+                    ],
                     outputs=[settings_status],
                 )
 
