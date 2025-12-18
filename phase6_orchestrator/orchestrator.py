@@ -1176,7 +1176,22 @@ def resolve_phase5_audiobook_path(file_id: str, pipeline_json: Path, phase5_dir:
         if not audiobook_path.is_absolute():
             audiobook_path = (phase5_dir / audiobook_path).resolve()
     else:
-        audiobook_path = (phase5_dir / "processed" / "audiobook.mp3").resolve()
+        # Try multiple fallback paths based on Phase 5 output structure:
+        # 1. processed/{file_id}/mp3/audiobook.mp3 (new per-file structure)
+        # 2. processed/mp3/audiobook.mp3 (single-file structure)
+        # 3. processed/audiobook.mp3 (legacy structure)
+        fallback_paths = [
+            phase5_dir / "processed" / file_id / "mp3" / "audiobook.mp3",
+            phase5_dir / "processed" / "mp3" / "audiobook.mp3",
+            phase5_dir / "processed" / "audiobook.mp3",
+        ]
+        for fallback in fallback_paths:
+            if fallback.exists():
+                audiobook_path = fallback.resolve()
+                break
+        else:
+            # Return the most likely path even if it doesn't exist (for error reporting)
+            audiobook_path = fallback_paths[0].resolve()
 
     return audiobook_path
 
