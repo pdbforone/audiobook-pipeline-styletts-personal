@@ -472,13 +472,25 @@ def select_voice(
             logger.info(f"Using Phase 3 selected voice: {selected_voice}")
 
     if not selected_voice:
-        # Default to first built-in Kokoro voice or first prepared ref
-        # Find first built-in Kokoro voice
+        # Default to a high-quality built-in Kokoro voice or first prepared ref
+        # Preferred defaults: af_bella (female, warm), am_adam (male, authoritative)
+        PREFERRED_KOKORO_DEFAULTS = ["af_bella", "am_adam", "af_sarah", "af_nicole"]
         kokoro_built_in = None
-        for voice_name, voice_data in all_voices.items():
-            if voice_data.get("built_in") and voice_data.get("engine") == "kokoro":
-                kokoro_built_in = voice_name
-                break
+
+        # First try preferred voices
+        for preferred in PREFERRED_KOKORO_DEFAULTS:
+            if preferred in all_voices:
+                voice_data = all_voices[preferred]
+                if voice_data.get("built_in") and voice_data.get("engine") == "kokoro":
+                    kokoro_built_in = preferred
+                    break
+
+        # Fallback to any Kokoro voice if preferred not found
+        if not kokoro_built_in:
+            for voice_name, voice_data in all_voices.items():
+                if voice_data.get("built_in") and voice_data.get("engine") == "kokoro":
+                    kokoro_built_in = voice_name
+                    break
 
         if kokoro_built_in:
             selected_voice = kokoro_built_in
@@ -545,13 +557,25 @@ def select_voice(
 
     # BUGFIX: Check with normalized comparison for custom voices
     if selected_voice not in prepared_refs and normalized_selected not in prepared_refs:
-        # Try to fall back to a built-in voice first
-        # Find first built-in Kokoro voice
+        # Try to fall back to a high-quality built-in voice first
+        # Preferred defaults: af_bella (female, warm), am_adam (male, authoritative)
+        PREFERRED_KOKORO_DEFAULTS = ["af_bella", "am_adam", "af_sarah", "af_nicole"]
         kokoro_built_in = None
-        for voice_name, voice_data in all_voices.items():
-            if voice_data.get("built_in") and voice_data.get("engine") == "kokoro":
-                kokoro_built_in = voice_name
-                break
+
+        # First try preferred voices
+        for preferred in PREFERRED_KOKORO_DEFAULTS:
+            if preferred in all_voices:
+                voice_data = all_voices[preferred]
+                if voice_data.get("built_in") and voice_data.get("engine") == "kokoro":
+                    kokoro_built_in = preferred
+                    break
+
+        # Fallback to any Kokoro voice if preferred not found
+        if not kokoro_built_in:
+            for voice_name, voice_data in all_voices.items():
+                if voice_data.get("built_in") and voice_data.get("engine") == "kokoro":
+                    kokoro_built_in = voice_name
+                    break
 
         if kokoro_built_in:
             logger.warning(
