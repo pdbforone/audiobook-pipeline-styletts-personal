@@ -1032,6 +1032,8 @@ You can:
         max_retries: float,
         generate_subtitles: bool,
         phase_choices: List[str],
+        enable_llama_chunker: bool = True,
+        enable_llama_rewriter: bool = True,
         progress=gr.Progress(track_tqdm=True),
     ) -> Tuple[str, UIState]:
         from datetime import datetime, timezone
@@ -1103,6 +1105,8 @@ You can:
                     no_resume=no_resume,
                     concat_only=False,
                     auto_mode=False,
+                    enable_llama_chunker=bool(enable_llama_chunker),
+                    enable_llama_rewriter=bool(enable_llama_rewriter),
                     progress_callback=progress_hook,
                     cancel_event=cancel_event,
                 )
@@ -1638,6 +1642,19 @@ You can:
                                 info="Create .srt and .vtt subtitle files",
                             )
 
+                            gr.Markdown("**🤖 LLM Features (requires Ollama):**")
+                            with gr.Row():
+                                batch_enable_llama_chunker = gr.Checkbox(
+                                    label="LlamaChunker (semantic chunking)",
+                                    value=self.settings.llm_enable,
+                                    info="Use LLM for intelligent text chunking in Phase 3",
+                                )
+                                batch_enable_llama_rewriter = gr.Checkbox(
+                                    label="LlamaRewriter (ASR-driven fixes)",
+                                    value=self.settings.llm_enable,
+                                    info="Use LLM to fix text when ASR detects issues in Phase 4",
+                                )
+
                             gr.Markdown("**Phases to Run:**")
                             batch_phase_choices = self._phase_choice_list() or ["phase1: Phase 1 – Validation"]
                             batch_phase_defaults = self._default_phase_choices() or batch_phase_choices[:1]
@@ -1677,6 +1694,8 @@ You can:
                             batch_max_retries,
                             batch_generate_subtitles,
                             batch_phase_selector,
+                            batch_enable_llama_chunker,
+                            batch_enable_llama_rewriter,
                         ],
                         outputs=[batch_status, ui_state],
                     )
