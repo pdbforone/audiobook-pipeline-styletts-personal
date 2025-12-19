@@ -33,7 +33,7 @@ enable_latency_fallback: true   # Allow auto-switch to Kokoro when RT is too slo
 slow_rt_threshold: 4.0          # Trigger Kokoro when RT factor exceeds this value
 rt_xtts_factor: 3.2             # Estimated RT factor for XTTS on CPU (used for auto-engine planning)
 rt_kokoro_factor: 1.3           # Estimated RT factor for Kokoro-onnx on CPU
-tts_chars_per_minute: 1050      # Shared speaking cadence for throughput + validation (chars/min)
+tts_chars_per_minute: 875       # XTTS expressive speech is slower (~875 chars/min vs 1050 for neutral)
 
 # Validation defaults (used by main_multi_engine.py)
 validation:
