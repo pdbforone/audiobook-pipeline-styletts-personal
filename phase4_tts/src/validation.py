@@ -9,9 +9,11 @@ Purpose: Detect TTS corruption immediately rather than discovering it days later
 """
 
 import logging
+import re
 import time
 import random
-from typing import Tuple, Dict, Optional
+from collections import Counter
+from typing import Tuple, Dict, Optional, List
 import librosa
 import numpy as np
 from dataclasses import dataclass
@@ -125,6 +127,63 @@ def predict_expected_duration(
     duration_seconds = duration_minutes * 60
 
     return duration_seconds
+
+
+def detect_text_repetition(text: str, min_phrase_words: int = 5) -> Optional[Dict]:
+    """
+    Detect phrase-level repetition in chunk text BEFORE TTS synthesis.
+
+    This catches issues from Phase 3 where the same content is duplicated,
+    saving TTS time and preventing duration_mismatch failures.
+
+    Args:
+        text: Chunk text to analyze
+        min_phrase_words: Minimum words in a phrase to consider
+
+    Returns:
+        Dict with repetition info if found, None if clean
+    """
+    # Normalize text
+    normalized = re.sub(r'[^\w\s]', ' ', text.lower())
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    words = normalized.split()
+
+    if len(words) < min_phrase_words * 2:
+        return None  # Too short
+
+    # Check for repeated n-grams (phrases of 5-12 words)
+    for n in range(min_phrase_words, min(13, len(words) // 2 + 1)):
+        ngrams = []
+        for i in range(len(words) - n + 1):
+            ngram = " ".join(words[i:i + n])
+            ngrams.append(ngram)
+
+        ngram_counts = Counter(ngrams)
+
+        # Find phrases that appear 3+ times (definite duplication)
+        for ngram, count in ngram_counts.most_common(1):
+            if count >= 3:
+                return {
+                    "type": "phrase_repetition",
+                    "count": count,
+                    "phrase_length": n,
+                    "sample": ngram[:50] + "..." if len(ngram) > 50 else ngram,
+                }
+
+    # Check for sentence-level duplication (exact sentence repeated)
+    sentences = re.split(r'[.!?]+', text)
+    sentences = [s.strip().lower() for s in sentences if s.strip() and len(s.strip()) > 20]
+    if sentences:
+        sentence_counts = Counter(sentences)
+        for sentence, count in sentence_counts.most_common(1):
+            if count >= 2:
+                return {
+                    "type": "sentence_duplication",
+                    "count": count,
+                    "sample": sentence[:50] + "..." if len(sentence) > 50 else sentence,
+                }
+
+    return None
 
 
 def has_silence_gap(
