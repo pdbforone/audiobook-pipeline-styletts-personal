@@ -620,20 +620,44 @@ class XTTSEngine(TTSEngine):
 
             # Call the low-level inference API directly
             tts_model = self.model.synthesizer.tts_model
-            result = tts_model.inference(
-                text=text,
-                language=language,
-                gpt_cond_latent=gpt_cond_latent,
-                speaker_embedding=speaker_embedding,
-                temperature=temperature,
-                speed=speed,
-                # Prevent repetition/truncation issues
-                repetition_penalty=10.0,  # Default, but explicit to ensure it's used
-                length_penalty=1.0,
-                top_k=50,
-                top_p=0.85,
-                enable_text_splitting=False,  # We already split externally - CRITICAL
-            )
+
+            # HuggingFace generation kwargs to prevent phrase repetition
+            # no_repeat_ngram_size=4 blocks any 4-word sequence from repeating
+            hf_kwargs = {"no_repeat_ngram_size": 4}
+
+            try:
+                result = tts_model.inference(
+                    text=text,
+                    language=language,
+                    gpt_cond_latent=gpt_cond_latent,
+                    speaker_embedding=speaker_embedding,
+                    temperature=temperature,
+                    speed=speed,
+                    # Prevent repetition/truncation issues
+                    repetition_penalty=10.0,  # Penalize token repetition
+                    length_penalty=1.0,
+                    top_k=50,
+                    top_p=0.85,
+                    enable_text_splitting=False,  # We already split externally - CRITICAL
+                    # Pass to HuggingFace generate() to block phrase looping
+                    **hf_kwargs,
+                )
+            except TypeError:
+                # Fallback if XTTS version doesn't support extra kwargs
+                logger.debug("XTTS inference doesn't accept hf_generate_kwargs, using defaults")
+                result = tts_model.inference(
+                    text=text,
+                    language=language,
+                    gpt_cond_latent=gpt_cond_latent,
+                    speaker_embedding=speaker_embedding,
+                    temperature=temperature,
+                    speed=speed,
+                    repetition_penalty=10.0,
+                    length_penalty=1.0,
+                    top_k=50,
+                    top_p=0.85,
+                    enable_text_splitting=False,
+                )
 
             # Result is a dict with 'wav' key
             if isinstance(result, dict) and "wav" in result:
