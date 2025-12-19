@@ -310,11 +310,20 @@ def tier1_validate(
             chunk_text, chars_per_minute=effective_cpm
         )
         duration_diff = abs(expected_duration - actual_duration)
-        allowed_diff = config.duration_tolerance_sec
+
+        # Proportional tolerance: allow more variance for longer chunks
+        # - Short chunks (<20s): up to 80% variance (current behavior)
+        # - Medium chunks (20-60s): up to 25% variance
+        # - Long chunks (60s+): up to 20% variance
+        # Always at least config.duration_tolerance_sec (default 120s)
         if expected_duration < 20.0:
-            allowed_diff = max(
-                config.duration_tolerance_sec, expected_duration * 0.8
-            )
+            proportional_tolerance = expected_duration * 0.8
+        elif expected_duration < 60.0:
+            proportional_tolerance = expected_duration * 0.25
+        else:
+            proportional_tolerance = expected_duration * 0.20
+
+        allowed_diff = max(config.duration_tolerance_sec, proportional_tolerance)
 
         if duration_diff > allowed_diff:
             elapsed = time.perf_counter() - start
