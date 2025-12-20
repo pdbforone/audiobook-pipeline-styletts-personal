@@ -488,18 +488,27 @@ class XTTSEngine(TTSEngine):
 
         for i, segment_text in enumerate(segments):
             try:
+                # XTTS hallucination fix: periods at segment end can trigger looping/gibberish
+                # Replace trailing period with comma (preserves pause) or remove it
+                # Based on Coqui TTS GitHub discussions about end-of-sentence artifacts
+                synthesis_text = segment_text.rstrip()
+                if synthesis_text.endswith('.'):
+                    # Replace period with comma to maintain natural pause without hallucination
+                    synthesis_text = synthesis_text[:-1] + ','
+                    logger.debug(f"Segment {i+1}: replaced trailing period with comma to prevent hallucination")
+
                 # Estimate expected duration (~15 chars/second for speech)
-                expected_dur = len(segment_text) / 15.0
+                expected_dur = len(synthesis_text) / 15.0
                 total_expected_dur += expected_dur
 
                 if len(segments) > 1:
                     logger.debug(
                         f"Synthesizing segment {i+1}/{len(segments)}: "
-                        f"{len(segment_text)} chars, expected ~{expected_dur:.1f}s"
+                        f"{len(synthesis_text)} chars, expected ~{expected_dur:.1f}s"
                     )
 
                 wav = self._synthesize_single_segment(
-                    segment_text,
+                    synthesis_text,
                     ref_to_use=ref_to_use,
                     active_speaker=active_speaker,
                     language=language,
