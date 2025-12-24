@@ -333,17 +333,26 @@ def _store_phase_error(error_text: str) -> None:
 
 
 def _analyze_failure_with_llm(phase_num: int, file_id: str, error_output: Optional[str] = None) -> None:
-    """Use LlamaReasoner to analyze a phase failure (if available)."""
+    """Use LlamaReasoner to analyze a phase failure (if available).
+
+    Args:
+        phase_num: The phase that failed
+        file_id: The file being processed
+        error_output: The actual error text from the failure. If not provided,
+                     falls back to _LAST_PHASE_ERROR global, but callers should
+                     prefer passing explicit error context.
+    """
     global _LAST_PHASE_ERROR
 
     # Use provided error or fall back to stored error
     error_text = error_output or _LAST_PHASE_ERROR
-    if not error_text:
-        logger.debug("No error text available for AI analysis")
+    if not error_text or len(error_text.strip()) < 10:
+        logger.info("AI failure analysis skipped: insufficient error context for Phase %d", phase_num)
         return
 
     reasoner = _get_llama_reasoner()
     if not reasoner:
+        logger.info("AI failure analysis unavailable (LlamaReasoner not loaded)")
         return
 
     try:
@@ -352,7 +361,7 @@ def _analyze_failure_with_llm(phase_num: int, file_id: str, error_output: Option
 
         # Log the AI analysis
         logger.info("=" * 60)
-        logger.info("🤖 AI FAILURE ANALYSIS (LlamaReasoner)")
+        logger.info("AI FAILURE ANALYSIS (LlamaReasoner)")
         logger.info("=" * 60)
         logger.info(f"Root Cause: {analysis.root_cause}")
         logger.info(f"Category: {analysis.category} (confidence: {analysis.confidence:.0%})")
@@ -365,7 +374,7 @@ def _analyze_failure_with_llm(phase_num: int, file_id: str, error_output: Option
         logger.info("=" * 60)
 
     except Exception as e:
-        logger.debug(f"LlamaReasoner analysis failed: {e}")
+        logger.warning("AI failure analysis failed: %s", e, exc_info=True)
 
 
 def _record_chunk_failures(
@@ -441,8 +450,16 @@ def _policy_call(
         hook = getattr(policy_engine, method, None)
         if hook:
             hook(context)
-    except Exception:
-        logger.debug("Policy hook %s failed", method, exc_info=True)
+    except Exception as exc:
+        # Log at WARNING level when policy is actively guiding decisions
+        learning_mode = getattr(policy_engine, "learning_mode", "observe")
+        if learning_mode in ("enforce", "tune"):
+            logger.warning(
+                "Policy hook %s failed in %s mode: %s",
+                method, learning_mode, exc, exc_info=True
+            )
+        else:
+            logger.debug("Policy hook %s failed: %s", method, exc, exc_info=True)
 
 
 def _timestamped_event_path(base_dir: Path) -> Path:
@@ -1605,6 +1622,7 @@ def _find_phase_file_entry(data: Dict[str, Any], phase_key: str, file_id: str) -
 
 def get_phase4_output_dir(phase_dir: Path, pipeline_json: Path, file_id: str) -> Path:
     """Resolve the output directory for Phase 4 audio."""
+    default_path = (phase_dir / "audio_chunks" / file_id).resolve()
     try:
         state = PipelineState(pipeline_json, validate_on_read=False)
         data = state.read()
@@ -1613,9 +1631,14 @@ def get_phase4_output_dir(phase_dir: Path, pipeline_json: Path, file_id: str) ->
         if audio_dir:
             path = Path(audio_dir)
             return path if path.is_absolute() else (phase_dir / path).resolve()
-    except Exception:
-        pass
-    return (phase_dir / "audio_chunks" / file_id).resolve()
+        # No audio_dir in entry - use default
+        logger.debug("Phase 4 audio_dir not set for %s, using default: %s", file_id, default_path)
+    except Exception as exc:
+        logger.info(
+            "Could not read Phase 4 audio_dir from pipeline.json for %s, using default path: %s",
+            file_id, exc
+        )
+    return default_path
 
 
 def cleanup_partial_outputs(file_id: str, chunk_id: Optional[str], phase_dir: Path, pipeline_json: Path) -> None:
@@ -2396,7 +2419,12 @@ def run_phase4_multi_engine(
 
             return []
         except Exception as exc:
-            logger.warning("Unable to inspect pipeline.json for failed chunks: %s", exc)
+            logger.warning(
+                "Unable to inspect pipeline.json for failed chunks (file_id=%s): %s",
+                file_id, exc, exc_info=True
+            )
+            # Return empty list but log at WARNING level so this is visible
+            # The caller should check logs if Phase 4 claims success but audio is missing
             return []
 
     def run_cmd(cmd: List[str]) -> subprocess.CompletedProcess:
@@ -2478,9 +2506,14 @@ def run_phase4_multi_engine(
                 or (entry or {}).get("metrics", {}).get("total_chunks")
                 or 0
             )
-        except Exception:
+        except Exception as exc:
+            logger.error(
+                "Failed to re-read pipeline state after fallback attempts (file_id=%s): %s",
+                file_id, exc, exc_info=True
+            )
             chunk_audio_paths = []
             expected_total = 0
+            # State is unreadable - don't claim success, let collect_failed_chunks determine
 
         # Success criteria:
         # - At least one chunk_audio_paths entry exists, and
