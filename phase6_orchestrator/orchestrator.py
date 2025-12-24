@@ -2048,6 +2048,7 @@ def run_phase_standard(
         ]
         logger.info(f"Command: {' '.join(cmd)}")
         start_time = time.perf_counter()
+        phase3b_timeout = 18000  # 5 hours for Phase 3b sentence splitting
         try:
             result = subprocess.run(
                 cmd,
@@ -2056,7 +2057,7 @@ def run_phase_standard(
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=18000,
+                timeout=phase3b_timeout,
             )
             duration = time.perf_counter() - start_time
             if result.returncode != 0:
@@ -2067,8 +2068,8 @@ def run_phase_standard(
             logger.info(f"Phase {phase_num} SUCCESS in {duration:.1f}s")
             return True
         except subprocess.TimeoutExpired:
-            logger.error(f"Phase {phase_num} TIMEOUT (18000s)")
-            _store_phase_error(f"Phase {phase_num} timeout after 18000 seconds")
+            logger.error(f"Phase {phase_num} TIMEOUT ({phase3b_timeout}s)")
+            _store_phase_error(f"Phase {phase_num} timeout after {phase3b_timeout} seconds")
             return False
         except Exception as e:
             logger.error(f"Phase {phase_num} ERROR: {e}")
@@ -2221,6 +2222,7 @@ def run_phase_standard(
         if existing_py_path:
             py_paths.append(existing_py_path)
         env["PYTHONPATH"] = os.pathsep.join(py_paths)
+        phase_timeout = 18000  # 5 hours for phases 2/3
         result = subprocess.run(
             cmd,
             cwd=str(phase_dir),
@@ -2229,7 +2231,7 @@ def run_phase_standard(
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=18000,
+            timeout=phase_timeout,
         )
 
         duration = time.perf_counter() - start_time
@@ -2244,8 +2246,8 @@ def run_phase_standard(
         return True
 
     except subprocess.TimeoutExpired:
-        logger.error(f"Phase {phase_num} TIMEOUT (600s)")
-        _store_phase_error(f"Phase {phase_num} timeout after 600 seconds")
+        logger.error(f"Phase {phase_num} TIMEOUT ({phase_timeout}s)")
+        _store_phase_error(f"Phase {phase_num} timeout after {phase_timeout} seconds")
         return False
     except Exception as e:
         logger.error(f"Phase {phase_num} ERROR: {e}")
@@ -3411,6 +3413,7 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
     logger.info(f"Command: {' '.join(cmd)}")
 
     # Execute
+    phase5_timeout = 1800  # 30 minutes for Phase 5 enhancement
     start_time = time.perf_counter()
     try:
         env = get_clean_env_for_poetry()
@@ -3431,7 +3434,7 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=1800,  # 30 minutes for full enhancement
+            timeout=phase5_timeout,
         )
 
         duration = time.perf_counter() - start_time
@@ -3446,8 +3449,8 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
         return True
 
     except subprocess.TimeoutExpired:
-        logger.error("Phase 5 TIMEOUT (1800s)")
-        _store_phase_error("Phase 5 timeout after 1800 seconds")
+        logger.error(f"Phase 5 TIMEOUT ({phase5_timeout}s)")
+        _store_phase_error(f"Phase 5 timeout after {phase5_timeout} seconds")
         return False
     except Exception as e:
         logger.error(f"Phase 5 ERROR: {e}")
@@ -3650,6 +3653,7 @@ def run_phase5_5_subtitles(
         logger.info(f"Command: {' '.join(cmd)}")
 
         # Execute subtitle generation
+        phase55_timeout = 3600  # 60 minutes for Phase 5.5 subtitle generation
         start_time = time.perf_counter()
         result = subprocess.run(
             cmd,
@@ -3659,7 +3663,7 @@ def run_phase5_5_subtitles(
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=3600,  # 60 minutes for subtitle generation
+            timeout=phase55_timeout,
         )
 
         duration = time.perf_counter() - start_time
@@ -3749,7 +3753,7 @@ def run_phase5_5_subtitles(
         return True
 
     except subprocess.TimeoutExpired:
-        logger.error("Phase 5.5 TIMEOUT (3600s)")
+        logger.error(f"Phase 5.5 TIMEOUT ({phase55_timeout}s)")
         return False
     except Exception as e:
         logger.error(f"Phase 5.5 ERROR: {e}", exc_info=True)
