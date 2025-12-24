@@ -15,10 +15,25 @@ class PipelineWorker:
         self._status: str = "idle"
         self._progress: float = 0.0
         self._last_message: str = ""
+        self._last_error: Optional[Exception] = None
 
     @property
     def is_running(self) -> bool:
         return self._task is not None and not self._task.done()
+
+    @property
+    def is_error(self) -> bool:
+        """Check if the last run ended with an error."""
+        return self._status.startswith("error:")
+
+    @property
+    def last_error(self) -> Optional[str]:
+        """Get the error message from the last failed run."""
+        if self._last_error:
+            return str(self._last_error)
+        if self._status.startswith("error:"):
+            return self._status[7:].strip()
+        return None
 
     async def start(
         self,
@@ -45,11 +60,13 @@ class PipelineWorker:
         ],
     ) -> Any:
         try:
+            self._last_error = None  # Clear any previous error
             return await runner(self._cancel_event, self._update_progress)
         except asyncio.CancelledError:
             self._status = "cancelled"
             raise
         except Exception as exc:
+            self._last_error = exc
             self._status = f"error: {exc}"
             raise
         finally:
@@ -67,6 +84,8 @@ class PipelineWorker:
             "state": self._status,
             "progress": self._progress,
             "last_message": self._last_message,
+            "is_error": self.is_error,
+            "error": self.last_error,
         }
 
     def _update_progress(
