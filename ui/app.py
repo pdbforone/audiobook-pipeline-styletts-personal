@@ -1065,6 +1065,15 @@ You can:
 
             ui_state.pipeline_api.reset_cancel()
 
+            def build_running_status() -> str:
+                """Build a real-time status string showing completed files."""
+                if not results:
+                    return ""
+                status_parts = [f"[{successful} ok, {failed} failed]"]
+                # Show last 3 results for context
+                recent = results[-3:] if len(results) > 3 else results
+                return " | ".join(status_parts) + " " + "; ".join(r.split("`")[1] if "`" in r else r[:30] for r in recent)
+
             for idx, book in enumerate(book_files, start=1):
                 file_path = Path(book)
                 file_id = file_path.stem
@@ -1077,10 +1086,15 @@ You can:
                         "error_message": "Cancelled by user",
                         "timestamps": {"start": file_start},
                     }
+                    # Show cancellation in real-time
+                    update_progress((idx - 1) / total, f"Cancelled: {file_path.name}")
                     break
 
-                self._safe_progress(progress, (idx - 1) / total, f"Batch {idx}/{total}: {file_path.name}")
-                update_progress((idx - 1) / total, f"Starting {file_path.name}")
+                status_msg = f"Batch {idx}/{total}: {file_path.name}"
+                if results:
+                    status_msg += f" | {build_running_status()}"
+                self._safe_progress(progress, (idx - 1) / total, status_msg)
+                update_progress((idx - 1) / total, f"Processing {file_path.name}")
 
                 inner_progress = gr.Progress(track_tqdm=True)
 
@@ -1114,6 +1128,11 @@ You can:
                         "timestamps": {"start": file_start, "end": file_end},
                         "artifacts": {"audiobook_path": str(out_path)},
                     }
+                    # Show success in real-time
+                    update_progress(
+                        idx / total,
+                        f"✅ {file_path.name} complete | {build_running_status()}"
+                    )
                 else:
                     error_msg = res.get("error", "unknown error")
                     results.append(f"- ❌ `{file_path.name}` failed: {error_msg}")
@@ -1123,6 +1142,11 @@ You can:
                         "error_message": error_msg,
                         "timestamps": {"start": file_start, "end": file_end},
                     }
+                    # Show failure in real-time - this is the key improvement
+                    update_progress(
+                        idx / total,
+                        f"❌ {file_path.name} FAILED: {error_msg[:50]}{'...' if len(error_msg) > 50 else ''}"
+                    )
 
             self._safe_progress(progress, 1.0, "Batch complete")
 
