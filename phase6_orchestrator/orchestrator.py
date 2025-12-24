@@ -333,17 +333,26 @@ def _store_phase_error(error_text: str) -> None:
 
 
 def _analyze_failure_with_llm(phase_num: int, file_id: str, error_output: Optional[str] = None) -> None:
-    """Use LlamaReasoner to analyze a phase failure (if available)."""
+    """Use LlamaReasoner to analyze a phase failure (if available).
+
+    Args:
+        phase_num: The phase that failed
+        file_id: The file being processed
+        error_output: The actual error text from the failure. If not provided,
+                     falls back to _LAST_PHASE_ERROR global, but callers should
+                     prefer passing explicit error context.
+    """
     global _LAST_PHASE_ERROR
 
     # Use provided error or fall back to stored error
     error_text = error_output or _LAST_PHASE_ERROR
-    if not error_text:
-        logger.debug("No error text available for AI analysis")
+    if not error_text or len(error_text.strip()) < 10:
+        logger.info("AI failure analysis skipped: insufficient error context for Phase %d", phase_num)
         return
 
     reasoner = _get_llama_reasoner()
     if not reasoner:
+        logger.info("AI failure analysis unavailable (LlamaReasoner not loaded)")
         return
 
     try:
@@ -352,7 +361,7 @@ def _analyze_failure_with_llm(phase_num: int, file_id: str, error_output: Option
 
         # Log the AI analysis
         logger.info("=" * 60)
-        logger.info("🤖 AI FAILURE ANALYSIS (LlamaReasoner)")
+        logger.info("AI FAILURE ANALYSIS (LlamaReasoner)")
         logger.info("=" * 60)
         logger.info(f"Root Cause: {analysis.root_cause}")
         logger.info(f"Category: {analysis.category} (confidence: {analysis.confidence:.0%})")
@@ -365,7 +374,7 @@ def _analyze_failure_with_llm(phase_num: int, file_id: str, error_output: Option
         logger.info("=" * 60)
 
     except Exception as e:
-        logger.debug(f"LlamaReasoner analysis failed: {e}")
+        logger.warning("AI failure analysis failed: %s", e, exc_info=True)
 
 
 def _record_chunk_failures(
@@ -441,8 +450,16 @@ def _policy_call(
         hook = getattr(policy_engine, method, None)
         if hook:
             hook(context)
-    except Exception:
-        logger.debug("Policy hook %s failed", method, exc_info=True)
+    except Exception as exc:
+        # Log at WARNING level when policy is actively guiding decisions
+        learning_mode = getattr(policy_engine, "learning_mode", "observe")
+        if learning_mode in ("enforce", "tune"):
+            logger.warning(
+                "Policy hook %s failed in %s mode: %s",
+                method, learning_mode, exc, exc_info=True
+            )
+        else:
+            logger.debug("Policy hook %s failed: %s", method, exc, exc_info=True)
 
 
 def _timestamped_event_path(base_dir: Path) -> Path:
@@ -1605,6 +1622,7 @@ def _find_phase_file_entry(data: Dict[str, Any], phase_key: str, file_id: str) -
 
 def get_phase4_output_dir(phase_dir: Path, pipeline_json: Path, file_id: str) -> Path:
     """Resolve the output directory for Phase 4 audio."""
+    default_path = (phase_dir / "audio_chunks" / file_id).resolve()
     try:
         state = PipelineState(pipeline_json, validate_on_read=False)
         data = state.read()
@@ -1613,9 +1631,14 @@ def get_phase4_output_dir(phase_dir: Path, pipeline_json: Path, file_id: str) ->
         if audio_dir:
             path = Path(audio_dir)
             return path if path.is_absolute() else (phase_dir / path).resolve()
-    except Exception:
-        pass
-    return (phase_dir / "audio_chunks" / file_id).resolve()
+        # No audio_dir in entry - use default
+        logger.debug("Phase 4 audio_dir not set for %s, using default: %s", file_id, default_path)
+    except Exception as exc:
+        logger.info(
+            "Could not read Phase 4 audio_dir from pipeline.json for %s, using default path: %s",
+            file_id, exc
+        )
+    return default_path
 
 
 def cleanup_partial_outputs(file_id: str, chunk_id: Optional[str], phase_dir: Path, pipeline_json: Path) -> None:
@@ -2048,6 +2071,7 @@ def run_phase_standard(
         ]
         logger.info(f"Command: {' '.join(cmd)}")
         start_time = time.perf_counter()
+        phase3b_timeout = 18000  # 5 hours for Phase 3b sentence splitting
         try:
             result = subprocess.run(
                 cmd,
@@ -2056,7 +2080,7 @@ def run_phase_standard(
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=18000,
+                timeout=phase3b_timeout,
             )
             duration = time.perf_counter() - start_time
             if result.returncode != 0:
@@ -2067,8 +2091,8 @@ def run_phase_standard(
             logger.info(f"Phase {phase_num} SUCCESS in {duration:.1f}s")
             return True
         except subprocess.TimeoutExpired:
-            logger.error(f"Phase {phase_num} TIMEOUT (18000s)")
-            _store_phase_error(f"Phase {phase_num} timeout after 18000 seconds")
+            logger.error(f"Phase {phase_num} TIMEOUT ({phase3b_timeout}s)")
+            _store_phase_error(f"Phase {phase_num} timeout after {phase3b_timeout} seconds")
             return False
         except Exception as e:
             logger.error(f"Phase {phase_num} ERROR: {e}")
@@ -2221,6 +2245,7 @@ def run_phase_standard(
         if existing_py_path:
             py_paths.append(existing_py_path)
         env["PYTHONPATH"] = os.pathsep.join(py_paths)
+        phase_timeout = 18000  # 5 hours for phases 2/3
         result = subprocess.run(
             cmd,
             cwd=str(phase_dir),
@@ -2229,7 +2254,7 @@ def run_phase_standard(
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=18000,
+            timeout=phase_timeout,
         )
 
         duration = time.perf_counter() - start_time
@@ -2244,8 +2269,8 @@ def run_phase_standard(
         return True
 
     except subprocess.TimeoutExpired:
-        logger.error(f"Phase {phase_num} TIMEOUT (600s)")
-        _store_phase_error(f"Phase {phase_num} timeout after 600 seconds")
+        logger.error(f"Phase {phase_num} TIMEOUT ({phase_timeout}s)")
+        _store_phase_error(f"Phase {phase_num} timeout after {phase_timeout} seconds")
         return False
     except Exception as e:
         logger.error(f"Phase {phase_num} ERROR: {e}")
@@ -2394,7 +2419,12 @@ def run_phase4_multi_engine(
 
             return []
         except Exception as exc:
-            logger.warning("Unable to inspect pipeline.json for failed chunks: %s", exc)
+            logger.warning(
+                "Unable to inspect pipeline.json for failed chunks (file_id=%s): %s",
+                file_id, exc, exc_info=True
+            )
+            # Return empty list but log at WARNING level so this is visible
+            # The caller should check logs if Phase 4 claims success but audio is missing
             return []
 
     def run_cmd(cmd: List[str]) -> subprocess.CompletedProcess:
@@ -2476,9 +2506,14 @@ def run_phase4_multi_engine(
                 or (entry or {}).get("metrics", {}).get("total_chunks")
                 or 0
             )
-        except Exception:
+        except Exception as exc:
+            logger.error(
+                "Failed to re-read pipeline state after fallback attempts (file_id=%s): %s",
+                file_id, exc, exc_info=True
+            )
             chunk_audio_paths = []
             expected_total = 0
+            # State is unreadable - don't claim success, let collect_failed_chunks determine
 
         # Success criteria:
         # - At least one chunk_audio_paths entry exists, and
@@ -3411,6 +3446,7 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
     logger.info(f"Command: {' '.join(cmd)}")
 
     # Execute
+    phase5_timeout = 1800  # 30 minutes for Phase 5 enhancement
     start_time = time.perf_counter()
     try:
         env = get_clean_env_for_poetry()
@@ -3431,7 +3467,7 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=1800,  # 30 minutes for full enhancement
+            timeout=phase5_timeout,
         )
 
         duration = time.perf_counter() - start_time
@@ -3446,8 +3482,8 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
         return True
 
     except subprocess.TimeoutExpired:
-        logger.error("Phase 5 TIMEOUT (1800s)")
-        _store_phase_error("Phase 5 timeout after 1800 seconds")
+        logger.error(f"Phase 5 TIMEOUT ({phase5_timeout}s)")
+        _store_phase_error(f"Phase 5 timeout after {phase5_timeout} seconds")
         return False
     except Exception as e:
         logger.error(f"Phase 5 ERROR: {e}")
@@ -3650,6 +3686,7 @@ def run_phase5_5_subtitles(
         logger.info(f"Command: {' '.join(cmd)}")
 
         # Execute subtitle generation
+        phase55_timeout = 3600  # 60 minutes for Phase 5.5 subtitle generation
         start_time = time.perf_counter()
         result = subprocess.run(
             cmd,
@@ -3659,7 +3696,7 @@ def run_phase5_5_subtitles(
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=3600,  # 60 minutes for subtitle generation
+            timeout=phase55_timeout,
         )
 
         duration = time.perf_counter() - start_time
@@ -3749,7 +3786,7 @@ def run_phase5_5_subtitles(
         return True
 
     except subprocess.TimeoutExpired:
-        logger.error("Phase 5.5 TIMEOUT (3600s)")
+        logger.error(f"Phase 5.5 TIMEOUT ({phase55_timeout}s)")
         return False
     except Exception as e:
         logger.error(f"Phase 5.5 ERROR: {e}", exc_info=True)

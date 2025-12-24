@@ -14,10 +14,14 @@ Default Model: Llama 3.1 8B Instruct (llama3.1:8b-instruct-q4_K_M)
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
+
+# Thread pool for timeout-protected queries
+_query_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="llama_backend")
 
 # Default configuration
 DEFAULT_MODEL = "llama3.1:8b-instruct-q4_K_M"
@@ -108,12 +112,9 @@ def run_llama(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
-    # Execute query
-    try:
-        logger.debug(f"Querying {llm_config.model} with prompt length: {len(prompt)}")
-        start_time = time.time()
-
-        response = ollama.chat(
+    # Helper function for thread pool execution
+    def _execute_chat():
+        return ollama.chat(
             model=llm_config.model,
             messages=messages,
             options={
@@ -121,6 +122,22 @@ def run_llama(
                 "temperature": temperature,
             },
         )
+
+    # Execute query with timeout protection
+    timeout = llm_config.timeout_seconds
+    try:
+        logger.debug(f"Querying {llm_config.model} with prompt length: {len(prompt)}, timeout: {timeout}s")
+        start_time = time.time()
+
+        # Submit to thread pool for timeout control
+        future = _query_executor.submit(_execute_chat)
+        try:
+            response = future.result(timeout=timeout)
+        except FuturesTimeoutError:
+            future.cancel()
+            error_msg = f"LLM query timed out after {timeout}s"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
         duration = time.time() - start_time
         content = response["message"]["content"]
@@ -132,6 +149,12 @@ def run_llama(
 
         return content
 
+    except FuturesTimeoutError:
+        # Already handled above, but catch here for safety
+        raise
+    except RuntimeError:
+        # Don't wrap RuntimeError again
+        raise
     except Exception as e:
         error_msg = f"LLM query failed: {e}"
         logger.error(error_msg)
