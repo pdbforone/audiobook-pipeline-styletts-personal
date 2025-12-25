@@ -560,9 +560,140 @@ Examples:
         parser.print_help()
 
 
+# LLM-enhanced voice matching (opt-in)
+try:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent.parent))
+    from agents.llama_voice_matcher import LlamaVoiceMatcher
+    _VOICE_MATCHER_AVAILABLE = True
+except ImportError:
+    _VOICE_MATCHER_AVAILABLE = False
+    LlamaVoiceMatcher = None  # type: ignore
+
+
+def select_voice_intelligent(
+    title: str,
+    sample_text: str,
+    profile_name: str,
+    file_id: Optional[str] = None,
+    pipeline_data: Optional[Dict] = None,
+    cli_override: Optional[str] = None,
+    engine: Optional[str] = None,
+    use_llm: bool = True,
+) -> Dict[str, any]:
+    """
+    Select voice using LLM-based intelligent matching with fallback to rules.
+
+    This enhanced version analyzes the actual book content to recommend
+    the best voice, rather than relying solely on genre profiles.
+
+    Priority cascade (highest to lowest):
+    1. CLI override (--voice flag)
+    2. File-level override
+    3. Global override
+    4. LLM-based content analysis (if enabled)
+    5. Genre profile match
+    6. Default voice
+
+    Args:
+        title: Book title
+        sample_text: First 500-1000 chars of book text
+        profile_name: Genre profile (e.g., 'philosophy', 'fiction')
+        file_id: File identifier for file-level overrides
+        pipeline_data: pipeline.json data with overrides
+        cli_override: Voice ID from --voice CLI flag
+        engine: Filter voices by engine (xtts, kokoro)
+        use_llm: Whether to use LLM for matching (default: True)
+
+    Returns:
+        dict with keys:
+            - voice_id: Selected voice ID
+            - reason: Why this voice was selected
+            - alternatives: List of alternative voice IDs
+            - llm_analysis: LLM content analysis (if used)
+            - confidence: Confidence in selection (0.0-1.0)
+    """
+    result = {
+        "voice_id": None,
+        "reason": "",
+        "alternatives": [],
+        "llm_analysis": None,
+        "confidence": 0.0,
+    }
+
+    # Priority 1-3: Check overrides first (same as select_voice)
+    if cli_override and validate_voice_id(cli_override):
+        result["voice_id"] = normalize_voice_id(cli_override)
+        result["reason"] = f"CLI override (--voice {cli_override})"
+        result["confidence"] = 1.0
+        return result
+
+    if pipeline_data and file_id:
+        file_override = pipeline_data.get("voice_overrides", {}).get(file_id)
+        if file_override and validate_voice_id(file_override):
+            result["voice_id"] = normalize_voice_id(file_override)
+            result["reason"] = f"File-level override for {file_id}"
+            result["confidence"] = 1.0
+            return result
+
+    if pipeline_data:
+        global_override = pipeline_data.get("tts_voice")
+        if global_override and validate_voice_id(global_override):
+            result["voice_id"] = normalize_voice_id(global_override)
+            result["reason"] = "Global override (tts_voice)"
+            result["confidence"] = 1.0
+            return result
+
+    # Priority 4: LLM-based content analysis
+    if use_llm and _VOICE_MATCHER_AVAILABLE and LlamaVoiceMatcher is not None:
+        try:
+            matcher = LlamaVoiceMatcher()
+            llm_result = matcher.recommend_voice(
+                title=title,
+                sample_text=sample_text,
+                detected_genre=profile_name,
+                engine=engine,
+                top_n=3,
+            )
+
+            if llm_result.get("confidence", 0) > 0.5:
+                recommendations = llm_result.get("recommendations", [])
+                if recommendations:
+                    best = recommendations[0]
+                    result["voice_id"] = best["voice_id"]
+                    result["reason"] = f"LLM recommendation: {best['reason']}"
+                    result["alternatives"] = [r["voice_id"] for r in recommendations[1:]]
+                    result["llm_analysis"] = llm_result.get("analysis")
+                    result["confidence"] = best.get("confidence", 0.7)
+
+                    logger.info(
+                        f"LLM voice match: {result['voice_id']} "
+                        f"(confidence={result['confidence']:.2f})"
+                    )
+                    return result
+
+        except Exception as e:
+            logger.warning(f"LLM voice matching failed, falling back to rules: {e}")
+
+    # Priority 5: Genre profile match (fallback)
+    selected = select_voice(
+        profile_name=profile_name,
+        file_id=file_id,
+        pipeline_data=pipeline_data,
+        cli_override=None,  # Already checked above
+    )
+
+    result["voice_id"] = selected
+    result["reason"] = f"Profile match ({profile_name})"
+    result["confidence"] = 0.5
+
+    return result
+
+
 # Export
 __all__ = [
     "select_voice",
+    "select_voice_intelligent",
     "get_voice_params",
     "list_available_voices",
     "load_voice_registry",

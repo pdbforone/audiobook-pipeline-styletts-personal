@@ -24,6 +24,7 @@ from .llama_metadata import LlamaMetadataGenerator
 from .llama_pre_validator import LlamaPreValidator
 from .llama_self_review import LlamaSelfReview
 from .llama_diagnostics import LlamaDiagnostics
+from .llama_voice_matcher import LlamaVoiceMatcher
 
 __all__ = [
     "LlamaAgent",
@@ -35,5 +36,6 @@ __all__ = [
     "LlamaPreValidator",
     "LlamaSelfReview",
     "LlamaDiagnostics",
+    "LlamaVoiceMatcher",
     "get_agent",
 ]
