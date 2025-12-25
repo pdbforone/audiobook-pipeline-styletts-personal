@@ -65,6 +65,12 @@ try:
 except ImportError:
     LlamaPreValidator = None  # type: ignore
 
+# Llama chunk reviewer for post-batch quality analysis (opt-in)
+try:
+    from agents.llama_chunk_reviewer import LlamaChunkReviewer
+except ImportError:
+    LlamaChunkReviewer = None  # type: ignore
+
 MODULE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = MODULE_ROOT.parent.parent
 DEFAULT_CHARS_PER_MINUTE = 1050  # Shared speaking cadence assumption
@@ -1767,6 +1773,46 @@ def update_phase4_summary(
             "tier1_failures": tier1_failures,
             "tier2_failures": tier2_failures,
         }
+
+        # LLM-powered chunk quality review (opt-in, runs after batch completes)
+        chunk_review = None
+        enable_chunk_review = not os.environ.get("DISABLE_CHUNK_REVIEWER", "").lower() in ("1", "true", "yes")
+        if enable_chunk_review and LlamaChunkReviewer is not None and failed > 0:
+            try:
+                reviewer = LlamaChunkReviewer()
+                # Convert ChunkResult objects to dicts for reviewer
+                result_dicts = [
+                    {
+                        "chunk_id": r.chunk_id,
+                        "success": r.success,
+                        "text_len": r.text_len,
+                        "audio_duration": r.audio_duration,
+                        "validation_tier": r.validation_tier,
+                        "validation_reason": r.validation_reason,
+                        "error": r.error,
+                    }
+                    for r in results
+                ]
+                # Use quick_check for fast analysis (no LLM), full review only if many failures
+                if failed > 5:
+                    chunk_review = reviewer.review_batch_results(
+                        result_dicts, file_id, selected_engine
+                    )
+                    logger.info(
+                        "Chunk review completed: quality=%.2f, issues=%d",
+                        chunk_review.get("quality_score", 0),
+                        len(chunk_review.get("issues", [])),
+                    )
+                else:
+                    chunk_review = reviewer.quick_quality_check(result_dicts)
+                    logger.info(
+                        "Quick quality check: %s (%.0f%% success)",
+                        chunk_review.get("severity", "unknown"),
+                        chunk_review.get("success_rate", 0) * 100,
+                    )
+            except Exception as exc:
+                logger.warning("Chunk review failed: %s", exc)
+
         extra_fields = {
             "voice_id": voice_id,
             "requested_engine": requested_engine,
@@ -1774,6 +1820,7 @@ def update_phase4_summary(
             "engines_used": engines_used,
             "voices_used": voices_used,
             "advisory": advisory,
+            "chunk_review": chunk_review,
         }
         file_entry = txn.update_phase(
             file_id,
