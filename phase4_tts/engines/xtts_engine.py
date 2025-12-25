@@ -12,7 +12,7 @@ import random
 import re
 import numpy as np
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional, List
 
 try:
     import torch

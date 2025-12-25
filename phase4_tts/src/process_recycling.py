@@ -26,7 +26,6 @@ Configuration:
 import gc
 import logging
 import os
-from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Pool
 from typing import Any, Callable, Iterable, List, Optional
 
