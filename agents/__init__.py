@@ -21,6 +21,12 @@ from .llama_chunker import LlamaChunker
 from .llama_reasoner import LlamaReasoner
 from .llama_rewriter import LlamaRewriter
 from .llama_metadata import LlamaMetadataGenerator
+from .llama_pre_validator import LlamaPreValidator
+from .llama_self_review import LlamaSelfReview
+from .llama_diagnostics import LlamaDiagnostics
+from .llama_voice_matcher import LlamaVoiceMatcher
+from .llama_chunk_reviewer import LlamaChunkReviewer
+from .llama_semantic_repetition import LlamaSemanticRepetition
 
 __all__ = [
     "LlamaAgent",
@@ -29,5 +35,11 @@ __all__ = [
     "LlamaReasoner",
     "LlamaRewriter",
     "LlamaMetadataGenerator",
+    "LlamaPreValidator",
+    "LlamaSelfReview",
+    "LlamaDiagnostics",
+    "LlamaVoiceMatcher",
+    "LlamaChunkReviewer",
+    "LlamaSemanticRepetition",
     "get_agent",
 ]

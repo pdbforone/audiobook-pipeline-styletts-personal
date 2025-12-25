@@ -59,6 +59,18 @@ try:
 except ImportError:
     LlamaRewriter = None  # type: ignore
 
+# Llama pre-validator for proactive text analysis (opt-in)
+try:
+    from agents.llama_pre_validator import LlamaPreValidator
+except ImportError:
+    LlamaPreValidator = None  # type: ignore
+
+# Llama chunk reviewer for post-batch quality analysis (opt-in)
+try:
+    from agents.llama_chunk_reviewer import LlamaChunkReviewer
+except ImportError:
+    LlamaChunkReviewer = None  # type: ignore
+
 MODULE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = MODULE_ROOT.parent.parent
 DEFAULT_CHARS_PER_MINUTE = 1050  # Shared speaking cadence assumption
@@ -472,13 +484,25 @@ def select_voice(
             logger.info(f"Using Phase 3 selected voice: {selected_voice}")
 
     if not selected_voice:
-        # Default to first built-in Kokoro voice or first prepared ref
-        # Find first built-in Kokoro voice
+        # Default to a high-quality built-in Kokoro voice or first prepared ref
+        # Preferred defaults: af_bella (female, warm), am_adam (male, authoritative)
+        PREFERRED_KOKORO_DEFAULTS = ["af_bella", "am_adam", "af_sarah", "af_nicole"]
         kokoro_built_in = None
-        for voice_name, voice_data in all_voices.items():
-            if voice_data.get("built_in") and voice_data.get("engine") == "kokoro":
-                kokoro_built_in = voice_name
-                break
+
+        # First try preferred voices
+        for preferred in PREFERRED_KOKORO_DEFAULTS:
+            if preferred in all_voices:
+                voice_data = all_voices[preferred]
+                if voice_data.get("built_in") and voice_data.get("engine") == "kokoro":
+                    kokoro_built_in = preferred
+                    break
+
+        # Fallback to any Kokoro voice if preferred not found
+        if not kokoro_built_in:
+            for voice_name, voice_data in all_voices.items():
+                if voice_data.get("built_in") and voice_data.get("engine") == "kokoro":
+                    kokoro_built_in = voice_name
+                    break
 
         if kokoro_built_in:
             selected_voice = kokoro_built_in
@@ -545,13 +569,25 @@ def select_voice(
 
     # BUGFIX: Check with normalized comparison for custom voices
     if selected_voice not in prepared_refs and normalized_selected not in prepared_refs:
-        # Try to fall back to a built-in voice first
-        # Find first built-in Kokoro voice
+        # Try to fall back to a high-quality built-in voice first
+        # Preferred defaults: af_bella (female, warm), am_adam (male, authoritative)
+        PREFERRED_KOKORO_DEFAULTS = ["af_bella", "am_adam", "af_sarah", "af_nicole"]
         kokoro_built_in = None
-        for voice_name, voice_data in all_voices.items():
-            if voice_data.get("built_in") and voice_data.get("engine") == "kokoro":
-                kokoro_built_in = voice_name
-                break
+
+        # First try preferred voices
+        for preferred in PREFERRED_KOKORO_DEFAULTS:
+            if preferred in all_voices:
+                voice_data = all_voices[preferred]
+                if voice_data.get("built_in") and voice_data.get("engine") == "kokoro":
+                    kokoro_built_in = preferred
+                    break
+
+        # Fallback to any Kokoro voice if preferred not found
+        if not kokoro_built_in:
+            for voice_name, voice_data in all_voices.items():
+                if voice_data.get("built_in") and voice_data.get("engine") == "kokoro":
+                    kokoro_built_in = voice_name
+                    break
 
         if kokoro_built_in:
             logger.warning(
@@ -753,6 +789,73 @@ def synthesize_chunk_with_engine(
             validation_details=None,
         )
 
+    # Pre-synthesis text validation (proactive issue detection)
+    pre_validated_text = chunk.text
+    pre_validation_applied = False
+    pre_validation_details = None
+
+    pre_validator_enabled = (
+        validation_config is not None
+        and getattr(validation_config, "enable_llama_pre_validator", False)
+        and not os.environ.get("DISABLE_LLAMA_PRE_VALIDATOR", "").lower() in ("1", "true", "yes")
+    )
+    pre_validator_auto_expand = getattr(validation_config, "pre_validator_auto_expand", True) if validation_config else True
+    pre_validator_use_llm = getattr(validation_config, "pre_validator_use_llm", False) if validation_config else False
+
+    if pre_validator_enabled and LlamaPreValidator is not None:
+        try:
+            pre_validator = LlamaPreValidator()
+
+            # Quick pattern-based check first
+            is_clean, issue_types = pre_validator.quick_check(chunk.text)
+
+            if not is_clean:
+                logger.info(
+                    "Chunk %s pre-validation detected issues: %s",
+                    chunk.chunk_id,
+                    ", ".join(issue_types),
+                )
+
+                # Auto-expand common abbreviations (fast, no LLM)
+                if pre_validator_auto_expand:
+                    pre_validated_text = pre_validator.auto_expand_abbreviations(chunk.text)
+                    if pre_validated_text != chunk.text:
+                        logger.debug(
+                            "Chunk %s auto-expanded abbreviations",
+                            chunk.chunk_id,
+                        )
+                        pre_validation_applied = True
+
+                # If LLM enabled and significant issues, get full analysis
+                if pre_validator_use_llm and len(issue_types) >= 2:
+                    full_result = pre_validator.validate_for_tts(
+                        pre_validated_text,
+                        check_with_llm=True,
+                    )
+                    if full_result.get("suggested_text") and full_result.get("confidence", 0) > 0.7:
+                        pre_validated_text = full_result["suggested_text"]
+                        pre_validation_applied = True
+                        logger.info(
+                            "Chunk %s LLM pre-validation applied (confidence=%.2f): %s",
+                            chunk.chunk_id,
+                            full_result["confidence"],
+                            full_result.get("llm_notes", "")[:100],
+                        )
+
+                pre_validation_details = {
+                    "issues_detected": issue_types,
+                    "text_modified": pre_validation_applied,
+                    "original_length": len(chunk.text),
+                    "validated_length": len(pre_validated_text),
+                }
+
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.warning(
+                "Chunk %s pre-validation failed (continuing with original text): %s",
+                chunk.chunk_id,
+                exc,
+            )
+
     kokoro_available = "kokoro" in engine_manager.engines
 
     def standardize_audio(
@@ -859,7 +962,7 @@ def synthesize_chunk_with_engine(
     ) -> Tuple[np.ndarray, str, int, float, float]:
         synth_start = time.time()
         audio_out, selected_engine = engine_manager.synthesize(
-            text=text_override or chunk.text,
+            text=text_override or pre_validated_text,
             reference_audio=reference,
             engine=target_engine,
             language=language,
@@ -1160,6 +1263,11 @@ def synthesize_chunk_with_engine(
     tier2_result = None
     validation_success = True
     collected_validation_details: Dict[str, Any] = {}
+
+    # Include pre-validation details if text was modified
+    if pre_validation_details:
+        collected_validation_details["pre_validation"] = pre_validation_details
+
     if validation_enabled and validation_config:
         if validation_config.enable_tier1:
             tier1_result = tier1_validate(
@@ -1294,14 +1402,15 @@ def synthesize_chunk_with_engine(
                     )
 
                     # Strategy 1: Try Llama rewrite first (if recommendation is "rewrite")
+                    # Check env var override (UI can disable via DISABLE_LLAMA_REWRITER=1)
+                    llama_rewriter_enabled = (
+                        (validation_config.enable_llama_asr_rewrite if hasattr(validation_config, "enable_llama_asr_rewrite") else False)
+                        and not os.environ.get("DISABLE_LLAMA_REWRITER", "").lower() in ("1", "true", "yes")
+                    )
                     if (
                         asr_result["recommendation"] == "rewrite"
                         and LlamaRewriter is not None
-                        and (
-                            validation_config.enable_llama_asr_rewrite
-                            if hasattr(validation_config, "enable_llama_asr_rewrite")
-                            else False
-                        )
+                        and llama_rewriter_enabled
                     ):
                         logger.info(
                             "Chunk %s attempting Llama rewrite based on ASR feedback",
@@ -1664,6 +1773,46 @@ def update_phase4_summary(
             "tier1_failures": tier1_failures,
             "tier2_failures": tier2_failures,
         }
+
+        # LLM-powered chunk quality review (opt-in, runs after batch completes)
+        chunk_review = None
+        enable_chunk_review = not os.environ.get("DISABLE_CHUNK_REVIEWER", "").lower() in ("1", "true", "yes")
+        if enable_chunk_review and LlamaChunkReviewer is not None and failed > 0:
+            try:
+                reviewer = LlamaChunkReviewer()
+                # Convert ChunkResult objects to dicts for reviewer
+                result_dicts = [
+                    {
+                        "chunk_id": r.chunk_id,
+                        "success": r.success,
+                        "text_len": r.text_len,
+                        "audio_duration": r.audio_duration,
+                        "validation_tier": r.validation_tier,
+                        "validation_reason": r.validation_reason,
+                        "error": r.error,
+                    }
+                    for r in results
+                ]
+                # Use quick_check for fast analysis (no LLM), full review only if many failures
+                if failed > 5:
+                    chunk_review = reviewer.review_batch_results(
+                        result_dicts, file_id, selected_engine
+                    )
+                    logger.info(
+                        "Chunk review completed: quality=%.2f, issues=%d",
+                        chunk_review.get("quality_score", 0),
+                        len(chunk_review.get("issues", [])),
+                    )
+                else:
+                    chunk_review = reviewer.quick_quality_check(result_dicts)
+                    logger.info(
+                        "Quick quality check: %s (%.0f%% success)",
+                        chunk_review.get("severity", "unknown"),
+                        chunk_review.get("success_rate", 0) * 100,
+                    )
+            except Exception as exc:
+                logger.warning("Chunk review failed: %s", exc)
+
         extra_fields = {
             "voice_id": voice_id,
             "requested_engine": requested_engine,
@@ -1671,6 +1820,7 @@ def update_phase4_summary(
             "engines_used": engines_used,
             "voices_used": voices_used,
             "advisory": advisory,
+            "chunk_review": chunk_review,
         }
         file_entry = txn.update_phase(
             file_id,

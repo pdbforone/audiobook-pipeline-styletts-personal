@@ -1193,7 +1193,22 @@ def resolve_phase5_audiobook_path(file_id: str, pipeline_json: Path, phase5_dir:
         if not audiobook_path.is_absolute():
             audiobook_path = (phase5_dir / audiobook_path).resolve()
     else:
-        audiobook_path = (phase5_dir / "processed" / "audiobook.mp3").resolve()
+        # Try multiple fallback paths based on Phase 5 output structure:
+        # 1. processed/{file_id}/mp3/audiobook.mp3 (new per-file structure)
+        # 2. processed/mp3/audiobook.mp3 (single-file structure)
+        # 3. processed/audiobook.mp3 (legacy structure)
+        fallback_paths = [
+            phase5_dir / "processed" / file_id / "mp3" / "audiobook.mp3",
+            phase5_dir / "processed" / "mp3" / "audiobook.mp3",
+            phase5_dir / "processed" / "audiobook.mp3",
+        ]
+        for fallback in fallback_paths:
+            if fallback.exists():
+                audiobook_path = fallback.resolve()
+                break
+        else:
+            # Return the most likely path even if it doesn't exist (for error reporting)
+            audiobook_path = fallback_paths[0].resolve()
 
     return audiobook_path
 
@@ -3928,6 +3943,8 @@ def run_pipeline(
     concat_only: bool = False,
     auto_mode: bool = False,
     policy_engine: Optional[PolicyEngine] = None,
+    enable_llama_chunker: bool = True,
+    enable_llama_rewriter: bool = True,
 ) -> Dict:
     """
     Programmatic interface to run the audiobook pipeline.
@@ -3945,6 +3962,8 @@ def run_pipeline(
         progress_callback: Optional callback(phase_num, percentage, message)
         concat_only: Reuse existing enhanced WAVs in Phase 5 (skip re-enhancement)
         auto_mode: Let AI select voice based on genre detection (overrides voice_id)
+        enable_llama_chunker: Enable LlamaChunker for semantic chunking in Phase 3
+        enable_llama_rewriter: Enable LlamaRewriter for ASR-based text fixes in Phase 4
 
     Returns:
         Dict with:
@@ -3985,6 +4004,20 @@ def run_pipeline(
             logger.warning(f"🤖 LLM features disabled: {ollama_status['message']}")
     else:
         logger.info("🤖 LLM features disabled in config")
+
+    # Set environment variables for LLM features (inherited by subprocesses)
+    # These allow UI to control LlamaChunker and LlamaRewriter per-run
+    if not enable_llama_chunker:
+        os.environ["DISABLE_LLAMA_CHUNKER"] = "1"
+        logger.info("🤖 LlamaChunker disabled by UI setting")
+    elif "DISABLE_LLAMA_CHUNKER" in os.environ:
+        del os.environ["DISABLE_LLAMA_CHUNKER"]
+
+    if not enable_llama_rewriter:
+        os.environ["DISABLE_LLAMA_REWRITER"] = "1"
+        logger.info("🤖 LlamaRewriter disabled by UI setting")
+    elif "DISABLE_LLAMA_REWRITER" in os.environ:
+        del os.environ["DISABLE_LLAMA_REWRITER"]
 
     if policy_engine is None:
         policy_config = orchestrator_config.policy_engine or {}

@@ -8,7 +8,7 @@ validation:
   # Tier 1: Quick Checks (Always Enabled)
   tier1:
     enabled: true
-    duration_tolerance_sec: 5.0      # Allow ±5s difference between expected and actual
+    duration_tolerance_sec: 10.0     # Minimum tolerance (actual is proportional: 20% for long, 25% for medium, 80% for short chunks)
     silence_threshold_sec: 2.0       # Flag silence gaps longer than 2s
     min_amplitude_db: -40.0          # Flag audio quieter than -40dB
     

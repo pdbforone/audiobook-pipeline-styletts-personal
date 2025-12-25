@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from agents import LlamaAgent
+from .llama_base import LlamaAgent
 
 
 class LlamaDiagnostics(LlamaAgent):

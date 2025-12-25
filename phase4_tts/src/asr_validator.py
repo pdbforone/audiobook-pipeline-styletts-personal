@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import Counter
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 import numpy as np
@@ -220,6 +221,42 @@ class ASRValidator:
 
         return text.strip()
 
+    def _detect_phrase_repetition(self, text: str, min_phrase_words: int = 4) -> Optional[str]:
+        """
+        Detect phrase-level repetition in text.
+
+        XTTS sometimes loops and repeats the same phrase/sentence multiple times.
+        This catches patterns like "Once upon a time. Once upon a time. Once upon a time."
+
+        Args:
+            text: Text to analyze (typically a Whisper transcription)
+            min_phrase_words: Minimum words in a phrase to consider (default: 4)
+
+        Returns:
+            Description of repetition if found, None otherwise
+        """
+        words = self._normalize_text(text).split()
+        if len(words) < min_phrase_words * 2:
+            return None  # Too short to have meaningful repetition
+
+        # Check for repeated n-grams (phrases of 4-8 words)
+        for n in range(min_phrase_words, min(9, len(words) // 2 + 1)):
+            ngrams = []
+            for i in range(len(words) - n + 1):
+                ngram = " ".join(words[i:i + n])
+                ngrams.append(ngram)
+
+            # Count occurrences of each n-gram
+            ngram_counts = Counter(ngrams)
+
+            # Find n-grams that appear more than twice (suspicious repetition)
+            for ngram, count in ngram_counts.most_common(3):
+                if count >= 3:
+                    # This phrase appears 3+ times - likely XTTS looping
+                    return f"{count}x_{n}words"
+
+        return None
+
     def _calculate_confidence(self, whisper_result: dict) -> float:
         """
         Calculate average confidence from Whisper segments.
@@ -262,12 +299,18 @@ class ASRValidator:
         if transcribed_words < expected_words * 0.7:  # <70% of expected length
             issues.append(f"truncation_{transcribed_words}/{expected_words}_words")
 
-        # Issue 3: Repetition (same word repeated many times)
+        # Issue 3: Word-level repetition (same word repeated many times in a row)
         words = self._normalize_text(transcription).split()
         if len(words) > 0:
             unique_ratio = len(set(words)) / len(words)
             if unique_ratio < 0.3:  # <30% unique words = likely repetition artifact
                 issues.append("repetition_artifact")
+
+        # Issue 3b: Phrase-level repetition (same sentence/phrase repeated)
+        # This catches XTTS looping where it says the same sentence multiple times
+        phrase_rep = self._detect_phrase_repetition(transcription)
+        if phrase_rep:
+            issues.append(f"phrase_repetition_{phrase_rep}")
 
         # Issue 4: Gibberish detection (very different from expected)
         if wer > 0.8 and transcribed_words > 0:

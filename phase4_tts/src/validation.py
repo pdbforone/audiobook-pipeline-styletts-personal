@@ -9,9 +9,11 @@ Purpose: Detect TTS corruption immediately rather than discovering it days later
 """
 
 import logging
+import re
 import time
 import random
-from typing import Tuple, Dict, Optional
+from collections import Counter
+from typing import Tuple, Dict, Optional, List
 import librosa
 import numpy as np
 from dataclasses import dataclass
@@ -53,6 +55,14 @@ class ValidationConfig:
 
     # Known error phrases to detect
     error_phrases: list = None
+
+    # Pre-synthesis validation (proactive)
+    enable_llama_pre_validator: bool = True  # Scan text before TTS
+    pre_validator_auto_expand: bool = True   # Auto-expand abbreviations
+    pre_validator_use_llm: bool = False      # Use LLM for complex rewrites
+
+    # ASR-driven rewriting (reactive)
+    enable_llama_asr_rewrite: bool = True    # Use LlamaRewriter for ASR issues
 
     def __post_init__(self):
         if self.error_phrases is None:
@@ -125,6 +135,63 @@ def predict_expected_duration(
     duration_seconds = duration_minutes * 60
 
     return duration_seconds
+
+
+def detect_text_repetition(text: str, min_phrase_words: int = 5) -> Optional[Dict]:
+    """
+    Detect phrase-level repetition in chunk text BEFORE TTS synthesis.
+
+    This catches issues from Phase 3 where the same content is duplicated,
+    saving TTS time and preventing duration_mismatch failures.
+
+    Args:
+        text: Chunk text to analyze
+        min_phrase_words: Minimum words in a phrase to consider
+
+    Returns:
+        Dict with repetition info if found, None if clean
+    """
+    # Normalize text
+    normalized = re.sub(r'[^\w\s]', ' ', text.lower())
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    words = normalized.split()
+
+    if len(words) < min_phrase_words * 2:
+        return None  # Too short
+
+    # Check for repeated n-grams (phrases of 5-12 words)
+    for n in range(min_phrase_words, min(13, len(words) // 2 + 1)):
+        ngrams = []
+        for i in range(len(words) - n + 1):
+            ngram = " ".join(words[i:i + n])
+            ngrams.append(ngram)
+
+        ngram_counts = Counter(ngrams)
+
+        # Find phrases that appear 3+ times (definite duplication)
+        for ngram, count in ngram_counts.most_common(1):
+            if count >= 3:
+                return {
+                    "type": "phrase_repetition",
+                    "count": count,
+                    "phrase_length": n,
+                    "sample": ngram[:50] + "..." if len(ngram) > 50 else ngram,
+                }
+
+    # Check for sentence-level duplication (exact sentence repeated)
+    sentences = re.split(r'[.!?]+', text)
+    sentences = [s.strip().lower() for s in sentences if s.strip() and len(s.strip()) > 20]
+    if sentences:
+        sentence_counts = Counter(sentences)
+        for sentence, count in sentence_counts.most_common(1):
+            if count >= 2:
+                return {
+                    "type": "sentence_duplication",
+                    "count": count,
+                    "sample": sentence[:50] + "..." if len(sentence) > 50 else sentence,
+                }
+
+    return None
 
 
 def has_silence_gap(
@@ -310,11 +377,20 @@ def tier1_validate(
             chunk_text, chars_per_minute=effective_cpm
         )
         duration_diff = abs(expected_duration - actual_duration)
-        allowed_diff = config.duration_tolerance_sec
+
+        # Proportional tolerance: allow more variance for longer chunks
+        # - Short chunks (<20s): up to 80% variance (current behavior)
+        # - Medium chunks (20-60s): up to 25% variance
+        # - Long chunks (60s+): up to 20% variance
+        # Always at least config.duration_tolerance_sec (default 120s)
         if expected_duration < 20.0:
-            allowed_diff = max(
-                config.duration_tolerance_sec, expected_duration * 0.8
-            )
+            proportional_tolerance = expected_duration * 0.8
+        elif expected_duration < 60.0:
+            proportional_tolerance = expected_duration * 0.25
+        else:
+            proportional_tolerance = expected_duration * 0.20
+
+        allowed_diff = max(config.duration_tolerance_sec, proportional_tolerance)
 
         if duration_diff > allowed_diff:
             elapsed = time.perf_counter() - start

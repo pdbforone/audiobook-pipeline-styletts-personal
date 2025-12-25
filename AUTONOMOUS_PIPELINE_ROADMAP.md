@@ -5,7 +5,196 @@
 
 ---
 
-## Latest Updates (2025-12-16)
+## Latest Updates (2025-12-25)
+
+### ✅ Post-Coqui Era XTTS Hardening
+
+**Context:** Coqui AI shut down in December 2024, leaving XTTS v2 as "legacyware" requiring defensive engineering. These fixes implement verified community solutions from the "Post-Coqui Era" research.
+
+#### Critical Fixes Implemented:
+
+| Fix | Problem | Solution | Location |
+|-----|---------|----------|----------|
+| **Underscore Trick** | GPT-2 backbone fails to predict EOS token → gibberish/breathing at sentence end | Append `_` to text before synthesis | `xtts_engine.py:_apply_underscore_trick()` |
+| **Optimized Penalties** | `repetition_penalty=10.0` too aggressive → terse output | Use 3.5 rep_penalty + 1.2 length_penalty | `xtts_engine.py:XTTS_REPETITION_PENALTY` |
+| **Seed Management** | Non-deterministic → inconsistent pronunciation on retry | Set torch/numpy/random seeds before each inference | `xtts_engine.py:_set_deterministic_seed()` |
+| **Memory Cleanup** | CUDA context corruption in long runs | Periodic `gc.collect()` + `cuda.empty_cache()` | `xtts_engine.py:_cleanup_synthesis_memory()` |
+| **Number Expansion** | "1995" read as "one nine nine five" | Integrate `num2words` for proper verbalization | `llama_pre_validator.py:expand_numbers()` |
+| **Punctuation Normalization** | Em-dashes/semicolons cause hallucinations | Normalize to TTS-friendly alternatives | `llama_pre_validator.py:normalize_punctuation()` |
+
+#### Key Research Quotes:
+> "The 'Underscore Trick': Appending a simple underscore (_) to the end of the input text string has been empirically proven to 'smarten up' the model."
+
+> "For long-form content, a repetition_penalty in the range of 2.0 - 5.0 is recommended. Crucially, this must be balanced with a length_penalty greater than 1.0 (e.g., 1.2)."
+
+#### New Configuration Constants:
+```python
+XTTS_USE_UNDERSCORE_TRICK = True
+XTTS_REPETITION_PENALTY = 3.5   # Was 10.0
+XTTS_LENGTH_PENALTY = 1.2       # Was 1.0
+XTTS_SYNTHESIS_SEED = 42        # Deterministic synthesis
+XTTS_MEMORY_CLEANUP_INTERVAL = 50  # Cleanup every N segments
+```
+
+#### New LlamaPreValidator Methods:
+- `expand_numbers(text, language)` - Converts digits to spoken words using num2words
+- `normalize_punctuation(text)` - Normalizes em-dashes, semicolons, ellipses
+- `preprocess_for_tts(text)` - Unified preprocessing pipeline
+
+**Files Modified:**
+- `phase4_tts/engines/xtts_engine.py` (6 new methods/constants)
+- `agents/llama_pre_validator.py` (3 new methods)
+- `.planning/xtts_improvement_plan.md` (new - implementation plan)
+
+**Strategic Note:** Kokoro-82M (Apache 2.0, 82M params) is now the superior choice for most use cases. XTTS should only be used when zero-shot voice cloning is required.
+
+---
+
+### ✅ Kokoro as Default Engine + Best Voices Guide
+
+**Change:** Kokoro-82M is now the default TTS engine (was XTTS). XTTS remains for voice cloning.
+
+**Configuration Updated:**
+```yaml
+# phase4_tts/config.yaml
+engine: "kokoro"              # Was "xtts"
+kokoro_voice: "af_bella"      # Best for audiobook narration
+
+# phase6_orchestrator/config.yaml
+tts_engine: "kokoro"          # Was "xtts"
+tts_engines:
+  primary: "kokoro"           # Was "xtts"
+  secondary: "xtts"           # Was "kokoro"
+```
+
+**Best Kokoro Voices for Audiobooks:**
+
+| Voice | Gender | Accent | Best For | Quality |
+|-------|--------|--------|----------|---------|
+| `af_bella` | Female | American | Fiction, memoir (DEFAULT) | 4.5 |
+| `af_sarah` | Female | American | Academic, philosophy | 4.6 |
+| `bf_emma` | Female | British | Classic literature | 4.5 |
+| `am_adam` | Male | American | Philosophy, theology | 4.5 |
+| `bm_george` | Male | British | Academic content | 4.5 |
+| `bm_daniel` | Male | British | Classic literature | 4.5 |
+
+---
+
+### ✅ Master Reference Session for Voice Consistency
+
+**Problem:** Speaker drift across 500+ chunks in long audiobooks
+
+**Solution:** Precompute speaker embedding once from a high-quality 6-10s reference, reuse for all chunks
+
+**New XTTS Engine Methods:**
+```python
+# Initialize before synthesis
+engine.setup_master_reference(Path("voice_references/my_narrator.wav"))
+
+# Synthesize chunks (uses cached embedding automatically)
+for chunk in chunks:
+    audio = engine.synthesize(chunk.text, ...)
+
+# Clear when switching to different book
+engine.clear_master_reference()
+```
+
+**Files Modified:**
+- `phase4_tts/engines/xtts_engine.py` - Added `setup_master_reference()`, `clear_master_reference()`, `has_master_reference()`
+
+---
+
+### ✅ Process Recycling for Batch Jobs
+
+**Problem:** CUDA context corruption and memory leaks in very long runs (10+ hours)
+
+**Solution:** Process recycling utility that forces OS to reclaim resources
+
+**New Module:** `phase4_tts/src/process_recycling.py`
+```python
+from process_recycling import RecyclingProcessPool, force_gc_and_cache_clear
+
+# Option 1: Recycling pool (workers restart every N tasks)
+with RecyclingProcessPool(max_workers=2, tasks_per_worker=50) as pool:
+    results = pool.map(synthesize_chunk, chunks)
+
+# Option 2: Manual cleanup calls
+if completed_count % 100 == 0:
+    force_gc_and_cache_clear()
+```
+
+**Configuration:**
+```yaml
+# phase4_tts/config.yaml
+process_recycling:
+  enabled: false              # Enable for 500+ chunk books
+  recycle_interval: 50        # Recycle workers every N chunks
+  force_gc_interval: 100      # Force GC every N chunks
+```
+
+---
+
+### ✅ LLM Agent Expansion - Six New Agents for Intelligent Pipeline
+
+**Feature:** Comprehensive LLM enhancement across the entire pipeline with proactive and reactive agents.
+
+#### New Agents Added:
+
+| Agent | Location | Purpose | Integration Point |
+|-------|----------|---------|-------------------|
+| **LlamaPreValidator** | `agents/llama_pre_validator.py` | Pre-synthesis text analysis | Phase 4 (before each chunk) |
+| **LlamaVoiceMatcher** | `agents/llama_voice_matcher.py` | Intelligent voice selection | Phase 3 `voice_selection.py` |
+| **LlamaChunkReviewer** | `agents/llama_chunk_reviewer.py` | Post-batch quality analysis | Phase 4 `update_phase4_summary()` |
+| **LlamaSemanticRepetition** | `agents/llama_semantic_repetition.py` | Deep repetition detection | Validation layer |
+| **LlamaSelfReview** | `agents/llama_self_review.py` | Post-run reflection (fixed) | Orchestrator |
+| **LlamaDiagnostics** | `agents/llama_diagnostics.py` | Run diagnostics (fixed) | Orchestrator |
+
+#### Agent Details:
+
+**LlamaPreValidator** - Proactive Text Analysis
+- Detects TTS-hostile patterns BEFORE synthesis (abbreviations, numbers, punctuation)
+- Auto-expands common abbreviations (Mr→Mister, etc.) without LLM
+- Optional LLM mode for complex rewrites
+- Config: `enable_llama_pre_validator`, `pre_validator_auto_expand`, `pre_validator_use_llm`
+
+**LlamaVoiceMatcher** - Intelligent Voice Selection
+- Analyzes book content (title, sample text, genre) to recommend voices
+- Returns ranked recommendations with confidence scores
+- Falls back to rule-based matching if LLM unavailable
+- New function: `select_voice_intelligent()` in Phase 3
+
+**LlamaChunkReviewer** - Post-Batch Quality Analysis
+- Analyzes batch results after synthesis completes
+- Identifies systemic failure patterns (e.g., "all long chunks fail")
+- Provides actionable recommendations per problem chunk
+- Auto-runs when failures > 0 (quick_check for ≤5, full LLM for >5)
+
+**LlamaSemanticRepetition** - Deep Repetition Detection
+- Goes beyond n-gram matching to detect semantic repetition
+- Distinguishes intentional repetition (literary) from TTS errors
+- Compares source text vs ASR transcription to find TTS-introduced loops
+- Fast `quick_check()` method for batch processing
+
+#### Import Fixes:
+- Fixed circular imports in `llama_self_review.py` and `llama_diagnostics.py`
+- Changed `from agents import LlamaAgent` → `from .llama_base import LlamaAgent`
+- All agents now properly exported from `agents/__init__.py`
+
+**Files Modified:**
+- `agents/llama_pre_validator.py` (new)
+- `agents/llama_voice_matcher.py` (new)
+- `agents/llama_chunk_reviewer.py` (new)
+- `agents/llama_semantic_repetition.py` (new)
+- `agents/llama_self_review.py` (fixed imports)
+- `agents/llama_diagnostics.py` (fixed imports)
+- `agents/__init__.py` (exports all agents)
+- `phase4_tts/src/main_multi_engine.py` (pre-validator + chunk reviewer integration)
+- `phase4_tts/config.yaml` (pre-validator config options)
+- `phase3-chunking/src/phase3_chunking/voice_selection.py` (voice matcher integration)
+
+---
+
+## Updates (2025-12-16)
 
 ### ✅ Ollama Auto-Start in Visible Terminal
 
@@ -41,19 +230,29 @@ llm:
 
 ### ✅ Llama Agent Integration Verification
 
-All Llama agents are properly wired and working according to the roadmap:
+All Llama agents (12 total) are properly wired and working:
 
 | Agent | Location | Wired In | Trigger |
 |-------|----------|----------|---------|
-| **LlamaChunker** | `agents/llama_chunker.py` | Phase 3 `main.py:832` | `use_llama_chunker: true` in config |
-| **LlamaReasoner** | `agents/llama_reasoner.py` | Orchestrator `orchestrator.py:1893` | Phase failure after all retries |
-| **LlamaRewriter** | `agents/llama_rewriter.py` | Phase 4 `main_multi_engine.py:1311` | ASR validation fails with `recommendation: "rewrite"` |
-| **LlamaMetadataGenerator** | `agents/llama_metadata.py` | `metadata/metadata_pipeline.py` | Opt-in via `enable_llama_metadata: true` |
+| **LlamaChunker** | `agents/llama_chunker.py` | Phase 3 `main.py` | `use_llama_chunker: true` in config |
+| **LlamaReasoner** | `agents/llama_reasoner.py` | Orchestrator | Phase failure after all retries |
+| **LlamaRewriter** | `agents/llama_rewriter.py` | Phase 4 `main_multi_engine.py` | ASR validation `recommendation: "rewrite"` |
+| **LlamaMetadataGenerator** | `agents/llama_metadata.py` | `metadata/metadata_pipeline.py` | `enable_llama_metadata: true` |
+| **LlamaPreValidator** | `agents/llama_pre_validator.py` | Phase 4 pre-synthesis | `enable_llama_pre_validator: true` |
+| **LlamaVoiceMatcher** | `agents/llama_voice_matcher.py` | Phase 3 `select_voice_intelligent()` | `use_llm: true` parameter |
+| **LlamaChunkReviewer** | `agents/llama_chunk_reviewer.py` | Phase 4 `update_phase4_summary()` | Auto when failures > 0 |
+| **LlamaSemanticRepetition** | `agents/llama_semantic_repetition.py` | Validation layer | On-demand analysis |
+| **LlamaSelfReview** | `agents/llama_self_review.py` | Orchestrator post-run | `enable_self_review: true` |
+| **LlamaDiagnostics** | `agents/llama_diagnostics.py` | Orchestrator post-run | `enable_diagnostics: true` |
 
 **Fallback Behavior:**
 - **LlamaChunker**: Falls back to structure-aware or sentence-based chunking if Ollama unavailable
 - **LlamaRewriter**: Falls back to engine switching if rewrite doesn't improve WER
 - **LlamaReasoner**: Gracefully skipped if Ollama unavailable (pipeline continues without AI analysis)
+- **LlamaPreValidator**: Falls back to auto-expansion only (no LLM) if Ollama unavailable
+- **LlamaVoiceMatcher**: Falls back to rule-based genre profile matching
+- **LlamaChunkReviewer**: Uses `quick_quality_check()` (no LLM) for pattern-based analysis
+- **LlamaSemanticRepetition**: Uses `quick_check()` for fast n-gram detection without LLM
 
 ---
 
@@ -443,6 +642,14 @@ XTTS_SEGMENT_SILENCE_MS = 80    # Silence between segments
 | LlamaAgent base | `agents/llama_base.py` | ✅ | ✅ Provides resource-managed `LlamaAgent`, caching, and `LlamaResourceManager` for downstream agents |
 | LlamaChunker | `agents/llama_chunker.py` | ✅ | ✅ Optional Phase 3 step (`phase3-chunking/src/phase3_chunking/main.py`); falls back to heuristics when Ollama is unavailable |
 | LlamaReasoner | `agents/llama_reasoner.py` | ✅ | ✅ `phase6_orchestrator/orchestrator.py` calls it when phase failures exhaust retries and can stage patches |
+| LlamaRewriter | `agents/llama_rewriter.py` | ✅ | ✅ Phase 4 `main_multi_engine.py` calls it when ASR validation recommends rewrite |
+| LlamaMetadataGenerator | `agents/llama_metadata.py` | ✅ | ✅ `metadata/metadata_pipeline.py` for opt-in metadata generation |
+| **LlamaPreValidator** | `agents/llama_pre_validator.py` | ✅ | ✅ Phase 4 pre-synthesis text analysis; detects abbreviations, numbers, punctuation issues |
+| **LlamaVoiceMatcher** | `agents/llama_voice_matcher.py` | ✅ | ✅ Phase 3 `select_voice_intelligent()` for LLM-based voice selection |
+| **LlamaChunkReviewer** | `agents/llama_chunk_reviewer.py` | ✅ | ✅ Phase 4 `update_phase4_summary()` for post-batch quality analysis |
+| **LlamaSemanticRepetition** | `agents/llama_semantic_repetition.py` | ✅ | ✅ Deep repetition detection beyond n-gram matching |
+| **LlamaSelfReview** | `agents/llama_self_review.py` | ✅ | ✅ Orchestrator post-run reflection (imports fixed) |
+| **LlamaDiagnostics** | `agents/llama_diagnostics.py` | ✅ | ✅ Orchestrator run diagnostics (imports fixed) |
 | LogParser | `self_repair/log_parser.py` | ✅ | ✅ Consumed by `self_repair.RepairLoop`; orchestrator post-run hook is opt-in |
 | RepairLoop | `self_repair/repair_loop.py` | ✅ | ✅ Post-run hook (opt-in) stages failures and attempts repairs; non-destructive |
 | ErrorRegistry | `self_repair/repair_loop.py` | ✅ | ✅ `_record_chunk_failures()` and DeadChunkRepair persist failures to `.pipeline/error_registry.json` |
@@ -1166,12 +1373,20 @@ class MetadataGenerator:
 
 ```
 audiobook-pipeline/
-├── agents/
+├── agents/                          # 12 LLM agents total
 │   ├── __init__.py
-│   ├── llama_base.py
-│   ├── llama_chunker.py
-│   ├── llama_reasoner.py
-│   └── (planned) llama_rewriter.py, llama_metadata.py
+│   ├── llama_base.py               # Base agent + resource manager
+│   ├── llama_chunker.py            # Semantic chunk boundary detection
+│   ├── llama_reasoner.py           # Pipeline failure analysis
+│   ├── llama_rewriter.py           # TTS-friendly text rewriting
+│   ├── llama_metadata.py           # Audiobook metadata generation
+│   ├── llama_pre_validator.py      # Pre-synthesis text analysis (NEW)
+│   ├── llama_voice_matcher.py      # Intelligent voice selection (NEW)
+│   ├── llama_chunk_reviewer.py     # Post-batch quality analysis (NEW)
+│   ├── llama_semantic_repetition.py # Deep repetition detection (NEW)
+│   ├── llama_self_review.py        # Post-run reflection
+│   ├── llama_diagnostics.py        # Run diagnostics
+│   └── llama_rewrite_policy.py     # Rewrite policy helpers
 ├── phaseG_autonomy/
 │   ├── __init__.py
 │   ├── base_agent.py
