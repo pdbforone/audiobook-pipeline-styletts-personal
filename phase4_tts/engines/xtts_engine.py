@@ -6,11 +6,19 @@ Enhanced with segment-level synthesis to prevent repetition/hallucination
 issues that occur when XTTS processes text exceeding its ~400 token limit.
 """
 
+import gc
 import logging
+import random
 import re
 import numpy as np
 from pathlib import Path
 from typing import Optional, List, Tuple
+
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
 
 from . import TTSEngine
 
@@ -22,6 +30,22 @@ logger = logging.getLogger(__name__)
 XTTS_SAFE_SEGMENT_CHARS = 220  # Stay well under 250 char warning
 XTTS_MAX_SEGMENT_CHARS = 280   # Absolute max before we force split
 XTTS_SEGMENT_SILENCE_MS = 80   # Silence between segments (ms)
+
+# Post-Coqui Era optimized parameters (from community research Dec 2024)
+# The "underscore trick" prevents end-of-sentence hallucinations
+XTTS_USE_UNDERSCORE_TRICK = True
+
+# Optimized repetition/length penalties for audiobook synthesis
+# Research: rep_penalty 2.0-5.0 with length_penalty > 1.0 is the sweet spot
+# Too high (10.0) causes terse output; too low causes loops
+XTTS_REPETITION_PENALTY = 3.5   # Was 10.0 - more natural prosody
+XTTS_LENGTH_PENALTY = 1.2       # Was 1.0 - encourages natural sequence length
+
+# Deterministic synthesis seed (set to None for non-deterministic)
+XTTS_SYNTHESIS_SEED = 42
+
+# Memory cleanup interval (chunks between gc.collect calls)
+XTTS_MEMORY_CLEANUP_INTERVAL = 50
 
 
 class XTTSEngine(TTSEngine):
@@ -47,6 +71,74 @@ class XTTSEngine(TTSEngine):
         # Built-in speaker latents loaded from speakers_xtts.pth
         # Contains {speaker_name: {'gpt_cond_latent': tensor, 'speaker_embedding': tensor}}
         self.builtin_speakers_data = None
+        # Counter for memory cleanup interval
+        self._synthesis_counter = 0
+
+    def _set_deterministic_seed(self, seed: int = XTTS_SYNTHESIS_SEED) -> None:
+        """
+        Set random seeds for deterministic synthesis.
+
+        Post-Coqui Era Fix: XTTS is non-deterministic by default. Without seed
+        management, the same text may produce different pronunciations each time
+        (e.g., "Cave" → "Cavave" on retry). This is disastrous for audiobook editing.
+
+        Must be called before EVERY inference call for consistent results.
+        """
+        if seed is None:
+            return  # Skip if non-deterministic mode desired
+
+        random.seed(seed)
+        np.random.seed(seed)
+        if TORCH_AVAILABLE:
+            import torch
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed(seed)
+                torch.cuda.manual_seed_all(seed)
+
+    def _cleanup_synthesis_memory(self, force: bool = False) -> None:
+        """
+        Prevent VRAM/RAM creep during long audiobook generation.
+
+        Post-Coqui Era Fix: CUDA context corruption and memory leaks are common
+        in long-running XTTS synthesis. Explicit garbage collection and cache
+        clearing prevents crashes in 10+ hour audiobook runs.
+
+        Args:
+            force: If True, cleanup immediately. Otherwise, only cleanup every
+                   XTTS_MEMORY_CLEANUP_INTERVAL chunks.
+        """
+        self._synthesis_counter += 1
+
+        if not force and self._synthesis_counter % XTTS_MEMORY_CLEANUP_INTERVAL != 0:
+            return
+
+        gc.collect()
+        if TORCH_AVAILABLE:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                logger.debug(
+                    f"XTTS memory cleanup after {self._synthesis_counter} segments"
+                )
+
+    def _apply_underscore_trick(self, text: str) -> str:
+        """
+        Apply the 'underscore trick' to prevent end-of-sentence hallucinations.
+
+        Post-Coqui Era Fix: The GPT-2 backbone fails to predict EOS token correctly,
+        causing gibberish/breathing at sentence end. Appending '_' biases the
+        attention mechanism toward a 'silence' or 'stop' state.
+
+        Research source: Coqui TTS community discussions, Dec 2024.
+        """
+        if not XTTS_USE_UNDERSCORE_TRICK:
+            return text
+
+        text = text.rstrip()
+        if not text.endswith('_'):
+            text = text + '_'
+        return text
 
     @property
     def name(self) -> str:
@@ -488,14 +580,12 @@ class XTTSEngine(TTSEngine):
 
         for i, segment_text in enumerate(segments):
             try:
-                # XTTS hallucination fix: periods at segment end can trigger looping/gibberish
-                # Replace trailing period with comma (preserves pause) or remove it
-                # Based on Coqui TTS GitHub discussions about end-of-sentence artifacts
-                synthesis_text = segment_text.rstrip()
-                if synthesis_text.endswith('.'):
-                    # Replace period with comma to maintain natural pause without hallucination
-                    synthesis_text = synthesis_text[:-1] + ','
-                    logger.debug(f"Segment {i+1}: replaced trailing period with comma to prevent hallucination")
+                # Post-Coqui Era Fix: Apply the underscore trick for EOS handling
+                # This is more effective than period→comma replacement
+                synthesis_text = self._apply_underscore_trick(segment_text)
+
+                # Set deterministic seed before each inference for consistent pronunciation
+                self._set_deterministic_seed()
 
                 # Estimate expected duration (~15 chars/second for speech)
                 expected_dur = len(synthesis_text) / 15.0
@@ -550,6 +640,9 @@ class XTTSEngine(TTSEngine):
                     )
 
                 audio_segments.append(audio)
+
+                # Post-Coqui Era Fix: Periodic memory cleanup to prevent VRAM creep
+                self._cleanup_synthesis_memory()
 
             except Exception as e:
                 logger.error(
@@ -642,9 +735,10 @@ class XTTSEngine(TTSEngine):
                     speaker_embedding=speaker_embedding,
                     temperature=temperature,
                     speed=speed,
-                    # Prevent repetition/truncation issues
-                    repetition_penalty=10.0,  # Penalize token repetition
-                    length_penalty=1.0,
+                    # Post-Coqui Era optimized penalties (research Dec 2024)
+                    # Sweet spot: 2.0-5.0 rep_penalty with length_penalty > 1.0
+                    repetition_penalty=XTTS_REPETITION_PENALTY,
+                    length_penalty=XTTS_LENGTH_PENALTY,
                     top_k=50,
                     top_p=0.85,
                     enable_text_splitting=False,  # We already split externally - CRITICAL
@@ -661,8 +755,8 @@ class XTTSEngine(TTSEngine):
                     speaker_embedding=speaker_embedding,
                     temperature=temperature,
                     speed=speed,
-                    repetition_penalty=10.0,
-                    length_penalty=1.0,
+                    repetition_penalty=XTTS_REPETITION_PENALTY,
+                    length_penalty=XTTS_LENGTH_PENALTY,
                     top_k=50,
                     top_p=0.85,
                     enable_text_splitting=False,

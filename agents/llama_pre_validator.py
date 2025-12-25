@@ -21,6 +21,14 @@ from .llama_base import LlamaAgent
 
 logger = logging.getLogger(__name__)
 
+# Try to import num2words for number expansion
+try:
+    from num2words import num2words
+    NUM2WORDS_AVAILABLE = True
+except ImportError:
+    NUM2WORDS_AVAILABLE = False
+    logger.debug("num2words not installed - number expansion will use fallback")
+
 # Common abbreviations that cause TTS issues
 COMMON_ABBREVIATIONS = {
     # Titles
@@ -388,4 +396,217 @@ class LlamaPreValidator(LlamaAgent):
         result = text
         for pattern, expansion in self._abbrev_patterns:
             result = pattern.sub(expansion, result)
+        return result
+
+    def expand_numbers(self, text: str, language: str = "en") -> str:
+        """
+        Convert numbers to their spoken word forms for TTS.
+
+        Post-Coqui Era Fix: Neural TTS models often misread digits (e.g., "1995"
+        as "one nine nine five" instead of "nineteen ninety-five"). Using num2words
+        ensures correct pronunciation.
+
+        Args:
+            text: Text containing numbers
+            language: Language code for num2words
+
+        Returns:
+            Text with numbers converted to words
+        """
+        result = text
+
+        # Handle years (1800-2099) - special spoken form
+        def convert_year(match):
+            year = int(match.group())
+            if NUM2WORDS_AVAILABLE:
+                try:
+                    return num2words(year, to='year', lang=language)
+                except Exception:
+                    pass
+            # Fallback for years
+            if 1000 <= year <= 1099:
+                return f"{year // 100} hundred {num2words(year % 100) if NUM2WORDS_AVAILABLE else year % 100}"
+            elif 1100 <= year <= 1999:
+                first = year // 100
+                second = year % 100
+                if NUM2WORDS_AVAILABLE:
+                    try:
+                        return f"{num2words(first, lang=language)} {num2words(second, lang=language) if second else 'hundred'}"
+                    except Exception:
+                        pass
+                return str(year)
+            elif 2000 <= year <= 2009:
+                return f"two thousand {num2words(year - 2000, lang=language) if NUM2WORDS_AVAILABLE and year > 2000 else ''}"
+            elif 2010 <= year <= 2099:
+                if NUM2WORDS_AVAILABLE:
+                    try:
+                        return f"twenty {num2words(year - 2000, lang=language)}"
+                    except Exception:
+                        pass
+            return str(year)
+
+        result = re.sub(r'\b(1[89]\d{2}|20\d{2})\b', convert_year, result)
+
+        # Handle ordinals (1st, 2nd, 3rd, 4th, etc.)
+        def convert_ordinal(match):
+            num = int(match.group(1))
+            if NUM2WORDS_AVAILABLE:
+                try:
+                    return num2words(num, to='ordinal', lang=language)
+                except Exception:
+                    pass
+            # Simple fallback
+            ordinals = {1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth",
+                       6: "sixth", 7: "seventh", 8: "eighth", 9: "ninth", 10: "tenth"}
+            return ordinals.get(num, f"{num}th")
+
+        result = re.sub(r'\b(\d+)(?:st|nd|rd|th)\b', convert_ordinal, result)
+
+        # Handle currency amounts
+        def convert_currency(match):
+            symbol = match.group(1)
+            amount = match.group(2).replace(',', '')
+            multiplier = match.group(3) or ''
+
+            currency_names = {'$': 'dollars', '£': 'pounds', '€': 'euros', '¥': 'yen'}
+            currency = currency_names.get(symbol, 'dollars')
+
+            try:
+                value = float(amount)
+            except ValueError:
+                return match.group()
+
+            # Handle multipliers
+            if multiplier.upper() == 'M':
+                value *= 1_000_000
+            elif multiplier.upper() == 'B':
+                value *= 1_000_000_000
+            elif multiplier.upper() == 'K':
+                value *= 1_000
+
+            if NUM2WORDS_AVAILABLE:
+                try:
+                    if value >= 1_000_000_000:
+                        return f"{num2words(value / 1_000_000_000, lang=language)} billion {currency}"
+                    elif value >= 1_000_000:
+                        return f"{num2words(value / 1_000_000, lang=language)} million {currency}"
+                    else:
+                        return f"{num2words(int(value), lang=language)} {currency}"
+                except Exception:
+                    pass
+
+            return match.group()
+
+        result = re.sub(r'([$€£¥])\s*([\d,]+(?:\.\d+)?)\s*([MBKmbk])?', convert_currency, result)
+
+        # Handle percentages
+        def convert_percentage(match):
+            num = match.group(1)
+            try:
+                value = float(num)
+                if NUM2WORDS_AVAILABLE:
+                    if value == int(value):
+                        return f"{num2words(int(value), lang=language)} percent"
+                    else:
+                        return f"{num2words(value, lang=language)} percent"
+                return f"{num} percent"
+            except (ValueError, Exception):
+                return match.group()
+
+        result = re.sub(r'(\d+(?:\.\d+)?)\s*%', convert_percentage, result)
+
+        # Handle remaining standalone numbers (cardinals)
+        def convert_cardinal(match):
+            num_str = match.group().replace(',', '')
+            try:
+                value = int(num_str)
+                if NUM2WORDS_AVAILABLE:
+                    return num2words(value, lang=language)
+                # Fallback for small numbers
+                if value <= 20:
+                    small = ['zero', 'one', 'two', 'three', 'four', 'five', 'six',
+                            'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+                            'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen',
+                            'eighteen', 'nineteen', 'twenty']
+                    return small[value]
+                return num_str
+            except (ValueError, Exception):
+                return match.group()
+
+        # Only convert standalone numbers (not parts of larger patterns already handled)
+        result = re.sub(r'\b\d{1,3}(?:,\d{3})*\b', convert_cardinal, result)
+
+        return result
+
+    def normalize_punctuation(self, text: str) -> str:
+        """
+        Normalize TTS-hostile punctuation to friendly alternatives.
+
+        Post-Coqui Era Fix: XTTS struggles with em-dashes, semicolons, and complex
+        punctuation, causing long pauses or hallucinations.
+
+        Returns:
+            Text with normalized punctuation
+        """
+        result = text
+
+        # Em-dash → comma (preserves pause without confusion)
+        result = re.sub(r'\s*[—–]\s*', ', ', result)
+        result = re.sub(r'\s*--\s*', ', ', result)
+
+        # Semicolon → period (stronger boundary)
+        result = result.replace(';', '.')
+
+        # Ellipsis → single period
+        result = re.sub(r'\.{2,}', '.', result)
+        result = result.replace('…', '.')
+
+        # Multiple exclamation/question → single
+        result = re.sub(r'([!?]){2,}', r'\1', result)
+
+        # Smart quotes → straight quotes
+        result = result.replace('"', '"').replace('"', '"')
+        result = result.replace(''', "'").replace(''', "'")
+
+        # Remove parenthetical asides (optional - can be aggressive)
+        # result = re.sub(r'\([^)]{1,50}\)', '', result)
+
+        # Clean up multiple spaces
+        result = re.sub(r'\s+', ' ', result)
+
+        return result.strip()
+
+    def preprocess_for_tts(
+        self,
+        text: str,
+        expand_abbreviations: bool = True,
+        expand_numbers: bool = True,
+        normalize_punctuation: bool = True,
+    ) -> str:
+        """
+        Apply all TTS preprocessing in recommended order.
+
+        This is the main entry point for automatic text preprocessing
+        before TTS synthesis.
+
+        Args:
+            text: Raw text to preprocess
+            expand_abbreviations: Whether to expand abbreviations
+            expand_numbers: Whether to convert numbers to words
+            normalize_punctuation: Whether to normalize punctuation
+
+        Returns:
+            TTS-ready text
+        """
+        result = text
+
+        if expand_abbreviations:
+            result = self.auto_expand_abbreviations(result)
+
+        if expand_numbers:
+            result = self.expand_numbers(result)
+
+        if normalize_punctuation:
+            result = self.normalize_punctuation(result)
+
         return result

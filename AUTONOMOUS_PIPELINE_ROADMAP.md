@@ -7,6 +7,49 @@
 
 ## Latest Updates (2025-12-25)
 
+### ✅ Post-Coqui Era XTTS Hardening
+
+**Context:** Coqui AI shut down in December 2024, leaving XTTS v2 as "legacyware" requiring defensive engineering. These fixes implement verified community solutions from the "Post-Coqui Era" research.
+
+#### Critical Fixes Implemented:
+
+| Fix | Problem | Solution | Location |
+|-----|---------|----------|----------|
+| **Underscore Trick** | GPT-2 backbone fails to predict EOS token → gibberish/breathing at sentence end | Append `_` to text before synthesis | `xtts_engine.py:_apply_underscore_trick()` |
+| **Optimized Penalties** | `repetition_penalty=10.0` too aggressive → terse output | Use 3.5 rep_penalty + 1.2 length_penalty | `xtts_engine.py:XTTS_REPETITION_PENALTY` |
+| **Seed Management** | Non-deterministic → inconsistent pronunciation on retry | Set torch/numpy/random seeds before each inference | `xtts_engine.py:_set_deterministic_seed()` |
+| **Memory Cleanup** | CUDA context corruption in long runs | Periodic `gc.collect()` + `cuda.empty_cache()` | `xtts_engine.py:_cleanup_synthesis_memory()` |
+| **Number Expansion** | "1995" read as "one nine nine five" | Integrate `num2words` for proper verbalization | `llama_pre_validator.py:expand_numbers()` |
+| **Punctuation Normalization** | Em-dashes/semicolons cause hallucinations | Normalize to TTS-friendly alternatives | `llama_pre_validator.py:normalize_punctuation()` |
+
+#### Key Research Quotes:
+> "The 'Underscore Trick': Appending a simple underscore (_) to the end of the input text string has been empirically proven to 'smarten up' the model."
+
+> "For long-form content, a repetition_penalty in the range of 2.0 - 5.0 is recommended. Crucially, this must be balanced with a length_penalty greater than 1.0 (e.g., 1.2)."
+
+#### New Configuration Constants:
+```python
+XTTS_USE_UNDERSCORE_TRICK = True
+XTTS_REPETITION_PENALTY = 3.5   # Was 10.0
+XTTS_LENGTH_PENALTY = 1.2       # Was 1.0
+XTTS_SYNTHESIS_SEED = 42        # Deterministic synthesis
+XTTS_MEMORY_CLEANUP_INTERVAL = 50  # Cleanup every N segments
+```
+
+#### New LlamaPreValidator Methods:
+- `expand_numbers(text, language)` - Converts digits to spoken words using num2words
+- `normalize_punctuation(text)` - Normalizes em-dashes, semicolons, ellipses
+- `preprocess_for_tts(text)` - Unified preprocessing pipeline
+
+**Files Modified:**
+- `phase4_tts/engines/xtts_engine.py` (6 new methods/constants)
+- `agents/llama_pre_validator.py` (3 new methods)
+- `.planning/xtts_improvement_plan.md` (new - implementation plan)
+
+**Strategic Note:** Kokoro-82M (Apache 2.0, 82M params) is now the superior choice for most use cases. XTTS should only be used when zero-shot voice cloning is required.
+
+---
+
 ### ✅ LLM Agent Expansion - Six New Agents for Intelligent Pipeline
 
 **Feature:** Comprehensive LLM enhancement across the entire pipeline with proactive and reactive agents.
