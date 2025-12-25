@@ -50,6 +50,90 @@ XTTS_MEMORY_CLEANUP_INTERVAL = 50  # Cleanup every N segments
 
 ---
 
+### ✅ Kokoro as Default Engine + Best Voices Guide
+
+**Change:** Kokoro-82M is now the default TTS engine (was XTTS). XTTS remains for voice cloning.
+
+**Configuration Updated:**
+```yaml
+# phase4_tts/config.yaml
+engine: "kokoro"              # Was "xtts"
+kokoro_voice: "af_bella"      # Best for audiobook narration
+
+# phase6_orchestrator/config.yaml
+tts_engine: "kokoro"          # Was "xtts"
+tts_engines:
+  primary: "kokoro"           # Was "xtts"
+  secondary: "xtts"           # Was "kokoro"
+```
+
+**Best Kokoro Voices for Audiobooks:**
+
+| Voice | Gender | Accent | Best For | Quality |
+|-------|--------|--------|----------|---------|
+| `af_bella` | Female | American | Fiction, memoir (DEFAULT) | 4.5 |
+| `af_sarah` | Female | American | Academic, philosophy | 4.6 |
+| `bf_emma` | Female | British | Classic literature | 4.5 |
+| `am_adam` | Male | American | Philosophy, theology | 4.5 |
+| `bm_george` | Male | British | Academic content | 4.5 |
+| `bm_daniel` | Male | British | Classic literature | 4.5 |
+
+---
+
+### ✅ Master Reference Session for Voice Consistency
+
+**Problem:** Speaker drift across 500+ chunks in long audiobooks
+
+**Solution:** Precompute speaker embedding once from a high-quality 6-10s reference, reuse for all chunks
+
+**New XTTS Engine Methods:**
+```python
+# Initialize before synthesis
+engine.setup_master_reference(Path("voice_references/my_narrator.wav"))
+
+# Synthesize chunks (uses cached embedding automatically)
+for chunk in chunks:
+    audio = engine.synthesize(chunk.text, ...)
+
+# Clear when switching to different book
+engine.clear_master_reference()
+```
+
+**Files Modified:**
+- `phase4_tts/engines/xtts_engine.py` - Added `setup_master_reference()`, `clear_master_reference()`, `has_master_reference()`
+
+---
+
+### ✅ Process Recycling for Batch Jobs
+
+**Problem:** CUDA context corruption and memory leaks in very long runs (10+ hours)
+
+**Solution:** Process recycling utility that forces OS to reclaim resources
+
+**New Module:** `phase4_tts/src/process_recycling.py`
+```python
+from process_recycling import RecyclingProcessPool, force_gc_and_cache_clear
+
+# Option 1: Recycling pool (workers restart every N tasks)
+with RecyclingProcessPool(max_workers=2, tasks_per_worker=50) as pool:
+    results = pool.map(synthesize_chunk, chunks)
+
+# Option 2: Manual cleanup calls
+if completed_count % 100 == 0:
+    force_gc_and_cache_clear()
+```
+
+**Configuration:**
+```yaml
+# phase4_tts/config.yaml
+process_recycling:
+  enabled: false              # Enable for 500+ chunk books
+  recycle_interval: 50        # Recycle workers every N chunks
+  force_gc_interval: 100      # Force GC every N chunks
+```
+
+---
+
 ### ✅ LLM Agent Expansion - Six New Agents for Intelligent Pipeline
 
 **Feature:** Comprehensive LLM enhancement across the entire pipeline with proactive and reactive agents.

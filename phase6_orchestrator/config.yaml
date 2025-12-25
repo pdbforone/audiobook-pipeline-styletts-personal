@@ -19,10 +19,13 @@ phase_timeouts:
 
 # Runtime switches
 pipeline_mode: "personal"
-tts_engine: "xtts"       # xtts | kokoro
+
+# Engine Selection Strategy (Post-Coqui Era - Dec 2024)
+# Kokoro is now the default. XTTS only for voice cloning.
+tts_engine: "kokoro"       # kokoro (default) | xtts (for cloning only)
 tts_engines:
-  primary: "xtts"
-  secondary: "kokoro"
+  primary: "kokoro"        # Fast, stable, Apache-2.0 licensed
+  secondary: "xtts"        # Fallback for voice cloning
 per_chunk_fallback: true
 phase4_reuse_enabled: true
 min_mos_for_reuse: null

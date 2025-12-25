@@ -74,6 +74,12 @@ class XTTSEngine(TTSEngine):
         # Counter for memory cleanup interval
         self._synthesis_counter = 0
 
+        # Master Reference Session (Post-Coqui Era voice consistency)
+        # Precompute speaker embedding once and reuse for all chunks
+        self._master_gpt_cond_latent = None
+        self._master_speaker_embedding = None
+        self._master_reference_path = None
+
     def _set_deterministic_seed(self, seed: int = XTTS_SYNTHESIS_SEED) -> None:
         """
         Set random seeds for deterministic synthesis.
@@ -121,6 +127,65 @@ class XTTSEngine(TTSEngine):
                 logger.debug(
                     f"XTTS memory cleanup after {self._synthesis_counter} segments"
                 )
+
+    def setup_master_reference(self, reference_path: Path) -> bool:
+        """
+        Precompute and cache speaker embedding from a master reference audio.
+
+        Post-Coqui Era Fix: For long audiobooks (500+ chunks), speaker drift
+        is common when re-extracting embeddings per chunk. By precomputing
+        the embedding once from a high-quality 6-10s reference, we ensure
+        consistent voice across the entire book.
+
+        Args:
+            reference_path: Path to the master reference audio (6-10s recommended)
+
+        Returns:
+            True if setup succeeded, False otherwise
+        """
+        if self.model is None:
+            logger.warning("Model not loaded - cannot setup master reference")
+            return False
+
+        reference_path = Path(reference_path)
+        if not reference_path.exists():
+            logger.warning(f"Master reference not found: {reference_path}")
+            return False
+
+        try:
+            # Get the underlying TTS model
+            tts_model = self.model.synthesizer.tts_model
+
+            # Extract speaker conditioning
+            gpt_cond_latent, speaker_embedding = tts_model.get_conditioning_latents(
+                audio_path=[str(reference_path)]
+            )
+
+            # Cache for reuse
+            self._master_gpt_cond_latent = gpt_cond_latent
+            self._master_speaker_embedding = speaker_embedding
+            self._master_reference_path = reference_path
+
+            logger.info(
+                f"Master reference session initialized: {reference_path.name} "
+                f"(latent shape: {gpt_cond_latent.shape}, embedding shape: {speaker_embedding.shape})"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to setup master reference: {e}")
+            return False
+
+    def clear_master_reference(self) -> None:
+        """Clear the cached master reference (call between different books)."""
+        self._master_gpt_cond_latent = None
+        self._master_speaker_embedding = None
+        self._master_reference_path = None
+        logger.debug("Master reference session cleared")
+
+    def has_master_reference(self) -> bool:
+        """Check if a master reference session is active."""
+        return self._master_gpt_cond_latent is not None
 
     def _apply_underscore_trick(self, text: str) -> str:
         """
@@ -704,6 +769,50 @@ class XTTSEngine(TTSEngine):
         Returns:
             Raw audio array from XTTS
         """
+        # Mode 0: Master Reference Session (HIGHEST PRIORITY)
+        # Post-Coqui Era Fix: Use precomputed speaker embedding for voice consistency
+        # across long audiobooks. This prevents speaker drift.
+        if self.has_master_reference():
+            tts_model = self.model.synthesizer.tts_model
+            hf_kwargs = {"no_repeat_ngram_size": 4}
+
+            try:
+                result = tts_model.inference(
+                    text=text,
+                    language=language,
+                    gpt_cond_latent=self._master_gpt_cond_latent,
+                    speaker_embedding=self._master_speaker_embedding,
+                    temperature=temperature,
+                    speed=speed,
+                    repetition_penalty=XTTS_REPETITION_PENALTY,
+                    length_penalty=XTTS_LENGTH_PENALTY,
+                    top_k=50,
+                    top_p=0.85,
+                    enable_text_splitting=False,
+                    **hf_kwargs,
+                )
+            except TypeError:
+                result = tts_model.inference(
+                    text=text,
+                    language=language,
+                    gpt_cond_latent=self._master_gpt_cond_latent,
+                    speaker_embedding=self._master_speaker_embedding,
+                    temperature=temperature,
+                    speed=speed,
+                    repetition_penalty=XTTS_REPETITION_PENALTY,
+                    length_penalty=XTTS_LENGTH_PENALTY,
+                    top_k=50,
+                    top_p=0.85,
+                    enable_text_splitting=False,
+                )
+
+            if isinstance(result, dict) and "wav" in result:
+                wav = result["wav"]
+                if hasattr(wav, "cpu"):
+                    wav = wav.cpu().numpy()
+                return wav
+            return result
+
         # Mode 1: Built-in voice using pre-computed latents (PRIORITY)
         # The high-level model.tts() API doesn't work with built-in speakers
         # (it always requires speaker_wav). We must use the low-level
