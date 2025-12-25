@@ -59,6 +59,12 @@ try:
 except ImportError:
     LlamaRewriter = None  # type: ignore
 
+# Llama pre-validator for proactive text analysis (opt-in)
+try:
+    from agents.llama_pre_validator import LlamaPreValidator
+except ImportError:
+    LlamaPreValidator = None  # type: ignore
+
 MODULE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = MODULE_ROOT.parent.parent
 DEFAULT_CHARS_PER_MINUTE = 1050  # Shared speaking cadence assumption
@@ -777,6 +783,73 @@ def synthesize_chunk_with_engine(
             validation_details=None,
         )
 
+    # Pre-synthesis text validation (proactive issue detection)
+    pre_validated_text = chunk.text
+    pre_validation_applied = False
+    pre_validation_details = None
+
+    pre_validator_enabled = (
+        validation_config is not None
+        and getattr(validation_config, "enable_llama_pre_validator", False)
+        and not os.environ.get("DISABLE_LLAMA_PRE_VALIDATOR", "").lower() in ("1", "true", "yes")
+    )
+    pre_validator_auto_expand = getattr(validation_config, "pre_validator_auto_expand", True) if validation_config else True
+    pre_validator_use_llm = getattr(validation_config, "pre_validator_use_llm", False) if validation_config else False
+
+    if pre_validator_enabled and LlamaPreValidator is not None:
+        try:
+            pre_validator = LlamaPreValidator()
+
+            # Quick pattern-based check first
+            is_clean, issue_types = pre_validator.quick_check(chunk.text)
+
+            if not is_clean:
+                logger.info(
+                    "Chunk %s pre-validation detected issues: %s",
+                    chunk.chunk_id,
+                    ", ".join(issue_types),
+                )
+
+                # Auto-expand common abbreviations (fast, no LLM)
+                if pre_validator_auto_expand:
+                    pre_validated_text = pre_validator.auto_expand_abbreviations(chunk.text)
+                    if pre_validated_text != chunk.text:
+                        logger.debug(
+                            "Chunk %s auto-expanded abbreviations",
+                            chunk.chunk_id,
+                        )
+                        pre_validation_applied = True
+
+                # If LLM enabled and significant issues, get full analysis
+                if pre_validator_use_llm and len(issue_types) >= 2:
+                    full_result = pre_validator.validate_for_tts(
+                        pre_validated_text,
+                        check_with_llm=True,
+                    )
+                    if full_result.get("suggested_text") and full_result.get("confidence", 0) > 0.7:
+                        pre_validated_text = full_result["suggested_text"]
+                        pre_validation_applied = True
+                        logger.info(
+                            "Chunk %s LLM pre-validation applied (confidence=%.2f): %s",
+                            chunk.chunk_id,
+                            full_result["confidence"],
+                            full_result.get("llm_notes", "")[:100],
+                        )
+
+                pre_validation_details = {
+                    "issues_detected": issue_types,
+                    "text_modified": pre_validation_applied,
+                    "original_length": len(chunk.text),
+                    "validated_length": len(pre_validated_text),
+                }
+
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.warning(
+                "Chunk %s pre-validation failed (continuing with original text): %s",
+                chunk.chunk_id,
+                exc,
+            )
+
     kokoro_available = "kokoro" in engine_manager.engines
 
     def standardize_audio(
@@ -883,7 +956,7 @@ def synthesize_chunk_with_engine(
     ) -> Tuple[np.ndarray, str, int, float, float]:
         synth_start = time.time()
         audio_out, selected_engine = engine_manager.synthesize(
-            text=text_override or chunk.text,
+            text=text_override or pre_validated_text,
             reference_audio=reference,
             engine=target_engine,
             language=language,
@@ -1184,6 +1257,11 @@ def synthesize_chunk_with_engine(
     tier2_result = None
     validation_success = True
     collected_validation_details: Dict[str, Any] = {}
+
+    # Include pre-validation details if text was modified
+    if pre_validation_details:
+        collected_validation_details["pre_validation"] = pre_validation_details
+
     if validation_enabled and validation_config:
         if validation_config.enable_tier1:
             tier1_result = tier1_validate(

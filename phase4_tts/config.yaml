@@ -50,3 +50,7 @@ validation:
   max_wer: 0.10
   # AI-powered text rewriting for ASR-detected issues (requires Ollama + agents)
   enable_llama_asr_rewrite: true  # Use LlamaRewriter to fix text when ASR detects problems
+  # Pre-synthesis text validation (proactive issue detection)
+  enable_llama_pre_validator: true  # Scan text BEFORE TTS to detect abbreviations, numbers, etc.
+  pre_validator_auto_expand: true   # Auto-expand common abbreviations without LLM
+  pre_validator_use_llm: false      # Use LLM for complex rewrites (slower but smarter)

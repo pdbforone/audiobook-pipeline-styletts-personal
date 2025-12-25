@@ -56,6 +56,14 @@ class ValidationConfig:
     # Known error phrases to detect
     error_phrases: list = None
 
+    # Pre-synthesis validation (proactive)
+    enable_llama_pre_validator: bool = True  # Scan text before TTS
+    pre_validator_auto_expand: bool = True   # Auto-expand abbreviations
+    pre_validator_use_llm: bool = False      # Use LLM for complex rewrites
+
+    # ASR-driven rewriting (reactive)
+    enable_llama_asr_rewrite: bool = True    # Use LlamaRewriter for ASR issues
+
     def __post_init__(self):
         if self.error_phrases is None:
             self.error_phrases = [

@@ -21,6 +21,7 @@ from .llama_chunker import LlamaChunker
 from .llama_reasoner import LlamaReasoner
 from .llama_rewriter import LlamaRewriter
 from .llama_metadata import LlamaMetadataGenerator
+from .llama_pre_validator import LlamaPreValidator
 
 __all__ = [
     "LlamaAgent",
@@ -29,5 +30,6 @@ __all__ = [
     "LlamaReasoner",
     "LlamaRewriter",
     "LlamaMetadataGenerator",
+    "LlamaPreValidator",
     "get_agent",
 ]
