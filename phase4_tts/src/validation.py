@@ -194,6 +194,101 @@ def detect_text_repetition(text: str, min_phrase_words: int = 5) -> Optional[Dic
     return None
 
 
+def deduplicate_sentences(text: str) -> Tuple[str, int]:
+    """
+    Remove duplicate sentences from text.
+
+    When Phase 3 chunking creates duplicates (e.g., same sentence appears 2x),
+    this function removes the duplicates while preserving order.
+
+    Args:
+        text: Input text with potential duplicate sentences
+
+    Returns:
+        Tuple of (cleaned_text, number_of_duplicates_removed)
+    """
+    # Split into sentences, preserving the delimiter
+    sentence_pattern = r'([.!?]+\s*)'
+    parts = re.split(sentence_pattern, text)
+
+    # Reconstruct sentences with their delimiters
+    sentences = []
+    i = 0
+    while i < len(parts):
+        sentence = parts[i].strip()
+        delimiter = parts[i + 1] if i + 1 < len(parts) else ""
+        if sentence:
+            sentences.append((sentence, delimiter))
+        i += 2
+
+    # Track seen sentences (normalized for comparison)
+    seen = set()
+    unique_sentences = []
+    duplicates_removed = 0
+
+    for sentence, delimiter in sentences:
+        # Normalize for comparison (lowercase, collapse whitespace)
+        normalized = re.sub(r'\s+', ' ', sentence.lower().strip())
+
+        if normalized not in seen:
+            seen.add(normalized)
+            unique_sentences.append(sentence + delimiter)
+        else:
+            duplicates_removed += 1
+
+    cleaned_text = "".join(unique_sentences).strip()
+    return cleaned_text, duplicates_removed
+
+
+def normalize_spaced_abbreviations(text: str) -> str:
+    """
+    Normalize spaced abbreviations back to compact form.
+
+    Converts "I E P" -> "IEP", "R E E D" -> "REED", etc.
+    These spaced forms cause XTTS to pronounce each letter slowly.
+
+    Args:
+        text: Input text with potential spaced abbreviations
+
+    Returns:
+        Text with normalized abbreviations
+    """
+    # Common education/special-ed abbreviations
+    known_abbrevs = {
+        "I E P": "IEP",
+        "A R D": "ARD",
+        "R E E D": "REED",
+        "B I P": "BIP",
+        "F B A": "FBA",
+        "L R E": "LRE",
+        "F A P E": "FAPE",
+        "I D E A": "IDEA",
+        "S L D": "SLD",
+        "O H I": "OHI",
+        "E S Y": "ESY",
+        "P W N": "PWN",
+        "N O D": "NOD",
+    }
+
+    result = text
+    for spaced, compact in known_abbrevs.items():
+        result = result.replace(spaced, compact)
+
+    # Generic pattern: single uppercase letters separated by spaces (3+ letters)
+    # "A B C D" -> "ABCD"
+    def compact_spaced(match):
+        letters = match.group().replace(" ", "")
+        # Only compact if it looks like an abbreviation (all caps)
+        if letters.isupper() and len(letters) >= 3:
+            return letters
+        return match.group()
+
+    # Pattern: 3+ single uppercase letters separated by single spaces
+    result = re.sub(r'\b([A-Z] ){2,}[A-Z]\b', compact_spaced, result)
+
+    return result
+
+
 def has_silence_gap(
     audio_path: str,
     threshold_sec: float = 2.0,
