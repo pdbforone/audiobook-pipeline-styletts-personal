@@ -137,6 +137,9 @@ try:  # Import as package when executed via `python -m`
         tier2_validate,
         predict_expected_duration,
         should_run_tier2_validation,
+        detect_text_repetition,
+        deduplicate_sentences,
+        normalize_spaced_abbreviations,
     )
 except (
     ImportError
@@ -154,6 +157,9 @@ except (
         tier2_validate,
         predict_expected_duration,
         should_run_tier2_validation,
+        detect_text_repetition,
+        deduplicate_sentences,
+        normalize_spaced_abbreviations,
     )
 
 logger = logging.getLogger(__name__)
@@ -793,6 +799,57 @@ def synthesize_chunk_with_engine(
     pre_validated_text = chunk.text
     pre_validation_applied = False
     pre_validation_details = None
+    duplication_detected = None
+    abbreviation_normalized = False
+
+    # Step 1: Detect and fix text repetition from Phase 3 chunking bugs
+    # This catches duplicate sentences BEFORE wasting TTS time
+    try:
+        duplication_detected = detect_text_repetition(chunk.text)
+        if duplication_detected:
+            logger.warning(
+                "Chunk %s has text duplication (%s, count=%d): '%s'",
+                chunk.chunk_id,
+                duplication_detected["type"],
+                duplication_detected["count"],
+                duplication_detected["sample"],
+            )
+            # Auto-deduplicate to prevent duration_mismatch failures
+            pre_validated_text, removed_count = deduplicate_sentences(chunk.text)
+            if removed_count > 0:
+                logger.info(
+                    "Chunk %s: removed %d duplicate sentences (%d -> %d chars)",
+                    chunk.chunk_id,
+                    removed_count,
+                    len(chunk.text),
+                    len(pre_validated_text),
+                )
+                pre_validation_applied = True
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning(
+            "Chunk %s duplication detection failed: %s",
+            chunk.chunk_id,
+            exc,
+        )
+
+    # Step 2: Normalize spaced abbreviations (I E P -> IEP)
+    # These cause XTTS to pronounce each letter slowly
+    try:
+        normalized_text = normalize_spaced_abbreviations(pre_validated_text)
+        if normalized_text != pre_validated_text:
+            logger.info(
+                "Chunk %s: normalized spaced abbreviations",
+                chunk.chunk_id,
+            )
+            pre_validated_text = normalized_text
+            abbreviation_normalized = True
+            pre_validation_applied = True
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning(
+            "Chunk %s abbreviation normalization failed: %s",
+            chunk.chunk_id,
+            exc,
+        )
 
     pre_validator_enabled = (
         validation_config is not None
@@ -855,6 +912,20 @@ def synthesize_chunk_with_engine(
                 chunk.chunk_id,
                 exc,
             )
+
+    # Ensure pre_validation_details captures all preprocessing steps
+    if pre_validation_details is None and pre_validation_applied:
+        pre_validation_details = {}
+    if pre_validation_details is not None or pre_validation_applied:
+        if pre_validation_details is None:
+            pre_validation_details = {}
+        pre_validation_details["original_length"] = len(chunk.text)
+        pre_validation_details["validated_length"] = len(pre_validated_text)
+        pre_validation_details["text_modified"] = pre_validation_applied
+        if duplication_detected:
+            pre_validation_details["duplication_detected"] = duplication_detected
+        if abbreviation_normalized:
+            pre_validation_details["abbreviation_normalized"] = True
 
     kokoro_available = "kokoro" in engine_manager.engines
 
