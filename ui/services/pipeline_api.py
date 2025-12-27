@@ -127,7 +127,11 @@ class PipelineAPI:
                         ),
                     )
         except Exception as exc:
-            logger.warning("Failed to detect incomplete work: %s", exc)
+            # Log at WARNING with full traceback - this could lose resume opportunity
+            logger.warning(
+                "Failed to detect incomplete work - resume prompt will not be shown: %s",
+                exc, exc_info=True
+            )
         return None
 
     def _phase_status(
