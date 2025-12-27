@@ -142,6 +142,8 @@ except (
         tier2_validate,
         predict_expected_duration,
         should_run_tier2_validation,
+        detect_text_repetition,
+        TextQualityResult,
     )
 
 logger = logging.getLogger(__name__)
@@ -753,6 +755,45 @@ def synthesize_chunk_with_engine(
             validation_details=None,
         )
 
+    # -------------------------------------------------------------------------
+    # Pre-TTS Quality Check: Detect sentence duplication from Phase 3 bugs
+    # This saves ~183s of wasted TTS time per bad chunk
+    # -------------------------------------------------------------------------
+    text_quality = detect_text_repetition(chunk.text)
+    synthesis_text = chunk.text  # Default to original
+
+    if not text_quality.is_valid:
+        if text_quality.issue_type == "sentence_duplication":
+            if text_quality.deduped_text:
+                # Auto-fix: use deduplicated text for synthesis
+                logger.warning(
+                    "Chunk %s has duplicated sentences (%.1f%% redundant). "
+                    "Auto-deduping: %d → %d chars",
+                    chunk.chunk_id,
+                    text_quality.details.get("duplication_ratio", 0) * 100,
+                    len(chunk.text),
+                    len(text_quality.deduped_text),
+                )
+                synthesis_text = text_quality.deduped_text
+                # Update estimated duration for deduped text
+                est_dur_sec = max(
+                    1.0,
+                    predict_expected_duration(synthesis_text, chars_per_minute=effective_cpm),
+                )
+            else:
+                logger.error(
+                    "Chunk %s has duplicated sentences but could not auto-dedupe. "
+                    "This may cause duration_mismatch validation failure.",
+                    chunk.chunk_id,
+                )
+        elif text_quality.issue_type == "word_repetition":
+            logger.warning(
+                "Chunk %s has word-level repetition (%d consecutive). "
+                "May cause TTS artifacts.",
+                chunk.chunk_id,
+                text_quality.details.get("max_consecutive_repeats", 0),
+            )
+
     kokoro_available = "kokoro" in engine_manager.engines
 
     def standardize_audio(
@@ -859,7 +900,7 @@ def synthesize_chunk_with_engine(
     ) -> Tuple[np.ndarray, str, int, float, float]:
         synth_start = time.time()
         audio_out, selected_engine = engine_manager.synthesize(
-            text=text_override or chunk.text,
+            text=text_override or synthesis_text,  # Use deduped text if available
             reference_audio=reference,
             engine=target_engine,
             language=language,
@@ -881,9 +922,9 @@ def synthesize_chunk_with_engine(
             rt_factor,
         )
 
-    if max_len and len(chunk.text) > max_len:
+    if max_len and len(synthesis_text) > max_len:
         if sentence_split_enabled:
-            sentences = split_into_sentences(chunk.text, max_len)
+            sentences = split_into_sentences(synthesis_text, max_len)
             if sentences and all(len(s) <= max_len for s in sentences) and len(sentences) > 1:
                 try:
                     audio_parts: List[np.ndarray] = []
@@ -971,7 +1012,7 @@ def synthesize_chunk_with_engine(
             exc,
         )
         if sentence_regen_enabled:
-            sentences = split_into_sentences(chunk.text, max_len or len(chunk.text))
+            sentences = split_into_sentences(synthesis_text, max_len or len(synthesis_text))
             if sentences and len(sentences) > 1:
                 logger.info(
                     "Chunk %s attempting sentence-level regeneration after failure.",
@@ -1077,11 +1118,11 @@ def synthesize_chunk_with_engine(
         )
         try:
             kokoro_limit = text_length_limit("kokoro")
-            if kokoro_limit and len(chunk.text) > kokoro_limit:
+            if kokoro_limit and len(synthesis_text) > kokoro_limit:
                 logger.warning(
                     "Chunk %s skipping Kokoro latency fallback; text length %d exceeds max %d",
                     chunk.chunk_id,
-                    len(chunk.text),
+                    len(synthesis_text),
                     kokoro_limit,
                 )
             else:
@@ -1163,7 +1204,7 @@ def synthesize_chunk_with_engine(
     if validation_enabled and validation_config:
         if validation_config.enable_tier1:
             tier1_result = tier1_validate(
-                chunk.text,
+                synthesis_text,  # Validate against the text that was synthesized
                 str(output_path),
                 validation_config,
                 chars_per_minute=effective_cpm,
@@ -1193,11 +1234,11 @@ def synthesize_chunk_with_engine(
                 )
                 try:
                     kokoro_limit = text_length_limit("kokoro")
-                    if kokoro_limit and len(chunk.text) > kokoro_limit:
+                    if kokoro_limit and len(synthesis_text) > kokoro_limit:
                         logger.error(
                             "Chunk %s cannot retry on Kokoro because text length %d exceeds max %d",
                             chunk.chunk_id,
-                            len(chunk.text),
+                            len(synthesis_text),
                             kokoro_limit,
                         )
                     else:
@@ -1210,7 +1251,7 @@ def synthesize_chunk_with_engine(
                         ) = attempt_synthesis("kokoro", False, None)
                         sf.write(output_path, audio, sample_rate)
                         tier1_result = tier1_validate(
-                            chunk.text,
+                            synthesis_text,  # Validate against the text that was synthesized
                             str(output_path),
                             validation_config,
                             chars_per_minute=effective_cpm,
@@ -1250,7 +1291,7 @@ def synthesize_chunk_with_engine(
                 run_tier2 = True
             if run_tier2:
                 tier2_result = tier2_validate(
-                    chunk.text, str(output_path), validation_config
+                    synthesis_text, str(output_path), validation_config  # Use synthesized text
                 )
                 validation_tier = tier2_result.tier
                 validation_reason = tier2_result.reason
@@ -1276,7 +1317,7 @@ def synthesize_chunk_with_engine(
             try:
                 asr_validator = ASRValidator(model_size="base")
                 asr_result = asr_validator.validate_audio(
-                    output_path, chunk.text, chunk.chunk_id
+                    output_path, synthesis_text, chunk.chunk_id  # Use synthesized text
                 )
 
                 collected_validation_details["asr"] = asr_result
@@ -1310,11 +1351,11 @@ def synthesize_chunk_with_engine(
                         try:
                             llama_rewriter = LlamaRewriter()
                             rewrite_result = llama_rewriter.rewrite_from_asr_feedback(
-                                original_text=chunk.text,
+                                original_text=synthesis_text,  # Use synthesized text
                                 asr_transcription=asr_result["transcription"],
                                 asr_issues=asr_result["issues"],
                                 wer=asr_result["wer"],
-                                max_chars=max_len or len(chunk.text)
+                                max_chars=max_len or len(synthesis_text)
                             )
 
                             if rewrite_result["confidence"] > 0.7:
@@ -1418,7 +1459,7 @@ def synthesize_chunk_with_engine(
                             sf.write(temp_path, fallback_audio, fallback_sr)
 
                             retry_asr_result = asr_validator.validate_audio(
-                                temp_path, chunk.text, chunk.chunk_id
+                                temp_path, synthesis_text, chunk.chunk_id  # Use synthesized text
                             )
 
                             if retry_asr_result["valid"] or retry_asr_result["wer"] < asr_result["wer"]:

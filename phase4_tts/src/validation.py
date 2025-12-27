@@ -9,14 +9,178 @@ Purpose: Detect TTS corruption immediately rather than discovering it days later
 """
 
 import logging
+import re
 import time
 import random
-from typing import Tuple, Dict, Optional
+from typing import Any, Tuple, Dict, Optional
 import librosa
 import numpy as np
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Pre-TTS Text Quality Checks
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class TextQualityResult:
+    """Result of pre-TTS text quality checks."""
+
+    is_valid: bool
+    issue_type: Optional[str]  # "sentence_duplication", "word_repetition", etc.
+    details: Dict[str, Any]
+    deduped_text: Optional[str]  # Cleaned text if deduplication was possible
+
+
+def detect_text_repetition(
+    text: str,
+    min_sentence_len: int = 20,
+    similarity_threshold: float = 0.95,
+) -> TextQualityResult:
+    """
+    Detect sentence-level duplication in chunk text BEFORE TTS synthesis.
+
+    This catches Phase 3 chunking bugs where sentences are duplicated within
+    a chunk, causing XTTS to produce shorter audio than expected (it skips
+    or truncates repeated content), leading to duration_mismatch validation
+    failures.
+
+    Detection strategy:
+    1. Split text into sentences
+    2. Compare each sentence to all others using normalized matching
+    3. Flag if any sentence appears more than once
+
+    Args:
+        text: Chunk text to analyze
+        min_sentence_len: Minimum sentence length to consider (avoids false positives on short phrases)
+        similarity_threshold: How similar sentences must be to count as duplicates (0.0-1.0)
+
+    Returns:
+        TextQualityResult with duplication details and optionally deduped text
+    """
+    if not text or len(text.strip()) < min_sentence_len:
+        return TextQualityResult(
+            is_valid=True,
+            issue_type=None,
+            details={"reason": "text_too_short"},
+            deduped_text=None,
+        )
+
+    # Split into sentences using multiple delimiters
+    # This is intentionally simple to avoid heavy NLP dependencies in Phase 4
+    sentence_pattern = r'(?<=[.!?])\s+(?=[A-Z])'
+    raw_sentences = re.split(sentence_pattern, text.strip())
+
+    # Normalize and filter sentences
+    sentences = []
+    for s in raw_sentences:
+        s = s.strip()
+        if len(s) >= min_sentence_len:
+            sentences.append(s)
+
+    if len(sentences) < 2:
+        return TextQualityResult(
+            is_valid=True,
+            issue_type=None,
+            details={"sentence_count": len(sentences)},
+            deduped_text=None,
+        )
+
+    # Check for exact and near-exact duplicates
+    def normalize_for_comparison(s: str) -> str:
+        """Normalize sentence for comparison (lowercase, collapse whitespace, remove punctuation)."""
+        s = s.lower()
+        s = re.sub(r'\s+', ' ', s)
+        s = re.sub(r'[^\w\s]', '', s)
+        return s.strip()
+
+    normalized = [normalize_for_comparison(s) for s in sentences]
+
+    # Find duplicates
+    duplicates = []
+    seen = {}
+    for i, norm in enumerate(normalized):
+        if norm in seen:
+            duplicates.append({
+                "original_idx": seen[norm],
+                "duplicate_idx": i,
+                "text_preview": sentences[i][:80] + ("..." if len(sentences[i]) > 80 else ""),
+            })
+        else:
+            seen[norm] = i
+
+    if duplicates:
+        # Calculate duplication severity
+        unique_count = len(seen)
+        total_count = len(sentences)
+        duplication_ratio = 1 - (unique_count / total_count)
+
+        # Create deduped text by keeping only first occurrence of each sentence
+        deduped_sentences = []
+        seen_normalized = set()
+        for s, norm in zip(sentences, normalized):
+            if norm not in seen_normalized:
+                deduped_sentences.append(s)
+                seen_normalized.add(norm)
+
+        deduped_text = " ".join(deduped_sentences)
+
+        logger.warning(
+            "Text duplication detected: %d duplicates in %d sentences (%.1f%% redundant)",
+            len(duplicates),
+            total_count,
+            duplication_ratio * 100,
+        )
+
+        return TextQualityResult(
+            is_valid=False,
+            issue_type="sentence_duplication",
+            details={
+                "duplicate_count": len(duplicates),
+                "total_sentences": total_count,
+                "unique_sentences": unique_count,
+                "duplication_ratio": duplication_ratio,
+                "duplicates": duplicates[:5],  # Limit to first 5 for logging
+            },
+            deduped_text=deduped_text,
+        )
+
+    # Check for word-level repetition (e.g., "the the the")
+    words = text.lower().split()
+    if len(words) >= 3:
+        consecutive_repeats = 0
+        max_consecutive = 0
+        for i in range(1, len(words)):
+            if words[i] == words[i - 1] and len(words[i]) > 2:
+                consecutive_repeats += 1
+                max_consecutive = max(max_consecutive, consecutive_repeats)
+            else:
+                consecutive_repeats = 0
+
+        if max_consecutive >= 2:  # Same word 3+ times in a row
+            logger.warning(
+                "Word repetition detected: %d consecutive repeats",
+                max_consecutive + 1,
+            )
+            return TextQualityResult(
+                is_valid=False,
+                issue_type="word_repetition",
+                details={
+                    "max_consecutive_repeats": max_consecutive + 1,
+                },
+                deduped_text=None,  # Word repetition is harder to auto-fix
+            )
+
+    return TextQualityResult(
+        is_valid=True,
+        issue_type=None,
+        details={"sentence_count": len(sentences)},
+        deduped_text=None,
+    )
+
 
 # Try to import Whisper (optional for Tier 2)
 WHISPER_AVAILABLE = False
