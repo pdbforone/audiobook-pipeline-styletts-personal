@@ -1059,6 +1059,38 @@ def main(argv: Optional[list[str]] = None):
             "ON" if not args.silence_notifications else "OFF",
         )
         setup_logging(config)
+
+        # Director's Cut: Apply mastering guidance from Production Bible
+        production_bible = {}
+        book_dir = REPO_ROOT / ".pipeline" / "books" / target_file_id
+        bible_path = book_dir / "production_bible.json"
+        if bible_path.exists():
+            try:
+                with bible_path.open("r", encoding="utf-8") as f:
+                    production_bible = json.load(f)
+                logger.info("Loaded Production Bible for mastering guidance.")
+            except Exception as e:
+                logger.warning(f"Could not load production bible: {e}")
+
+        if production_bible:
+            mastering_guide = production_bible.get("mastering_guide", {})
+            dynamic_range = mastering_guide.get("dynamic_range")
+            pacing = mastering_guide.get("pacing")
+
+            if dynamic_range == "high":
+                config.noise_reduction_factor = max(0.1, config.noise_reduction_factor - 0.2)
+                logger.info(f"Director's Cut: High dynamic range -> Noise reduction factor set to {config.noise_reduction_factor:.2f}")
+            elif dynamic_range == "low":
+                config.noise_reduction_factor = min(1.0, config.noise_reduction_factor + 0.2)
+                logger.info(f"Director's Cut: Low dynamic range -> Noise reduction factor set to {config.noise_reduction_factor:.2f}")
+
+            if pacing == "fast":
+                config.crossfade_duration = max(0.01, config.crossfade_duration - 0.02)
+                logger.info(f"Director's Cut: Fast pacing -> Crossfade duration set to {config.crossfade_duration:.3f}s")
+            elif pacing == "slow":
+                config.crossfade_duration = min(0.2, config.crossfade_duration + 0.05)
+                logger.info(f"Director's Cut: Slow pacing -> Crossfade duration set to {config.crossfade_duration:.3f}s")
+
         target_file_id = args.file_id or config.audiobook_title or Path(config.pipeline_json).stem
         # Per-title output/input directories
         config.output_dir = str(Path(config.output_dir.format(file_id=target_file_id)).resolve())

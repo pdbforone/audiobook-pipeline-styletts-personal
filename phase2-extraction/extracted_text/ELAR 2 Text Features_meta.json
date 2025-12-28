@@ -27,7 +27,7 @@
   "size_change": 0,
   "text_yield": 1.0,
   "file_id": "ELAR 2 Text Features",
-  "source_file": "C:\\Users\\myson\\AppData\\Local\\Temp\\gradio\\52bb7c1ae224a85bc9382145e8db279f787eef67fc977a14d05bee5ec92a8e39\\ELAR 2 Text Features.txt",
+  "source_file": "C:\\Users\\myson\\Pipeline\\audiobook-pipeline-personal\\audiobook-pipeline-styletts-personal\\input\\ELAR 2 Text Features.txt",
   "detected_format": "txt",
   "classification": "text"
 }

@@ -797,24 +797,24 @@ def synthesize_chunk_with_engine(
     )
 
     # Resume support: skip already-rendered chunks
-            if skip_existing and existing_out.exists():
-                logger.info("Skipping %s (already exists)", chunk.chunk_id)
-                return ChunkResult(
-                    chunk_id=chunk.chunk_id,
-                    success=True,
-                    output_path=existing_out,
-                    engine_used=None,
-                    rt_factor=None,
-                    audio_duration=None,
-                    text_len=text_len,
-                    est_dur=est_dur_sec,
-                    latency_fallback_used=False,
-                    voice_used=voice_used,
-                    validation_tier=None,
-                    validation_reason=None,
-                    validation_details=None,
-                    pacing_hint=pacing_hint,
-                )
+    if skip_existing and existing_out.exists():
+        logger.info("Skipping %s (already exists)", chunk.chunk_id)
+        return ChunkResult(
+            chunk_id=chunk.chunk_id,
+            success=True,
+            output_path=existing_out,
+            engine_used=None,
+            rt_factor=None,
+            audio_duration=None,
+            text_len=text_len,
+            est_dur=est_dur_sec,
+            latency_fallback_used=False,
+            voice_used=voice_used,
+            validation_tier=None,
+            validation_reason=None,
+            validation_details=None,
+            pacing_hint=pacing_hint,
+        )
     # Pre-synthesis text validation (proactive issue detection)
     pre_validated_text = chunk.text
     pre_validation_applied = False
@@ -1506,6 +1506,18 @@ def synthesize_chunk_with_engine(
                 asr_result = asr_validator.validate_audio(
                     output_path, chunk.text, chunk.chunk_id
                 )
+
+                # Log words for pronunciation feedback
+                feedback_words = asr_result.get("pronunciation_feedback_words")
+                if feedback_words:
+                    try:
+                        feedback_log_path = PROJECT_ROOT / ".pipeline" / "pronunciation_feedback.log"
+                        with feedback_log_path.open("a", encoding="utf-8") as f:
+                            for word in feedback_words:
+                                f.write(f"{word}\n")
+                        logger.info(f"Logged {len(feedback_words)} words for pronunciation feedback.")
+                    except Exception as log_exc:
+                        logger.warning(f"Failed to write to pronunciation feedback log: {log_exc}")
 
                 collected_validation_details["asr"] = asr_result
 

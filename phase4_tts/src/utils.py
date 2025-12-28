@@ -11,7 +11,7 @@ import requests
 import nltk
 from nltk.tokenize import sent_tokenize
 from pathlib import Path, PureWindowsPath
-from typing import Tuple, Optional, Dict
+from typing import Tuple, Optional, Dict, Any
 import numpy as np
 import soundfile as sf
 import re
@@ -428,17 +428,34 @@ def sanitize_text_for_tts(
     """
     original_text = text
 
+    # Load the central pronunciation lexicon if not provided
+    if pronunciation_lexicon is None:
+        lexicon_path = Path(__file__).resolve().parent.parent / "config" / "custom_pronunciations.json"
+        if lexicon_path.exists():
+            try:
+                with lexicon_path.open("r", encoding="utf-8") as f:
+                    pronunciation_lexicon = json.load(f)
+            except (json.JSONDecodeError, IOError) as e:
+                logger.warning(f"Could not load custom pronunciation lexicon: {e}")
+                pronunciation_lexicon = {}
+        else:
+            pronunciation_lexicon = {}
+
     # Apply pronunciation lexicon first, as it's the most specific override
     if pronunciation_lexicon:
-        for word, pronunciation in pronunciation_lexicon.items():
-            arpabet = pronunciation.get("arpabet")
-            if arpabet:
+        # Sort by length descending to replace longer phrases first
+        sorted_words = sorted(pronunciation_lexicon.keys(), key=len, reverse=True)
+        for word in sorted_words:
+            pronunciation = pronunciation_lexicon[word]
+            # Prefer "say_as" for simpler, more robust replacement
+            say_as = pronunciation.get("say_as")
+            if say_as:
                 # Use word boundaries to avoid replacing parts of words. Case-insensitive replacement.
                 pattern = r"\b" + re.escape(word) + r"\b"
-                replacement = f"[[{word}|{arpabet}]]"
-                text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+                text = re.sub(pattern, say_as, text, flags=re.IGNORECASE)
         if text != original_text:
             logger.info("Applied custom pronunciations from lexicon.")
+
 
     if enable_g2p and normalize_numbers:
         try:

@@ -154,6 +154,14 @@ class ASRValidator:
 
             valid = wer < self.wer_warning_threshold
 
+            # Identify specific words for pronunciation feedback if WER is high
+            feedback_words = []
+            if not valid and wer < 0.9: # Only suggest feedback if it's not total gibberish
+                feedback_words = self._find_mispronounced_words(expected_text, transcription)
+                if feedback_words:
+                    logger.info(f"ASR validation identified potential pronunciation issues for: {feedback_words}")
+
+
             if not valid:
                 logger.warning(
                     f"ASR validation FAILED for {chunk_id}: "
@@ -168,7 +176,8 @@ class ASRValidator:
                 "transcription": transcription,
                 "issues": issues,
                 "recommendation": recommendation,
-                "confidence": confidence
+                "confidence": confidence,
+                "pronunciation_feedback_words": feedback_words,
             }
 
         except Exception as e:
@@ -179,8 +188,47 @@ class ASRValidator:
                 "transcription": "",
                 "issues": [f"ASR error: {str(e)}"],
                 "recommendation": "pass",
-                "confidence": 0.0
+                "confidence": 0.0,
+                "pronunciation_feedback_words": [],
             }
+
+    def _find_mispronounced_words(self, reference: str, hypothesis: str) -> list[str]:
+        """
+        Identify substituted words that are likely mispronunciations.
+        
+        Focuses on proper nouns and uncommon words.
+        """
+        Levenshtein = _get_levenshtein()
+        if Levenshtein is None:
+            return []
+
+        ref_words = self._normalize_text(reference).split()
+        hyp_words = self._normalize_text(hypothesis).split()
+
+        # Get the detailed edit operations
+        ops = Levenshtein.editops(ref_words, hyp_words)
+
+        mispronounced = []
+        for op, ref_idx, hyp_idx in ops:
+            if op == 'replace':
+                # It's a substitution, a good candidate for mispronunciation
+                original_word = ref_words[ref_idx]
+                
+                # Heuristic: focus on longer words, likely proper nouns (capitalized in original text)
+                # or words that are not common English words.
+                if len(original_word) > 4:
+                    # Find the original, un-normalized word
+                    # This is a simplification; a more robust method would use word alignments
+                    original_cased_words = reference.split()
+                    try:
+                        cased_word = original_cased_words[ref_idx]
+                        if cased_word[0].isupper() and cased_word.lower() == original_word:
+                             mispronounced.append(cased_word)
+                    except IndexError:
+                        continue
+        
+        # Return unique words
+        return sorted(list(set(mispronounced)))
 
     def _calculate_wer(self, reference: str, hypothesis: str) -> float:
         """

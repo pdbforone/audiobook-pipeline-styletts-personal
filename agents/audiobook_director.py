@@ -57,4 +57,83 @@ class AudiobookDirector(LlamaAgent):
             "Respond with a single JSON object with the following keys:\n"
             "- 'primary_tone': The dominant emotion or mood (e.g., 'suspenseful', 'academic', 'comedic').\n"
             "- 'secondary_tone': A subordinate but important mood (e.g., 'romantic', 'melancholic').\n"
-            
+            "- 'pace': Recommended reading pace (e.g., 'slow and deliberate', 'fast-paced and energetic').\n"
+            "- 'target_audience': The likely audience for this book (e.g., 'young adults', 'academics', 'history enthusiasts').\n"
+            "- 'production_notes': A brief summary of recommendations for the audio engineer (e.g., 'Use subtle sound effects for atmosphere', 'Keep the narration dry and unadorned')."
+        )
+        return self.query_json(prompt)
+
+    def identify_characters(self) -> List[Dict[str, str]]:
+        """Identifies main and recurring characters from the text."""
+        prompt = (
+            "You are a literary analyst. Read the following text and identify the main and recurring characters. "
+            "For each character, provide a brief description of their role and personality.\n\n"
+            "**Text for Analysis:**\n"
+            f"{self.analysis_text}\n\n"
+            "**Your Task:**\n"
+            "Return a JSON array of objects, where each object represents a character and has the following keys:\n"
+            "- 'name': The character's name.\n"
+            "- 'description': A brief description of their personality, role, and any notable voice characteristics (e.g., 'gruff old general', 'anxious young scholar')."
+        )
+        response = self.query_json(prompt)
+        return response if isinstance(response, list) else []
+
+    def create_casting_suggestions(self, characters: List[Dict[str, str]]) -> Dict[str, Any]:
+        """
+        For each character, suggests a suitable voice from the available voice library.
+        """
+        if not characters:
+            return {}
+
+        character_profiles = "\n".join(
+            [f"- {c['name']}: {c['description']}" for c in characters]
+        )
+
+        prompt = (
+            "You are an audiobook casting director. Given a list of characters and their descriptions, "
+            "your task is to recommend a suitable voice for each. You will be provided with a list of available voices and their attributes.\n\n"
+            "**Characters to Cast:**\n"
+            f"{character_profiles}\n\n"
+            "**Your Task:**\n"
+            "Analyze the characters and recommend the best voice for the narrator and each major character. "
+            "Return a single JSON object mapping character names to voice IDs. "
+            "Example: {'Narrator': 'en_male_deep', 'Gandalf': 'en_male_old_wise', 'Frodo': 'en_male_young_adventurous'}"
+        )
+
+        # In a real implementation, you would pass the available voices to the prompt.
+        # For now, we'll let the LLM hallucinate reasonable voice IDs.
+        response = self.query_json(prompt)
+        return response if isinstance(response, dict) else {}
+
+    def generate_pronunciation_guide(self) -> Dict[str, Any]:
+        """
+        Identifies potentially difficult or ambiguous words and provides pronunciation guidance.
+        """
+        return self.pronunciation_assistant.process_text(self.analysis_text)
+
+    def create_production_bible(self) -> Dict[str, Any]:
+        """
+        Orchestrates the creation of the complete Production Bible.
+        """
+        logger.info("Creating Production Bible...")
+        narrative_profile = self._generate_narrative_profile()
+        characters = self.identify_characters()
+        casting_suggestions = self.create_casting_suggestions(characters)
+        pronunciation_guide = self.generate_pronunciation_guide()
+
+        production_bible = {
+            "narrative_profile": narrative_profile,
+            "character_map": {
+                "characters": characters,
+                "casting_suggestions": casting_suggestions,
+            },
+            "pronunciation_guide": pronunciation_guide,
+            "pacing_guide": {
+                "default": narrative_profile.get("pace", "normal"),
+            },
+            "version": "1.0",
+            "created_at": self.get_timestamp(),
+        }
+
+        logger.info("Production Bible created successfully.")
+        return production_bible

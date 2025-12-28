@@ -8,7 +8,7 @@ import os
 import sys
 import warnings
 import hashlib
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 
 
 def _load_pipeline_common():
@@ -578,6 +578,52 @@ def load_structure_from_json(json_path: str, file_id: str):
     return structure
 
 
+def load_production_bible(file_id: str) -> Optional[Dict[str, Any]]:
+    """Loads the Production Bible for a given file ID."""
+    try:
+        project_root = find_monorepo_root(Path(__file__).parent)
+        bible_path = project_root / ".pipeline" / "books" / file_id / "production_bible.json"
+        if bible_path.exists():
+            with bible_path.open("r", encoding="utf-8") as f:
+                bible = json.load(f)
+            logger.info(f"Production Bible loaded for {file_id}")
+            return bible
+    except Exception as e:
+        logger.warning(f"Could not load Production Bible for {file_id}: {e}")
+    return None
+
+
+def adjust_chunk_limits_for_pace(
+    pace: str,
+    soft_limit: int,
+    hard_limit: int,
+    emergency_limit: int,
+    target_duration: float,
+    emergency_duration: float,
+) -> Tuple[int, int, int, float, float]:
+    """Adjusts chunking limits based on the recommended pace from the Production Bible."""
+    pace = pace.lower()
+    adjustment_factor = 1.0
+
+    if "fast-paced" in pace or "energetic" in pace:
+        adjustment_factor = 0.80  # 20% shorter chunks
+        logger.info(f"Pacing guide '{pace}': Adjusting chunk sizes shorter by 20%.")
+    elif "slow" in pace or "deliberate" in pace or "measured" in pace:
+        adjustment_factor = 1.15  # 15% longer chunks
+        logger.info(f"Pacing guide '{pace}': Adjusting chunk sizes longer by 15%.")
+    else:
+        return soft_limit, hard_limit, emergency_limit, target_duration, emergency_duration
+
+    new_soft = int(soft_limit * adjustment_factor)
+    new_hard = int(hard_limit * adjustment_factor)
+    new_emergency = int(emergency_limit * adjustment_factor)
+    new_target_dur = target_duration * adjustment_factor
+    new_emergency_dur = emergency_duration * adjustment_factor
+
+    logger.info(f"Pace-adjusted limits: soft={new_soft}, hard={new_hard}, target_dur={new_target_dur:.1f}s")
+    return new_soft, new_hard, new_emergency, new_target_dur, new_emergency_dur
+
+
 def run_phase3(
     file_id: str, pipeline: dict, config: Phase3Config
 ) -> ChunkRecord:
@@ -613,6 +659,14 @@ def run_phase3(
     logger.info(
         f"Processing Phase 3 for {file_id} with profile={config.phase3_profile}"
     )
+
+    # Load the Production Bible to make chunking smarter
+    production_bible = load_production_bible(file_id)
+    pace_guide = None
+    if production_bible:
+        narrative_profile = production_bible.get("narrative_profile", {})
+        if narrative_profile:
+            pace_guide = narrative_profile.get("pace")
 
     with open(text_path_abs, "r", encoding="utf-8") as handle:
         raw_text = handle.read()
@@ -804,6 +858,12 @@ def run_phase3(
         getattr(config, "emergency_chunk_chars", hard_limit + 200),
         hard_limit + 1,
     )
+
+    # Adjust limits based on Production Bible pace guide
+    if pace_guide:
+        soft_limit, hard_limit, emergency_limit, target_duration, emergency_duration = adjust_chunk_limits_for_pace(
+            pace_guide, soft_limit, hard_limit, emergency_limit, target_duration, emergency_duration
+        )
 
     logger.info(
         f"Profile '{detected_genre}' with execution '{phase3_profile}': "

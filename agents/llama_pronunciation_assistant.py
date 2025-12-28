@@ -18,7 +18,7 @@ from .llama_base import LlamaAgent
 
 logger = logging.getLogger(__name__)
 
-PRONUNCIATION_DICT_PATH = Path(".pipeline") / "pronunciation_dictionary.json"
+PRONUNCIATION_DICT_PATH = Path("config/custom_pronunciations.json")
 
 
 class LlamaPronunciationAssistant(LlamaAgent):
@@ -38,8 +38,8 @@ class LlamaPronunciationAssistant(LlamaAgent):
                     return json.load(f)
             except (json.JSONDecodeError, IOError) as e:
                 logger.error(f"Could not load pronunciation dictionary: {e}")
-                return {{}}
-        return {{}}
+                return {}
+        return {}
 
     def _save_pronunciation_dict(self) -> None:
         """Saves the pronunciation dictionary to a JSON file."""
