@@ -1,0 +1,33 @@
+{
+  "title": "ELAR 2 Text Features",
+  "char_count": 62801,
+  "encoding": "utf-8",
+  "original_lines": 434,
+  "merged_lines": 434,
+  "quality_score": 1.0,
+  "removed_junk_lines": 0,
+  "removed_inline_numbers": 0,
+  "converted_numbers_to_words": 0,
+  "converted_quotes": false,
+  "preserved_headings": 0,
+  "extracted_footnotes": 0,
+  "language": "en",
+  "language_confidence": 0.9,
+  "changes": [
+    "Detected language: en",
+    "Removed 0 junk lines",
+    "Normalized unicode characters",
+    "Removed PDF artifacts",
+    "Fixed punctuation spacing"
+  ],
+  "normalizer": "regex",
+  "tts_ready": true,
+  "original_length": 62801,
+  "final_length": 62801,
+  "size_change": 0,
+  "text_yield": 1.0,
+  "file_id": "ELAR 2 Text Features",
+  "source_file": "C:\\Users\\myson\\AppData\\Local\\Temp\\gradio\\52bb7c1ae224a85bc9382145e8db279f787eef67fc977a14d05bee5ec92a8e39\\ELAR 2 Text Features.txt",
+  "detected_format": "txt",
+  "classification": "text"
+}

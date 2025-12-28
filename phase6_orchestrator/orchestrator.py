@@ -59,6 +59,7 @@ from introspection.summary import build_introspection_summary
 
 # Lazy import for LlamaReasoner to avoid import errors if agents not available
 _LLAMA_REASONER = None
+_LLAMA_DIRECTOR = None
 _LAST_PHASE_ERROR = ""  # Stores last error output for AI analysis
 
 # Lazy import for ErrorRegistry (self-repair tracking)
@@ -73,6 +74,68 @@ _CURRENT_EXPERIMENT = None
 _SUPERVISED_OVERRIDES: Dict[str, Any] = {}
 _AUTONOMOUS_OVERRIDES: Dict[str, Any] = {}
 _RUN_TRACE: Optional[Dict[str, Any]] = None
+
+
+def get_book_dir(file_id: str) -> Path:
+    """Gets the dedicated directory for a book's metadata."""
+    return PROJECT_ROOT / ".pipeline" / "books" / file_id
+
+def _get_audiobook_director(book_text: str):
+    """Lazy-load AudiobookDirector."""
+    global _LLAMA_DIRECTOR
+    if _LLAMA_DIRECTOR is None:
+        try:
+            from agents.audiobook_director import AudiobookDirector
+            _LLAMA_DIRECTOR = AudiobookDirector(book_text=book_text)
+            logger.debug("AudiobookDirector loaded successfully")
+        except ImportError:
+            logger.debug("AudiobookDirector not available (agents module not found)")
+            _LLAMA_DIRECTOR = False
+        except Exception as e:
+            logger.debug(f"AudiobookDirector init failed: {e}")
+            _LLAMA_DIRECTOR = False
+    return _LLAMA_DIRECTOR if _LLAMA_DIRECTOR else None
+
+
+def run_phase_0_director(file_id: str, file_path: Path, pipeline_json: Path) -> bool:
+    """
+    Runs the AudiobookDirector agent to create the Production Bible for a book.
+    """
+    book_dir = get_book_dir(file_id)
+    bible_path = book_dir / "production_bible.json"
+
+    if bible_path.exists():
+        logger.info(f"Production Bible already exists at {bible_path}. Skipping generation.")
+        return True
+
+    try:
+        with file_path.open("r", encoding="utf-8") as f:
+            book_text = f.read()
+    except Exception as e:
+        logger.error(f"Phase 0 Error: Could not read book text from {file_path}. {e}")
+        return False
+
+    director = _get_audiobook_director(book_text)
+    if not director:
+        logger.error("Phase 0 Error: Could not load the AudiobookDirector agent.")
+        return False
+    
+    try:
+        production_bible = director.create_production_bible()
+        if not production_bible:
+            logger.error("Phase 0 Error: AudiobookDirector failed to create a production bible.")
+            return False
+
+        book_dir.mkdir(parents=True, exist_ok=True)
+        with bible_path.open("w", encoding="utf-8") as f:
+            json.dump(production_bible, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Production Bible successfully created at {bible_path}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Phase 0 Error: An exception occurred during production bible creation: {e}", exc_info=True)
+        return False
 
 
 def _write_json_safely(path: Path, payload: Dict[str, Any]) -> None:
@@ -4532,6 +4595,11 @@ Examples:
         action="store_true",
         help="Reuse existing enhanced WAVs and only concatenate/encode MP3 in Phase 5",
     )
+    parser.add_argument(
+        "--use-director",
+        action="store_true",
+        help="Enable Phase 0: Run the Audiobook Director to create a Production Bible before starting the pipeline.",
+    )
 
     args = parser.parse_args()
 
@@ -4568,6 +4636,17 @@ Examples:
 
     # Resolve pipeline.json path
     pipeline_json = (args.pipeline_json or orchestrator_config.pipeline_path).resolve()
+    
+    # --- Audiobook Director (Phase 0) ---
+    if args.use_director:
+        print_status("\n[bold magenta]> Running Phase 0 (Audiobook Director)...[/bold magenta]")
+        director_success = run_phase_0_director(file_id, file_path, pipeline_json)
+        if not director_success:
+            print_panel("Audiobook Director (Phase 0) failed. Aborting.", "PIPELINE FAILED", "bold red")
+            return 1
+        print_status("[green]OK Phase 0 completed successfully[/green]")
+    # ------------------------------------
+
     state = PipelineState(pipeline_json, validate_on_read=False)
     policy_config = orchestrator_config.policy_engine or {}
     policy_engine = PolicyEngine(

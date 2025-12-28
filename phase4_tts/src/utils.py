@@ -411,6 +411,7 @@ def sanitize_text_for_tts(
     enable_g2p: bool = False,
     normalize_numbers: bool = True,
     custom_overrides: Optional[Dict[str, str]] = None,
+    pronunciation_lexicon: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Sanitize text before sending to TTS to prevent artifacts.
@@ -420,11 +421,24 @@ def sanitize_text_for_tts(
     - Removes problematic punctuation patterns
     - Handles special characters
     - Warns about incomplete chunks
+    - Applies custom pronunciations from a lexicon.
 
     Why: Chatterbox interprets certain character sequences as control codes,
     causing weird pauses, sounds, or truncation.
     """
     original_text = text
+
+    # Apply pronunciation lexicon first, as it's the most specific override
+    if pronunciation_lexicon:
+        for word, pronunciation in pronunciation_lexicon.items():
+            arpabet = pronunciation.get("arpabet")
+            if arpabet:
+                # Use word boundaries to avoid replacing parts of words. Case-insensitive replacement.
+                pattern = r"\b" + re.escape(word) + r"\b"
+                replacement = f"[[{word}|{arpabet}]]"
+                text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+        if text != original_text:
+            logger.info("Applied custom pronunciations from lexicon.")
 
     if enable_g2p and normalize_numbers:
         try:

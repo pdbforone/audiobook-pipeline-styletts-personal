@@ -1,0 +1,33 @@
+{
+  "title": "ELAR 1 Responsive teaching",
+  "char_count": 69389,
+  "encoding": "utf-8",
+  "original_lines": 519,
+  "merged_lines": 519,
+  "quality_score": 1.0,
+  "removed_junk_lines": 0,
+  "removed_inline_numbers": 0,
+  "converted_numbers_to_words": 0,
+  "converted_quotes": false,
+  "preserved_headings": 0,
+  "extracted_footnotes": 0,
+  "language": "en",
+  "language_confidence": 0.9,
+  "changes": [
+    "Detected language: en",
+    "Removed 0 junk lines",
+    "Normalized unicode characters",
+    "Removed PDF artifacts",
+    "Fixed punctuation spacing"
+  ],
+  "normalizer": "regex",
+  "tts_ready": true,
+  "original_length": 69389,
+  "final_length": 69391,
+  "size_change": 2,
+  "text_yield": 1.0000288230122931,
+  "file_id": "ELAR 1 Responsive teaching",
+  "source_file": "C:\\Users\\myson\\AppData\\Local\\Temp\\gradio\\e1bc8e1b94cb809c6bf72b2720f8322501d8b2c2027eb647d8d79aea4ae53cd2\\ELAR 1 Responsive teaching.txt",
+  "detected_format": "txt",
+  "classification": "text"
+}

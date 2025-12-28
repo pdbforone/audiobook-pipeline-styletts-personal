@@ -71,6 +71,12 @@ try:
 except ImportError:
     LlamaChunkReviewer = None  # type: ignore
 
+# Llama pacing agent for dynamic pacing (opt-in)
+try:
+    from agents.llama_pacing_agent import LlamaPacingAgent
+except ImportError:
+    LlamaPacingAgent = None  # type: ignore
+
 MODULE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = MODULE_ROOT.parent.parent
 DEFAULT_CHARS_PER_MINUTE = 1050  # Shared speaking cadence assumption
@@ -203,6 +209,7 @@ class ChunkResult:
     validation_tier: Optional[int] = None
     validation_reason: Optional[str] = None
     validation_details: Optional[Dict[str, Any]] = None
+    pacing_hint: Optional[str] = None
 
 
 @dataclass(slots=True)
@@ -353,6 +360,7 @@ def collect_chunks(
     enable_g2p: bool = False,
     normalize_numbers: bool = True,
     custom_overrides: Optional[Dict[str, str]] = None,
+    pronunciation_lexicon: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, List[ChunkPayload]]:
     """Load chunk paths from phase3 section and sanitize text for synthesis."""
     resolved_key, phase3_entry = resolve_pipeline_file(
@@ -405,6 +413,7 @@ def collect_chunks(
             enable_g2p=enable_g2p,
             normalize_numbers=normalize_numbers,
             custom_overrides=custom_overrides,
+            pronunciation_lexicon=pronunciation_lexicon,
         )
         voice_override = None
         if voice_overrides_map:
@@ -443,6 +452,11 @@ def collect_chunks(
     return resolved, chunk_payloads
 
 
+def get_book_dir(file_id: str) -> Path:
+    """Gets the dedicated directory for a book's metadata."""
+    return PROJECT_ROOT / ".pipeline" / "books" / file_id
+
+
 def select_voice(
     pipeline_json: Path,
     file_id: str,
@@ -450,6 +464,7 @@ def select_voice(
     prepared_refs: Dict[str, str],
     voices_config_path: Path,
     voices_config: Optional[Dict[str, Any]] = None,
+    production_bible: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, Optional[Path], Dict[str, Any]]:
     """Determine voice to use and return (voice_id, reference_path, engine_params).
 
@@ -459,6 +474,7 @@ def select_voice(
         - For custom clones: reference_path points to audio file
     """
     voices_config = voices_config or load_voices_config(voices_config_path)
+    production_bible = production_bible or {}
 
     # Build unified all_voices dict from both voice_references and built_in_voices
     all_voices: Dict[str, Any] = {}
@@ -478,12 +494,15 @@ def select_voice(
                 all_voices[voice_name]["built_in"] = True
 
     default_voice = voices_config.get("default_voice")
-
+    
     # Determine which voice to use
-    # Priority: CLI override > Phase 3 stored voice > default
+    # Priority: CLI override > Production Bible narrator > Phase 3 stored voice > default
     if voice_override:
         selected_voice = voice_override
         logger.info(f"Using CLI voice override: {selected_voice}")
+    elif production_bible.get("character_map", {}).get("narrator", {}).get("assigned_voice"):
+        selected_voice = production_bible["character_map"]["narrator"]["assigned_voice"]
+        logger.info(f"Using Production Bible narrator voice: {selected_voice}")
     else:
         selected_voice = get_selected_voice_from_phase3(str(pipeline_json), file_id)
         if selected_voice:
@@ -721,6 +740,7 @@ def synthesize_chunk_with_engine(
     chunk_index: Optional[int] = None,
     total_chunks: Optional[int] = None,
     chars_per_minute: Optional[int] = None,
+    production_bible: Optional[Dict[str, Any]] = None,
 ) -> ChunkResult:
     """Synthesize text for a single chunk using requested engine with fallback."""
     chunk_kwargs = dict(engine_kwargs) if engine_kwargs else {}
@@ -777,24 +797,24 @@ def synthesize_chunk_with_engine(
     )
 
     # Resume support: skip already-rendered chunks
-    if skip_existing and existing_out.exists():
-        logger.info("Skipping %s (already exists)", chunk.chunk_id)
-        return ChunkResult(
-            chunk_id=chunk.chunk_id,
-            success=True,
-            output_path=existing_out,
-            engine_used=None,
-            rt_factor=None,
-            audio_duration=None,
-            text_len=text_len,
-            est_dur=est_dur_sec,
-            latency_fallback_used=False,
-            voice_used=voice_used,
-            validation_tier=None,
-            validation_reason=None,
-            validation_details=None,
-        )
-
+            if skip_existing and existing_out.exists():
+                logger.info("Skipping %s (already exists)", chunk.chunk_id)
+                return ChunkResult(
+                    chunk_id=chunk.chunk_id,
+                    success=True,
+                    output_path=existing_out,
+                    engine_used=None,
+                    rt_factor=None,
+                    audio_duration=None,
+                    text_len=text_len,
+                    est_dur=est_dur_sec,
+                    latency_fallback_used=False,
+                    voice_used=voice_used,
+                    validation_tier=None,
+                    validation_reason=None,
+                    validation_details=None,
+                    pacing_hint=pacing_hint,
+                )
     # Pre-synthesis text validation (proactive issue detection)
     pre_validated_text = chunk.text
     pre_validation_applied = False
@@ -926,6 +946,35 @@ def synthesize_chunk_with_engine(
             pre_validation_details["duplication_detected"] = duplication_detected
         if abbreviation_normalized:
             pre_validation_details["abbreviation_normalized"] = True
+
+    # Pacing analysis (optional) - guided by Production Bible
+    pacing_hint = production_bible.get("pacing_guide", {}).get("default")
+    if not pacing_hint:
+        pacing_agent_enabled = (
+            validation_config is not None
+            and getattr(validation_config, "enable_llama_pacing_agent", False)
+            and not os.environ.get("DISABLE_PACING_AGENT", "").lower() in ("1", "true", "yes")
+        )
+        if pacing_agent_enabled and LlamaPacingAgent is not None:
+            try:
+                pacing_agent = LlamaPacingAgent()
+                pacing_hint = pacing_agent.get_pacing_hint(pre_validated_text)
+            except Exception as exc:
+                logger.warning(
+                    "Chunk %s pacing analysis failed: %s",
+                    chunk.chunk_id,
+                    exc,
+                )
+    else:
+        logger.info("Using default pacing hint from Production Bible: %s", pacing_hint)
+
+    if pacing_hint and pacing_hint != "normal":
+        chunk_kwargs["pacing_hint"] = pacing_hint
+        logger.info(
+            "Chunk %s pacing hint applied: %s",
+            chunk.chunk_id,
+            pacing_hint,
+        )
 
     kokoro_available = "kokoro" in engine_manager.engines
 
@@ -2186,7 +2235,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
 
     config = load_config(config_path)
+    voices_config = load_voices_config(voices_config_path)
     pipeline_data = load_pipeline_json(json_path)
+
+    # Load production bible if it exists
+    production_bible = {}
+    book_dir = get_book_dir(args.file_id)
+    bible_path = book_dir / "production_bible.json"
+    if bible_path.exists():
+        logger.info(f"Production Bible found at {bible_path}. Loading...")
+        try:
+            with bible_path.open("r", encoding="utf-8") as f:
+                production_bible = json.load(f)
+        except Exception as e:
+            logger.warning(f"Could not load production bible: {e}")
+
     enable_g2p = bool(config.get("enable_g2p", False))
     normalize_numbers = bool(config.get("normalize_numbers", True))
     custom_overrides = config.get("custom_pronunciations", {}) or None
@@ -2275,6 +2338,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         validation_config.enable_tier1 or validation_config.enable_tier2
     )
 
+    pronunciation_lexicon = production_bible.get("pronunciation_lexicon")
     resolved_file_id, chunks = collect_chunks(
         pipeline_data,
         args.file_id,
@@ -2283,6 +2347,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         enable_g2p=enable_g2p,
         normalize_numbers=normalize_numbers,
         custom_overrides=custom_overrides,
+        pronunciation_lexicon=pronunciation_lexicon,
     )
     if not chunks:
         logger.error("No chunks discovered for %s", args.file_id)
@@ -2406,6 +2471,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         voice_references,
         voices_config_path,
         voices_config=voices_config,
+        production_bible=production_bible,
     )
     voice_assets = build_voice_assets(voices_config, voice_references)
 
@@ -2501,6 +2567,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     chunk_index=chunk.index,
                     total_chunks=total_chunks,
                     chars_per_minute=chars_per_minute,
+                    production_bible=production_bible,
                 )
                 active_futures[future] = chunk.chunk_id
 
