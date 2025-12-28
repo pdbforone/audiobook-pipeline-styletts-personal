@@ -91,7 +91,7 @@ class LlamaResourceManager:
 
     _instances: List["LlamaResourceManager"] = []  # Track all instances for cleanup
 
-    def __init__(self, min_ram_mb: int = MIN_RAM_MB):
+    def __init__(self, min_ram_mb: int = MIN_RAM_MB) -> None:
         self.min_ram = min_ram_mb
         self._ollama_process = None
         self._lock = threading.Lock()
@@ -279,7 +279,7 @@ class ResponseCache:
     - Thread-safe operations
     """
 
-    def __init__(self, cache_dir: Path = CACHE_DIR, ttl_hours: int = CACHE_TTL_HOURS):
+    def __init__(self, cache_dir: Path = CACHE_DIR, ttl_hours: int = CACHE_TTL_HOURS) -> None:
         self.cache_dir = cache_dir
         self.ttl = timedelta(hours=ttl_hours)
         self._lock = threading.Lock()
@@ -396,7 +396,7 @@ class LlamaAgent:
         resource_manager: Optional[LlamaResourceManager] = None,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         max_retries: int = 2,
-    ):
+    ) -> None:
         self.model = model
         self.cache = ResponseCache() if cache_enabled else None
         self.resource_manager = resource_manager or LlamaResourceManager()
@@ -405,7 +405,7 @@ class LlamaAgent:
         self._client = None
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="llama_query")
 
-    def _get_client(self):
+    def _get_client(self) -> Any:
         """Lazy-load Ollama client."""
         if self._client is None:
             try:
