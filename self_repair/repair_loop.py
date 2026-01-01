@@ -818,13 +818,15 @@ class RepairLoop:
         """Get summary of repair attempts and outcomes."""
         registry = self.dead_chunk_repair.registry
 
+        # Use all error categories (see self_repair/__init__.py for canonical list)
+        all_categories = ("oom", "timeout", "truncation", "quality", "schema", "io", "unknown")
         return {
             "total_failures": len(registry.entries),
             "resolved": sum(1 for e in registry.entries.values() if e.resolved),
             "unresolved": len(registry.get_unresolved()),
             "by_category": {
                 cat: len(registry.get_by_category(cat))
-                for cat in ["oom", "timeout", "truncation", "quality", "unknown"]
+                for cat in all_categories
             },
             "staged_patches": len(list(self.staging_dir.glob("*.json"))),
         }

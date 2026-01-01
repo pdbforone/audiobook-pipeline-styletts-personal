@@ -234,6 +234,22 @@ Analyze and respond with JSON:
                 severity="high",
             )
 
+        # I/O patterns (file system, permissions, disk)
+        if any(p in log_lower for p in [
+            "filenotfounderror", "permissionerror", "no such file",
+            "cannot open", "disk full", "ioerror", "permission denied"
+        ]):
+            return FailureAnalysis(
+                root_cause="File system or I/O error",
+                category="io",
+                confidence=0.8,
+                suggested_fix="Check file paths, permissions, and available disk space",
+                config_changes={},
+                prevention_strategy="Validate paths and disk space before processing",
+                affected_components=["phase1_validation", "phase4_tts", "phase5_enhancement"],
+                severity="high",
+            )
+
         # Default unknown
         return FailureAnalysis(
             root_cause="Unknown failure - manual review needed",
