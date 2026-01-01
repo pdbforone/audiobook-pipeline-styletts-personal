@@ -11,7 +11,7 @@ import hashlib
 from typing import List, Optional, Dict, Any, Tuple
 
 
-def _load_pipeline_common():
+def _load_pipeline_common() -> Tuple[Any, ...]:
     """Import pipeline_common after ensuring the repo root is on sys.path."""
     project_root = Path(__file__).resolve().parents[3]
     if str(project_root) not in sys.path:
@@ -148,12 +148,12 @@ _LLAMA_CHUNKER = None
 _LLAMA_CHUNKER_CHECKED = False
 
 
-def _get_llama_chunker(model: str = "llama3.1:8b-instruct-q4_K_M"):
+def _get_llama_chunker(model: str = "llama3.1:8b-instruct-q4_K_M") -> Optional[Any]:
     """
     Lazy-load LlamaChunker to avoid import errors when Ollama not available.
 
     Returns:
-        LlamaChunker instance or None if unavailable
+        LlamaChunker instance or None if unavailable.
     """
     global _LLAMA_CHUNKER, _LLAMA_CHUNKER_CHECKED
 
@@ -549,7 +549,7 @@ def persist_phase3_result(
         return txn.data
 
 
-def load_structure_from_json(json_path: str, file_id: str):
+def load_structure_from_json(json_path: str, file_id: str) -> Optional[Any]:
     """Load document structure from Phase 2 if available."""
     try:
         state = PipelineState(Path(json_path), validate_on_read=False)
@@ -1410,7 +1410,7 @@ def load_config(config_path: str) -> Phase3Config:
     )
 
 
-def main():
+def main() -> None:
     """Main entry point for Phase 3 chunking."""
     logger.info(f"Starting Phase 3 from cwd: {os.getcwd()}")
 

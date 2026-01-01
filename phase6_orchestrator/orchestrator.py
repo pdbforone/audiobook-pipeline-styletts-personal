@@ -147,7 +147,7 @@ def _write_json_safely(path: Path, payload: Dict[str, Any]) -> None:
         logger.debug("Failed to write profile output to %s", path)
 
 
-def _get_error_registry():
+def _get_error_registry() -> Optional[Any]:
     """Lazy-load ErrorRegistry for tracking chunk failures."""
     global _ERROR_REGISTRY
     if _ERROR_REGISTRY is None:
@@ -168,7 +168,7 @@ def _get_dead_chunk_repair(
     enable_text_rewrite: bool = False,
     rewrite_conf_threshold: float = 0.7,
     memory_enabled: bool = False,
-):
+) -> Optional[Any]:
     """Lazy-load DeadChunkRepair for self-healing chunk recovery."""
     global _DEAD_CHUNK_REPAIR
     if (
@@ -196,7 +196,7 @@ def _get_dead_chunk_repair(
     return _DEAD_CHUNK_REPAIR if _DEAD_CHUNK_REPAIR else None
 
 
-def _get_llama_reasoner():
+def _get_llama_reasoner() -> Optional[Any]:
     """Lazy-load LlamaReasoner to avoid import errors."""
     global _LLAMA_REASONER
     if _LLAMA_REASONER is None:
@@ -1158,16 +1158,16 @@ def set_phase4_audio_dir(audio_dir: Path) -> None:
     PHASE4_AUDIO_DIR = audio_dir.resolve()
 
 
-def print_status(message: str, style: str = "bold"):
-    """Print status message with Rich or fallback to print"""
+def print_status(message: str, style: str = "bold") -> None:
+    """Print status message with Rich or fallback to print."""
     if console:
         console.print(message, style=style)
     else:
         print(message)
 
 
-def print_panel(content: str, title: str = "", style: str = ""):
-    """Print panel with Rich or fallback"""
+def print_panel(content: str, title: str = "", style: str = "") -> None:
+    """Print panel with Rich or fallback."""
     if console:
         console.print(Panel(content, title=title, style=style))
     else:

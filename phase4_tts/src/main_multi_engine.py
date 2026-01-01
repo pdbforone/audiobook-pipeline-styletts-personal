@@ -164,6 +164,7 @@ except (
         predict_expected_duration,
         should_run_tier2_validation,
         detect_text_repetition,
+        TextQualityResult,
         deduplicate_sentences,
         normalize_spaced_abbreviations,
     )
@@ -815,53 +816,64 @@ def synthesize_chunk_with_engine(
             validation_details=None,
             pacing_hint=pacing_hint,
         )
-    # Pre-synthesis text validation (proactive issue detection)
-    pre_validated_text = chunk.text
+
+    # -------------------------------------------------------------------------
+    # Pre-TTS Quality Check: Detect sentence duplication from Phase 3 bugs
+    # This saves ~183s of wasted TTS time per bad chunk
+    # -------------------------------------------------------------------------
+    synthesis_text = chunk.text  # Default to original
     pre_validation_applied = False
     pre_validation_details = None
     duplication_detected = None
     abbreviation_normalized = False
 
-    # Step 1: Detect and fix text repetition from Phase 3 chunking bugs
-    # This catches duplicate sentences BEFORE wasting TTS time
-    try:
-        duplication_detected = detect_text_repetition(chunk.text)
-        if duplication_detected:
-            logger.warning(
-                "Chunk %s has text duplication (%s, count=%d): '%s'",
-                chunk.chunk_id,
-                duplication_detected["type"],
-                duplication_detected["count"],
-                duplication_detected["sample"],
-            )
-            # Auto-deduplicate to prevent duration_mismatch failures
-            pre_validated_text, removed_count = deduplicate_sentences(chunk.text)
-            if removed_count > 0:
-                logger.info(
-                    "Chunk %s: removed %d duplicate sentences (%d -> %d chars)",
+    # Step 1: Fast duplication detection using TextQualityResult
+    text_quality = detect_text_repetition(chunk.text)
+
+    if not text_quality.is_valid:
+        if text_quality.issue_type == "sentence_duplication":
+            if text_quality.deduped_text:
+                # Auto-fix: use deduplicated text for synthesis
+                logger.warning(
+                    "Chunk %s has duplicated sentences (%.1f%% redundant). "
+                    "Auto-deduping: %d → %d chars",
                     chunk.chunk_id,
-                    removed_count,
+                    text_quality.details.get("duplication_ratio", 0) * 100,
                     len(chunk.text),
-                    len(pre_validated_text),
+                    len(text_quality.deduped_text),
                 )
+                synthesis_text = text_quality.deduped_text
                 pre_validation_applied = True
-    except Exception as exc:  # pylint: disable=broad-except
-        logger.warning(
-            "Chunk %s duplication detection failed: %s",
-            chunk.chunk_id,
-            exc,
-        )
+                duplication_detected = text_quality.details
+                # Update estimated duration for deduped text
+                est_dur_sec = max(
+                    1.0,
+                    predict_expected_duration(synthesis_text, chars_per_minute=effective_cpm),
+                )
+            else:
+                logger.error(
+                    "Chunk %s has duplicated sentences but could not auto-dedupe. "
+                    "This may cause duration_mismatch validation failure.",
+                    chunk.chunk_id,
+                )
+        elif text_quality.issue_type == "word_repetition":
+            logger.warning(
+                "Chunk %s has word-level repetition (%d consecutive). "
+                "May cause TTS artifacts.",
+                chunk.chunk_id,
+                text_quality.details.get("max_consecutive_repeats", 0),
+            )
 
     # Step 2: Normalize spaced abbreviations (I E P -> IEP)
     # These cause XTTS to pronounce each letter slowly
     try:
-        normalized_text = normalize_spaced_abbreviations(pre_validated_text)
-        if normalized_text != pre_validated_text:
+        normalized_text = normalize_spaced_abbreviations(synthesis_text)
+        if normalized_text != synthesis_text:
             logger.info(
                 "Chunk %s: normalized spaced abbreviations",
                 chunk.chunk_id,
             )
-            pre_validated_text = normalized_text
+            synthesis_text = normalized_text
             abbreviation_normalized = True
             pre_validation_applied = True
     except Exception as exc:  # pylint: disable=broad-except
@@ -871,6 +883,7 @@ def synthesize_chunk_with_engine(
             exc,
         )
 
+    # Step 3: LlamaPreValidator (LLM-based, optional)
     pre_validator_enabled = (
         validation_config is not None
         and getattr(validation_config, "enable_llama_pre_validator", False)
@@ -884,7 +897,7 @@ def synthesize_chunk_with_engine(
             pre_validator = LlamaPreValidator()
 
             # Quick pattern-based check first
-            is_clean, issue_types = pre_validator.quick_check(chunk.text)
+            is_clean, issue_types = pre_validator.quick_check(synthesis_text)
 
             if not is_clean:
                 logger.info(
@@ -895,8 +908,9 @@ def synthesize_chunk_with_engine(
 
                 # Auto-expand common abbreviations (fast, no LLM)
                 if pre_validator_auto_expand:
-                    pre_validated_text = pre_validator.auto_expand_abbreviations(chunk.text)
-                    if pre_validated_text != chunk.text:
+                    expanded_text = pre_validator.auto_expand_abbreviations(synthesis_text)
+                    if expanded_text != synthesis_text:
+                        synthesis_text = expanded_text
                         logger.debug(
                             "Chunk %s auto-expanded abbreviations",
                             chunk.chunk_id,
@@ -906,11 +920,11 @@ def synthesize_chunk_with_engine(
                 # If LLM enabled and significant issues, get full analysis
                 if pre_validator_use_llm and len(issue_types) >= 2:
                     full_result = pre_validator.validate_for_tts(
-                        pre_validated_text,
+                        synthesis_text,
                         check_with_llm=True,
                     )
                     if full_result.get("suggested_text") and full_result.get("confidence", 0) > 0.7:
-                        pre_validated_text = full_result["suggested_text"]
+                        synthesis_text = full_result["suggested_text"]
                         pre_validation_applied = True
                         logger.info(
                             "Chunk %s LLM pre-validation applied (confidence=%.2f): %s",
@@ -923,7 +937,7 @@ def synthesize_chunk_with_engine(
                     "issues_detected": issue_types,
                     "text_modified": pre_validation_applied,
                     "original_length": len(chunk.text),
-                    "validated_length": len(pre_validated_text),
+                    "validated_length": len(synthesis_text),
                 }
 
         except Exception as exc:  # pylint: disable=broad-except
@@ -940,7 +954,7 @@ def synthesize_chunk_with_engine(
         if pre_validation_details is None:
             pre_validation_details = {}
         pre_validation_details["original_length"] = len(chunk.text)
-        pre_validation_details["validated_length"] = len(pre_validated_text)
+        pre_validation_details["validated_length"] = len(synthesis_text)
         pre_validation_details["text_modified"] = pre_validation_applied
         if duplication_detected:
             pre_validation_details["duplication_detected"] = duplication_detected
@@ -958,7 +972,7 @@ def synthesize_chunk_with_engine(
         if pacing_agent_enabled and LlamaPacingAgent is not None:
             try:
                 pacing_agent = LlamaPacingAgent()
-                pacing_hint = pacing_agent.get_pacing_hint(pre_validated_text)
+                pacing_hint = pacing_agent.get_pacing_hint(synthesis_text)
             except Exception as exc:
                 logger.warning(
                     "Chunk %s pacing analysis failed: %s",
@@ -1082,7 +1096,7 @@ def synthesize_chunk_with_engine(
     ) -> Tuple[np.ndarray, str, int, float, float]:
         synth_start = time.time()
         audio_out, selected_engine = engine_manager.synthesize(
-            text=text_override or pre_validated_text,
+            text=text_override or synthesis_text,  # Use deduped/pre-validated text
             reference_audio=reference,
             engine=target_engine,
             language=language,
@@ -1104,9 +1118,9 @@ def synthesize_chunk_with_engine(
             rt_factor,
         )
 
-    if max_len and len(chunk.text) > max_len:
+    if max_len and len(synthesis_text) > max_len:
         if sentence_split_enabled:
-            sentences = split_into_sentences(chunk.text, max_len)
+            sentences = split_into_sentences(synthesis_text, max_len)
             if sentences and all(len(s) <= max_len for s in sentences) and len(sentences) > 1:
                 try:
                     audio_parts: List[np.ndarray] = []
@@ -1194,7 +1208,7 @@ def synthesize_chunk_with_engine(
             exc,
         )
         if sentence_regen_enabled:
-            sentences = split_into_sentences(chunk.text, max_len or len(chunk.text))
+            sentences = split_into_sentences(synthesis_text, max_len or len(synthesis_text))
             if sentences and len(sentences) > 1:
                 logger.info(
                     "Chunk %s attempting sentence-level regeneration after failure.",
@@ -1300,11 +1314,11 @@ def synthesize_chunk_with_engine(
         )
         try:
             kokoro_limit = text_length_limit("kokoro")
-            if kokoro_limit and len(chunk.text) > kokoro_limit:
+            if kokoro_limit and len(synthesis_text) > kokoro_limit:
                 logger.warning(
                     "Chunk %s skipping Kokoro latency fallback; text length %d exceeds max %d",
                     chunk.chunk_id,
-                    len(chunk.text),
+                    len(synthesis_text),
                     kokoro_limit,
                 )
             else:
@@ -1391,7 +1405,7 @@ def synthesize_chunk_with_engine(
     if validation_enabled and validation_config:
         if validation_config.enable_tier1:
             tier1_result = tier1_validate(
-                chunk.text,
+                synthesis_text,  # Validate against the text that was synthesized
                 str(output_path),
                 validation_config,
                 chars_per_minute=effective_cpm,
@@ -1421,11 +1435,11 @@ def synthesize_chunk_with_engine(
                 )
                 try:
                     kokoro_limit = text_length_limit("kokoro")
-                    if kokoro_limit and len(chunk.text) > kokoro_limit:
+                    if kokoro_limit and len(synthesis_text) > kokoro_limit:
                         logger.error(
                             "Chunk %s cannot retry on Kokoro because text length %d exceeds max %d",
                             chunk.chunk_id,
-                            len(chunk.text),
+                            len(synthesis_text),
                             kokoro_limit,
                         )
                     else:
@@ -1438,7 +1452,7 @@ def synthesize_chunk_with_engine(
                         ) = attempt_synthesis("kokoro", False, None)
                         sf.write(output_path, audio, sample_rate)
                         tier1_result = tier1_validate(
-                            chunk.text,
+                            synthesis_text,  # Validate against the text that was synthesized
                             str(output_path),
                             validation_config,
                             chars_per_minute=effective_cpm,
@@ -1478,7 +1492,7 @@ def synthesize_chunk_with_engine(
                 run_tier2 = True
             if run_tier2:
                 tier2_result = tier2_validate(
-                    chunk.text, str(output_path), validation_config
+                    synthesis_text, str(output_path), validation_config  # Use synthesized text
                 )
                 validation_tier = tier2_result.tier
                 validation_reason = tier2_result.reason
@@ -1504,7 +1518,7 @@ def synthesize_chunk_with_engine(
             try:
                 asr_validator = ASRValidator(model_size="base")
                 asr_result = asr_validator.validate_audio(
-                    output_path, chunk.text, chunk.chunk_id
+                    output_path, synthesis_text, chunk.chunk_id  # Use synthesized text
                 )
 
                 # Log words for pronunciation feedback
@@ -1551,11 +1565,11 @@ def synthesize_chunk_with_engine(
                         try:
                             llama_rewriter = LlamaRewriter()
                             rewrite_result = llama_rewriter.rewrite_from_asr_feedback(
-                                original_text=chunk.text,
+                                original_text=synthesis_text,  # Use synthesized text
                                 asr_transcription=asr_result["transcription"],
                                 asr_issues=asr_result["issues"],
                                 wer=asr_result["wer"],
-                                max_chars=max_len or len(chunk.text)
+                                max_chars=max_len or len(synthesis_text)
                             )
 
                             if rewrite_result["confidence"] > 0.7:
@@ -1659,7 +1673,7 @@ def synthesize_chunk_with_engine(
                             sf.write(temp_path, fallback_audio, fallback_sr)
 
                             retry_asr_result = asr_validator.validate_audio(
-                                temp_path, chunk.text, chunk.chunk_id
+                                temp_path, synthesis_text, chunk.chunk_id  # Use synthesized text
                             )
 
                             if retry_asr_result["valid"] or retry_asr_result["wer"] < asr_result["wer"]:
