@@ -966,7 +966,7 @@ class PhaseTimeouts(BaseModel):
     phase1: int = 18000  # 5 hours for validation
     phase2: int = 18000  # 5 hours for extraction
     phase3: int = 600    # 10 minutes for chunking
-    phase4: int = 18000  # 5 hours for TTS (large books)
+    phase4: int = 28800  # 8 hours for TTS (large books)
     phase5: int = 1800   # 30 minutes for enhancement
     phase5_5: int = 3600  # 60 minutes for subtitles
     poetry_install: int = 300  # 5 minutes for dependency install
@@ -2448,12 +2448,17 @@ def run_phase4_multi_engine(
                 except Exception:
                     chunk_audio_paths = []
 
-            # Decide expected total from any available hints
-            expected_chunks = (
-                entry.get("total_chunks")
-                or entry.get("chunks_processed")
-                or entry.get("metrics", {}).get("total_chunks", 0)
-            ) or 0
+            # Get expected chunks from Phase 3, the source of truth
+            _, p3_entry = _find_phase_file_entry(data, "phase3", file_id)
+            if p3_entry and p3_entry.get("chunk_paths"):
+                expected_chunks = len(p3_entry.get("chunk_paths"))
+            else:
+                # Fallback to phase 4 entry if phase 3 is missing
+                expected_chunks = (
+                    entry.get("total_chunks")
+                    or entry.get("chunks_processed")
+                    or entry.get("metrics", {}).get("total_chunks", 0)
+                ) or 0
 
             # If we have chunk_audio_paths, verify they all exist (resolve relative paths)
             if chunk_audio_paths:
@@ -2481,7 +2486,7 @@ def run_phase4_multi_engine(
                 if existing_chunks:
                     # Only mark chunks as failed if they don't exist on disk
                     if expected_chunks > 0:
-                        expected_ids = {f"chunk_{i:04d}" for i in range(1, int(expected_chunks) + 1)}
+                        expected_ids = {f"chunk_{i:04d}" for i in range(int(expected_chunks))}
                         missing = list(expected_ids - existing_chunks)
                         if missing:
                             logger.info("Found %d existing audio files, %d missing", len(existing_chunks), len(missing))
@@ -2491,11 +2496,10 @@ def run_phase4_multi_engine(
                         logger.info("Found %d audio files on disk (no expected count)", len(existing_chunks))
                         return []
 
-            # If chunk_audio_paths is empty and no files on disk, consider all expected chunks as failed
-            if expected_chunks > 0:
-                return [f"chunk_{i:04d}" for i in range(1, int(expected_chunks) + 1)]
-
-            return []
+                # If chunk_audio_paths is empty and no files on disk, consider all expected chunks as failed
+                if expected_chunks > 0:
+                    return [f"chunk_{i:04d}" for i in range(int(expected_chunks))]
+            
         except Exception as exc:
             logger.warning(
                 "Unable to inspect pipeline.json for failed chunks (file_id=%s): %s",
@@ -3992,6 +3996,11 @@ def summarize_results(pipeline_json: Path):
     console.print(table)
 
 
+def _run_lexicon_updater() -> None:
+    """Placeholder for lexicon update logic."""
+    logger.info("Lexicon updater hook called (no-op).")
+
+
 def run_pipeline(
     file_path: Path,
     voice_id: Optional[str] = None,
@@ -4008,6 +4017,7 @@ def run_pipeline(
     policy_engine: Optional[PolicyEngine] = None,
     enable_llama_chunker: bool = True,
     enable_llama_rewriter: bool = True,
+    cancel_event: Optional[Any] = None,
 ) -> Dict:
     """
     Programmatic interface to run the audiobook pipeline.

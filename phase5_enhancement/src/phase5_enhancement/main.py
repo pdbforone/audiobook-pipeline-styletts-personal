@@ -1059,6 +1059,7 @@ def main(argv: Optional[list[str]] = None):
             "ON" if not args.silence_notifications else "OFF",
         )
         setup_logging(config)
+        target_file_id = args.file_id or config.audiobook_title or Path(config.pipeline_json).stem
 
         # Director's Cut: Apply mastering guidance from Production Bible
         production_bible = {}
@@ -1090,8 +1091,7 @@ def main(argv: Optional[list[str]] = None):
             elif pacing == "slow":
                 config.crossfade_duration = min(0.2, config.crossfade_duration + 0.05)
                 logger.info(f"Director's Cut: Slow pacing -> Crossfade duration set to {config.crossfade_duration:.3f}s")
-
-        target_file_id = args.file_id or config.audiobook_title or Path(config.pipeline_json).stem
+        
         # Per-title output/input directories
         config.output_dir = str(Path(config.output_dir.format(file_id=target_file_id)).resolve())
         config.input_dir = str((Path(config.input_dir) / target_file_id).resolve())
