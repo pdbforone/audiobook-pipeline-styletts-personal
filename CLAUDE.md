@@ -19,9 +19,9 @@
 
 **This is not a script factory. It's a Personal Audiobook Studio.**
 
-Marcus Aurelius doesn't *read* his Meditations — he *reflects* them.
+Marcus Aurelius doesn't *read* his Meditations — he *reflects* them. The difference between 2 hours and 5 hours is irrelevant because you'll listen for 10+.
 
-**Always choose quality.** We think like craftsmen. Elegant, minimal, inevitable solutions.
+**Always choose quality.** We think like craftsmen, designer-engineers, and research scientists. Elegant, minimal, inevitable solutions.
 
 ---
 
@@ -114,6 +114,7 @@ Source Text ──► [7 Sacred Phases] ──► Voice That Sings
 
 ### Usage Pattern
 ```python
+from pipeline_common.schema import canonicalize_state, validate_pipeline_schema
 from pipeline_common.state_manager import PipelineState
 
 # Always use PipelineState for atomic updates
@@ -121,8 +122,37 @@ with PipelineState(pipeline_json_path) as state:
     state.update_phase("phase4", file_id, {
         "status": "success",
         "audio_path": str(output_path),
+        "duration_seconds": 3.14
     })
-# Automatic backup, locking, atomic write
+# Automatic backup, locking, and atomic write
+
+# For validation
+data = canonicalize_state(raw_data)  # Normalize legacy formats
+validate_pipeline_schema(data)        # Structural validation
+```
+
+### Phase Block Structure
+
+Every phase block follows this contract:
+
+```json
+{
+  "status": "pending|running|success|partial|failed",
+  "timestamps": {"start": 0.0, "end": 0.0, "duration": 0.0},
+  "artifacts": [],
+  "metrics": {},
+  "errors": [],
+  "files": {
+    "<file_id>": {
+      "status": "...",
+      "timestamps": {...},
+      "artifacts": {...},
+      "metrics": {...},
+      "errors": [],
+      "chunks": [...]
+    }
+  }
+}
 ```
 
 ---
@@ -131,13 +161,16 @@ with PipelineState(pipeline_json_path) as state:
 
 ### DO
 ```python
+# Use type hints from the schema models
+from pipeline_common.models import Phase4ChunkModel, StatusEnum
+
+def process_chunk(chunk: Phase4ChunkModel) -> Phase4ChunkModel:
+    chunk.status = StatusEnum.SUCCESS.value
+    return chunk
+
 # Use PipelineState for all state updates
 with PipelineState(pipeline_json) as state:
     state.update_phase("phase4", file_id, updates)
-
-# Use schema-defined status values
-from pipeline_common.models import StatusEnum
-chunk.status = StatusEnum.SUCCESS.value  # "success"
 
 # Handle errors explicitly
 if not audio_path.exists():
@@ -171,6 +204,17 @@ Fixed critical bug where sentences appeared in multiple consecutive chunks.
 
 ### Process Recycling
 For 500+ chunk books: `RecyclingProcessPool` restarts workers every N tasks.
+
+---
+
+## Audio Quality Standards
+
+| Metric | Target |
+|--------|--------|
+| LUFS | -23 to -16 (preset dependent) |
+| Dynamic Range | 8-20 dB |
+| Sample Rate | 24kHz |
+| Format | WAV (processing), MP3 (final) |
 
 ---
 
