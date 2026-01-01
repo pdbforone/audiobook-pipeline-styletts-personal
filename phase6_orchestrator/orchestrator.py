@@ -59,6 +59,7 @@ from introspection.summary import build_introspection_summary
 
 # Lazy import for LlamaReasoner to avoid import errors if agents not available
 _LLAMA_REASONER = None
+_LLAMA_DIRECTOR = None
 _LAST_PHASE_ERROR = ""  # Stores last error output for AI analysis
 
 # Lazy import for ErrorRegistry (self-repair tracking)
@@ -73,6 +74,68 @@ _CURRENT_EXPERIMENT = None
 _SUPERVISED_OVERRIDES: Dict[str, Any] = {}
 _AUTONOMOUS_OVERRIDES: Dict[str, Any] = {}
 _RUN_TRACE: Optional[Dict[str, Any]] = None
+
+
+def get_book_dir(file_id: str) -> Path:
+    """Gets the dedicated directory for a book's metadata."""
+    return PROJECT_ROOT / ".pipeline" / "books" / file_id
+
+def _get_audiobook_director(book_text: str):
+    """Lazy-load AudiobookDirector."""
+    global _LLAMA_DIRECTOR
+    if _LLAMA_DIRECTOR is None:
+        try:
+            from agents.audiobook_director import AudiobookDirector
+            _LLAMA_DIRECTOR = AudiobookDirector(book_text=book_text)
+            logger.debug("AudiobookDirector loaded successfully")
+        except ImportError:
+            logger.debug("AudiobookDirector not available (agents module not found)")
+            _LLAMA_DIRECTOR = False
+        except Exception as e:
+            logger.debug(f"AudiobookDirector init failed: {e}")
+            _LLAMA_DIRECTOR = False
+    return _LLAMA_DIRECTOR if _LLAMA_DIRECTOR else None
+
+
+def run_phase_0_director(file_id: str, file_path: Path, pipeline_json: Path) -> bool:
+    """
+    Runs the AudiobookDirector agent to create the Production Bible for a book.
+    """
+    book_dir = get_book_dir(file_id)
+    bible_path = book_dir / "production_bible.json"
+
+    if bible_path.exists():
+        logger.info(f"Production Bible already exists at {bible_path}. Skipping generation.")
+        return True
+
+    try:
+        with file_path.open("r", encoding="utf-8") as f:
+            book_text = f.read()
+    except Exception as e:
+        logger.error(f"Phase 0 Error: Could not read book text from {file_path}. {e}")
+        return False
+
+    director = _get_audiobook_director(book_text)
+    if not director:
+        logger.error("Phase 0 Error: Could not load the AudiobookDirector agent.")
+        return False
+    
+    try:
+        production_bible = director.create_production_bible()
+        if not production_bible:
+            logger.error("Phase 0 Error: AudiobookDirector failed to create a production bible.")
+            return False
+
+        book_dir.mkdir(parents=True, exist_ok=True)
+        with bible_path.open("w", encoding="utf-8") as f:
+            json.dump(production_bible, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Production Bible successfully created at {bible_path}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Phase 0 Error: An exception occurred during production bible creation: {e}", exc_info=True)
+        return False
 
 
 def _write_json_safely(path: Path, payload: Dict[str, Any]) -> None:
@@ -903,7 +966,7 @@ class PhaseTimeouts(BaseModel):
     phase1: int = 18000  # 5 hours for validation
     phase2: int = 18000  # 5 hours for extraction
     phase3: int = 600    # 10 minutes for chunking
-    phase4: int = 18000  # 5 hours for TTS (large books)
+    phase4: int = 28800  # 8 hours for TTS (large books)
     phase5: int = 1800   # 30 minutes for enhancement
     phase5_5: int = 3600  # 60 minutes for subtitles
     poetry_install: int = 300  # 5 minutes for dependency install
@@ -2385,12 +2448,17 @@ def run_phase4_multi_engine(
                 except Exception:
                     chunk_audio_paths = []
 
-            # Decide expected total from any available hints
-            expected_chunks = (
-                entry.get("total_chunks")
-                or entry.get("chunks_processed")
-                or entry.get("metrics", {}).get("total_chunks", 0)
-            ) or 0
+            # Get expected chunks from Phase 3, the source of truth
+            _, p3_entry = _find_phase_file_entry(data, "phase3", file_id)
+            if p3_entry and p3_entry.get("chunk_paths"):
+                expected_chunks = len(p3_entry.get("chunk_paths"))
+            else:
+                # Fallback to phase 4 entry if phase 3 is missing
+                expected_chunks = (
+                    entry.get("total_chunks")
+                    or entry.get("chunks_processed")
+                    or entry.get("metrics", {}).get("total_chunks", 0)
+                ) or 0
 
             # If we have chunk_audio_paths, verify they all exist (resolve relative paths)
             if chunk_audio_paths:
@@ -2418,7 +2486,7 @@ def run_phase4_multi_engine(
                 if existing_chunks:
                     # Only mark chunks as failed if they don't exist on disk
                     if expected_chunks > 0:
-                        expected_ids = {f"chunk_{i:04d}" for i in range(1, int(expected_chunks) + 1)}
+                        expected_ids = {f"chunk_{i:04d}" for i in range(int(expected_chunks))}
                         missing = list(expected_ids - existing_chunks)
                         if missing:
                             logger.info("Found %d existing audio files, %d missing", len(existing_chunks), len(missing))
@@ -2428,11 +2496,10 @@ def run_phase4_multi_engine(
                         logger.info("Found %d audio files on disk (no expected count)", len(existing_chunks))
                         return []
 
-            # If chunk_audio_paths is empty and no files on disk, consider all expected chunks as failed
-            if expected_chunks > 0:
-                return [f"chunk_{i:04d}" for i in range(1, int(expected_chunks) + 1)]
-
-            return []
+                # If chunk_audio_paths is empty and no files on disk, consider all expected chunks as failed
+                if expected_chunks > 0:
+                    return [f"chunk_{i:04d}" for i in range(int(expected_chunks))]
+            
         except Exception as exc:
             logger.warning(
                 "Unable to inspect pipeline.json for failed chunks (file_id=%s): %s",
@@ -3929,6 +3996,11 @@ def summarize_results(pipeline_json: Path):
     console.print(table)
 
 
+def _run_lexicon_updater() -> None:
+    """Placeholder for lexicon update logic."""
+    logger.info("Lexicon updater hook called (no-op).")
+
+
 def run_pipeline(
     file_path: Path,
     voice_id: Optional[str] = None,
@@ -3945,6 +4017,7 @@ def run_pipeline(
     policy_engine: Optional[PolicyEngine] = None,
     enable_llama_chunker: bool = True,
     enable_llama_rewriter: bool = True,
+    cancel_event: Optional[Any] = None,
 ) -> Dict:
     """
     Programmatic interface to run the audiobook pipeline.
@@ -4197,253 +4270,339 @@ def run_pipeline(
     elif voice_id:
         logger.info(f"Using manual voice selection: {voice_id}")
 
+        # Auto-detect engine from voice configuration
+        try:
+            voices_config_path = PROJECT_ROOT / "configs" / "voices.json"
+            if voices_config_path.exists():
+                import json
+                with open(voices_config_path, 'r', encoding='utf-8') as f:
+                    voices_data = json.load(f)
+                voice_config = voices_data.get("voices", {}).get(voice_id, {})
+                voice_engine = voice_config.get("engine")
+                if voice_engine and voice_engine != tts_engine:
+                    logger.info(f"Auto-detected engine '{voice_engine}' for voice '{voice_id}' (overriding default '{tts_engine}')")
+                    tts_engine = voice_engine
+        except Exception as e:
+            logger.warning(f"Could not auto-detect engine for voice '{voice_id}': {e}")
+
+    # Predictive Failure Analysis
+    try:
+        from agents.predictive_failure_agent import PredictiveFailureAgent
+        predictive_agent = PredictiveFailureAgent(str(pipeline_json), file_id)
+        analysis_results = predictive_agent.analyze()
+        if analysis_results["warnings"]:
+            print_panel(
+                "[bold yellow]Predictive Failure Analysis Warnings:[/bold yellow]\n" + "\n".join(f"- {w}" for w in analysis_results["warnings"]),
+                "PRE-FLIGHT CHECK",
+                "yellow"
+            )
+        if analysis_results["recommendations"]:
+             print_panel(
+                "[bold cyan]Predictive Failure Analysis Recommendations:[/bold cyan]\n" + "\n".join(f"- {r}" for r in analysis_results["recommendations"]),
+                "PRE-FLIGHT CHECK",
+                "cyan"
+            )
+    except ImportError:
+        logger.info("PredictiveFailureAgent not found, skipping analysis.")
+    except Exception as e:
+        logger.warning(f"Predictive failure analysis failed: {e}")
+
     # Run phases
     policy_phase_timers: Dict[str, float] = {}
     completed_phases = []
 
-    for phase_num in phases:
-        # Call progress callback if provided
-        if progress_callback:
-            progress_callback(phase_num, 0.0, f"Starting Phase {phase_num}...")
+    try:
+        # Add Phase 0 (Audiobook Director) if auto_mode is enabled
+        if auto_mode and 0 not in phases:
+            phases.insert(0, 0)
 
-        # Check resume status (phase-first view)
-        resume_status: Optional[str] = None
-        if resume_enabled:
-            resume_status = check_phase_status(state, phase_num, file_id)
-            if resume_status == "success":
-                logger.info(f"Skipping Phase {phase_num} (already completed)")
-                completed_phases.append(phase_num)
-                if progress_callback:
-                    progress_callback(phase_num, 100.0, "Already completed")
-                continue
-            elif resume_status in {"failed", "partial"}:
-                logger.info(f"Retrying Phase {phase_num} (previous status: {resume_status})")
+        # If Phase 0 is included, run it first to generate the Production Bible
+        if 0 in phases:
+            print_status("Running Phase 0: Audiobook Director...", style="bold cyan")
+            progress_callback(0, 0.1, "Analyzing book for Production Bible")
+            if not run_phase_0_director(file_id, file_path, pipeline_json):
+                logger.error("Phase 0 (Audiobook Director) failed. Cannot proceed in auto_mode.")
+                # In auto_mode, the bible is critical, so we stop.
+                if auto_mode:
+                    return {
+                        "success": False,
+                        "error": "Failed to generate Production Bible in auto_mode.",
+                        "audiobook_path": None,
+                    }
+            progress_callback(0, 1.0, "Production Bible check complete")
 
-        # Run phase with retries
-        logger.info(f"Running Phase {phase_num}...")
-        phase_label = f"phase{phase_num}"
-        policy_phase_timers[phase_label] = time.perf_counter()
-        start_ctx = _build_policy_context(
-            phase_label,
-            file_id,
-            pipeline_json,
-            status="starting",
-            event="phase_start",
-            state=state,
-            extra={"resume_status": resume_status},
-        )
-        _policy_call(policy_engine, "record_phase_start", start_ctx)
+        # Filter out phase 0 so we don't try to run it in the main loop
+        phases_to_run = sorted([p for p in phases if p != 0])
 
-        phase_retry_config = phase_retry_overrides.get(phase_label, {})
-        retry_budget = phase_retry_config.get("suggested_retries", max_retries)
-        try:
-            retry_budget = int(retry_budget)
-        except (TypeError, ValueError):
-            retry_budget = max_retries
-        if retry_budget != max_retries:
-            logger.info(
-                "Policy override: %s retry budget -> %s",
+        for phase_num in phases_to_run:
+            if cancel_event and cancel_event.is_set():
+                logger.warning("Pipeline cancelled by user request.")
+                break
+            # Call progress callback if provided
+            if progress_callback:
+                progress_callback(phase_num, 0.0, f"Starting Phase {phase_num}...")
+
+            # Check resume status (phase-first view)
+            resume_status: Optional[str] = None
+            if resume_enabled:
+                resume_status = check_phase_status(state, phase_num, file_id)
+                if resume_status == "success":
+                    logger.info(f"Skipping Phase {phase_num} (already completed)")
+                    completed_phases.append(phase_num)
+                    if progress_callback:
+                        progress_callback(phase_num, 100.0, "Already completed")
+                    continue
+                elif resume_status in {"failed", "partial"}:
+                    logger.info(f"Retrying Phase {phase_num} (previous status: {resume_status})")
+
+            # Run phase with retries
+            logger.info(f"Running Phase {phase_num}...")
+            phase_label = f"phase{phase_num}"
+            policy_phase_timers[phase_label] = time.perf_counter()
+            start_ctx = _build_policy_context(
                 phase_label,
-                retry_budget,
-            )
-
-        success = run_phase_with_retry(
-            phase_num,
-            file_path,
-            file_id,
-            pipeline_json,
-            state=state,
-            max_retries=retry_budget,
-            voice_id=voice_id,
-            pipeline_mode=pipeline_mode,
-            tts_engine=tts_engine,
-            policy_engine=policy_engine,
-            runtime_overrides=runtime_overrides,
-            resume_enabled=resume_enabled,
-        )
-
-        if not success:
-            failure_duration = _pop_phase_duration(policy_phase_timers, phase_label)
-            failure_ctx = _build_policy_context(
-                phase_label,
-                file_id,
-                pipeline_json,
-                status="failed",
-                event="phase_failure",
-                state=state,
-                duration_ms=failure_duration,
-                include_snapshot=True,
-                errors=[f"Phase {phase_num} failed"],
-            )
-            _policy_call(policy_engine, "record_failure", failure_ctx)
-            _log_policy_advice(policy_engine, failure_ctx, phase_label, file_id)
-            if policy_engine:
-                policy_engine.complete_run(
-                    success=False,
-                    metadata={"file_id": file_id, "failed_phase": phase_label},
-                )
-            return {
-                "success": False,
-                "error": f"Pipeline failed at Phase {phase_num}",
-                "audiobook_path": None,
-                "metadata": {},
-            }
-
-        logger.info(f"Phase {phase_num} completed successfully")
-
-        if progress_callback:
-            progress_callback(phase_num, 100.0, "Complete")
-
-        duration_ms = _pop_phase_duration(policy_phase_timers, phase_label)
-        end_ctx = _build_policy_context(
-            phase_label,
-            file_id,
-            pipeline_json,
-            status="success",
-            event="phase_end",
-            state=state,
-            duration_ms=duration_ms,
-            include_snapshot=True,
-        )
-        _policy_call(policy_engine, "record_phase_end", end_ctx)
-        _log_policy_advice(policy_engine, end_ctx, phase_label, file_id)
-
-        # Archive after Phase 5
-        if phase_num == 5:
-            archive_final_audiobook(file_id, pipeline_json)
-
-        completed_phases.append(phase_num)
-
-    # Phase 5.5: Subtitles (optional)
-    if 5 in completed_phases and enable_subtitles:
-        logger.info("Running Phase 5.5 (Subtitles)...")
-        phase5_dir = find_phase_dir(5)
-        if phase5_dir:
-            subtitle_phase_label = "phase5.5"
-            policy_phase_timers[subtitle_phase_label] = time.perf_counter()
-            subtitle_start_ctx = _build_policy_context(
-                subtitle_phase_label,
                 file_id,
                 pipeline_json,
                 status="starting",
                 event="phase_start",
                 state=state,
+                extra={"resume_status": resume_status},
             )
-            _policy_call(policy_engine, "record_phase_start", subtitle_start_ctx)
+            _policy_call(policy_engine, "record_phase_start", start_ctx)
 
-            success = run_phase5_5_subtitles(phase5_dir, file_id, pipeline_json, enable_subtitles=True)
-
-            duration_ms = _pop_phase_duration(policy_phase_timers, subtitle_phase_label)
-            if success:
-                end_ctx = _build_policy_context(
-                    subtitle_phase_label,
-                    file_id,
-                    pipeline_json,
-                    status="success",
-                    event="phase_end",
-                    state=state,
-                    duration_ms=duration_ms,
-                    include_snapshot=True,
+            phase_retry_config = phase_retry_overrides.get(phase_label, {})
+            retry_budget = phase_retry_config.get("suggested_retries", max_retries)
+            try:
+                retry_budget = int(retry_budget)
+            except (TypeError, ValueError):
+                retry_budget = max_retries
+            if retry_budget != max_retries:
+                logger.info(
+                    "Policy override: %s retry budget -> %s",
+                    phase_label,
+                    retry_budget,
                 )
-                _policy_call(policy_engine, "record_phase_end", end_ctx)
-                _log_policy_advice(policy_engine, end_ctx, subtitle_phase_label, file_id)
-            else:
+
+            success = run_phase_with_retry(
+                phase_num,
+                file_path,
+                file_id,
+                pipeline_json,
+                state=state,
+                max_retries=retry_budget,
+                voice_id=voice_id,
+                pipeline_mode=pipeline_mode,
+                tts_engine=tts_engine,
+                policy_engine=policy_engine,
+                runtime_overrides=runtime_overrides,
+                resume_enabled=resume_enabled,
+            )
+
+            if not success:
+                failure_duration = _pop_phase_duration(policy_phase_timers, phase_label)
                 failure_ctx = _build_policy_context(
-                    subtitle_phase_label,
+                    phase_label,
                     file_id,
                     pipeline_json,
                     status="failed",
                     event="phase_failure",
                     state=state,
-                    duration_ms=duration_ms,
+                    duration_ms=failure_duration,
                     include_snapshot=True,
-                    errors=["Phase 5.5 (Subtitles) failed"],
+                    errors=[f"Phase {phase_num} failed"],
                 )
                 _policy_call(policy_engine, "record_failure", failure_ctx)
-                _log_policy_advice(policy_engine, failure_ctx, subtitle_phase_label, file_id)
-                logger.warning("Phase 5.5 (Subtitles) failed - continuing anyway")
-
-    # Find final audiobook path
-    audiobook_path = None
-    phase5_dir = find_phase_dir(5)
-    if phase5_dir:
-        audiobook_path = resolve_phase5_audiobook_path(file_id, pipeline_json, phase5_dir)
-
-    # Build per-file metadata view from canonical state
-    file_phase_view = build_file_phase_view(state, file_id)
-
-    # Phase M: profile logging (opt-in, additive-only, reporting)
-    try:
-        auto_cfg = orchestrator_config.autonomy
-    except Exception:
-        auto_cfg = None
-
-    enable_profile_learning = bool(getattr(auto_cfg, "enable_profile_learning", False)) if auto_cfg else False
-    enable_genre_learning = bool(getattr(auto_cfg, "enable_genre_learning", False)) if auto_cfg else False
-    enable_profile_fusion = bool(getattr(auto_cfg, "enable_profile_fusion", False)) if auto_cfg else False
-
-    if enable_profile_learning or enable_genre_learning or enable_profile_fusion:
-        try:
-            from autonomy import memory_store
-            from autonomy import profiles as profile_utils
-            from autonomy import profile_manager
-            from autonomy import reinforcement
-        except Exception:
-            memory_store = None
-            profile_utils = None
-            profile_manager = None
-            reinforcement = None
-
-        if memory_store and profile_utils:
-            run_history = memory_store.load_run_history(limit=100) if hasattr(memory_store, "load_run_history") else []
-            metadata_history = (
-                memory_store.load_metadata_history(limit=50) if hasattr(memory_store, "load_metadata_history") else []
-            )
-            memory_summary = memory_store.summarize_history(max_events=200) if hasattr(memory_store, "summarize_history") else None
-            reward_history = (
-                reinforcement.load_reward_history(limit=20) if reinforcement and hasattr(reinforcement, "load_reward_history") else []
-            )
-            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-
-            stable_profiles: Dict[str, Any] = {}
-            genre_profile: Dict[str, Any] = {}
-
-            if enable_profile_learning:
-                stable_profiles = {
-                    "engine": profile_utils.compute_engine_stability_profile(run_history),
-                    "chunking": profile_utils.compute_chunking_stability_profile(run_history),
+                _log_policy_advice(policy_engine, failure_ctx, phase_label, file_id)
+                if policy_engine:
+                    policy_engine.complete_run(
+                        success=False,
+                        metadata={"file_id": file_id, "failed_phase": phase_label},
+                    )
+                return {
+                    "success": False,
+                    "error": f"Pipeline failed at Phase {phase_num}",
+                    "audiobook_path": None,
+                    "metadata": {},
                 }
-                _write_json_safely(Path(".pipeline") / "profiles" / f"stable_profiles_{ts}.json", stable_profiles)
 
-            if enable_genre_learning:
-                genre_profile = profile_utils.compute_genre_profile(run_history, metadata_history)
-                _write_json_safely(Path(".pipeline") / "profiles" / f"genre_profile_{ts}.json", genre_profile)
+            logger.info(f"Phase {phase_num} completed successfully")
 
-            if enable_profile_fusion and profile_manager:
-                fused_profile = profile_manager.fuse_profiles(
-                    stable_profiles,
-                    genre_profile,
-                    memory_summary,
-                    reward_history,
+            if progress_callback:
+                progress_callback(phase_num, 100.0, "Complete")
+
+            duration_ms = _pop_phase_duration(policy_phase_timers, phase_label)
+            end_ctx = _build_policy_context(
+                phase_label,
+                file_id,
+                pipeline_json,
+                status="success",
+                event="phase_end",
+                state=state,
+                duration_ms=duration_ms,
+                include_snapshot=True,
+            )
+            _policy_call(policy_engine, "record_phase_end", end_ctx)
+            _log_policy_advice(policy_engine, end_ctx, phase_label, file_id)
+
+            # Archive after Phase 5
+            if phase_num == 5:
+                archive_final_audiobook(file_id, pipeline_json)
+
+            completed_phases.append(phase_num)
+
+        # Phase 5.5: Subtitles (optional)
+        if 5 in completed_phases and enable_subtitles:
+            logger.info("Running Phase 5.5 (Subtitles)...")
+            phase5_dir = find_phase_dir(5)
+            if phase5_dir:
+                subtitle_phase_label = "phase5.5"
+                policy_phase_timers[subtitle_phase_label] = time.perf_counter()
+                subtitle_start_ctx = _build_policy_context(
+                    subtitle_phase_label,
+                    file_id,
+                    pipeline_json,
+                    status="starting",
+                    event="phase_start",
+                    state=state,
                 )
-                _write_json_safely(Path(".pipeline") / "profile_history" / f"fused_profile_{ts}.json", fused_profile)
+                _policy_call(policy_engine, "record_phase_start", subtitle_start_ctx)
 
-    # Optional export/reset safeguards (manual intent only)
-    profiles_cfg = getattr(auto_cfg, "profiles", None) if auto_cfg else None
-    if profiles_cfg:
-        export_on_shutdown = bool(getattr(profiles_cfg, "export_on_shutdown", False))
-        allow_reset = bool(getattr(profiles_cfg, "allow_reset_via_flag", False))
-        reset_now = bool(getattr(profiles_cfg, "reset_now", False))
+                success = run_phase5_5_subtitles(phase5_dir, file_id, pipeline_json, enable_subtitles=True)
 
-        if export_on_shutdown:
-            export_profiles(str(Path(".pipeline") / "profiles" / "exports"))
+                duration_ms = _pop_phase_duration(policy_phase_timers, subtitle_phase_label)
+                if success:
+                    end_ctx = _build_policy_context(
+                        subtitle_phase_label,
+                        file_id,
+                        pipeline_json,
+                        status="success",
+                        event="phase_end",
+                        state=state,
+                        duration_ms=duration_ms,
+                        include_snapshot=True,
+                    )
+                    _policy_call(policy_engine, "record_phase_end", end_ctx)
+                    _log_policy_advice(policy_engine, end_ctx, subtitle_phase_label, file_id)
+                else:
+                    failure_ctx = _build_policy_context(
+                        subtitle_phase_label,
+                        file_id,
+                        pipeline_json,
+                        status="failed",
+                        event="phase_failure",
+                        state=state,
+                        duration_ms=duration_ms,
+                        include_snapshot=True,
+                        errors=["Phase 5.5 (Subtitles) failed"],
+                    )
+                    _policy_call(policy_engine, "record_failure", failure_ctx)
+                    _log_policy_advice(policy_engine, failure_ctx, subtitle_phase_label, file_id)
+                    logger.warning("Phase 5.5 (Subtitles) failed - continuing anyway")
 
-        if allow_reset and reset_now:
-            reset_profiles()
+        # Find final audiobook path
+        audiobook_path = None
+        phase5_dir = find_phase_dir(5)
+        if phase5_dir:
+            audiobook_path = resolve_phase5_audiobook_path(file_id, pipeline_json, phase5_dir)
+
+        # Build per-file metadata view from canonical state
+        file_phase_view = build_file_phase_view(state, file_id)
+
+        # Phase M: profile logging (opt-in, additive-only, reporting)
+        try:
+            auto_cfg = orchestrator_config.autonomy
+        except Exception:
+            auto_cfg = None
+
+        enable_profile_learning = bool(getattr(auto_cfg, "enable_profile_learning", False)) if auto_cfg else False
+        enable_genre_learning = bool(getattr(auto_cfg, "enable_genre_learning", False)) if auto_cfg else False
+        enable_profile_fusion = bool(getattr(auto_cfg, "enable_profile_fusion", False)) if auto_cfg else False
+
+        if enable_profile_learning or enable_genre_learning or enable_profile_fusion:
             try:
-                profiles_cfg.reset_now = False
+                from autonomy import memory_store
+                from autonomy import profiles as profile_utils
+                from autonomy import profile_manager
+                from autonomy import reinforcement
             except Exception:
-                pass
+                memory_store = None
+                profile_utils = None
+                profile_manager = None
+                reinforcement = None
+
+            if memory_store and profile_utils:
+                run_history = memory_store.load_run_history(limit=100) if hasattr(memory_store, "load_run_history") else []
+                metadata_history = (
+                    memory_store.load_metadata_history(limit=50) if hasattr(memory_store, "load_metadata_history") else []
+                )
+                memory_summary = memory_store.summarize_history(max_events=200) if hasattr(memory_store, "summarize_history") else None
+                reward_history = (
+                    reinforcement.load_reward_history(limit=20) if reinforcement and hasattr(reinforcement, "load_reward_history") else []
+                )
+                ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+                stable_profiles: Dict[str, Any] = {}
+                genre_profile: Dict[str, Any] = {}
+
+                if enable_profile_learning:
+                    stable_profiles = {
+                        "engine": profile_utils.compute_engine_stability_profile(run_history),
+                        "chunking": profile_utils.compute_chunking_stability_profile(run_history),
+                    }
+                    _write_json_safely(Path(".pipeline") / "profiles" / f"stable_profiles_{ts}.json", stable_profiles)
+
+                if enable_genre_learning:
+                    genre_profile = profile_utils.compute_genre_profile(run_history, metadata_history)
+                    _write_json_safely(Path(".pipeline") / "profiles" / f"genre_profile_{ts}.json", genre_profile)
+
+                if enable_profile_fusion and profile_manager:
+                    fused_profile = profile_manager.fuse_profiles(
+                        stable_profiles,
+                        genre_profile,
+                        memory_summary,
+                        reward_history,
+                    )
+                    _write_json_safely(Path(".pipeline") / "profile_history" / f"fused_profile_{ts}.json", fused_profile)
+
+        # Optional export/reset safeguards (manual intent only)
+        profiles_cfg = getattr(auto_cfg, "profiles", None) if auto_cfg else None
+        if profiles_cfg:
+            export_on_shutdown = bool(getattr(profiles_cfg, "export_on_shutdown", False))
+            allow_reset = bool(getattr(profiles_cfg, "allow_reset_via_flag", False))
+            reset_now = bool(getattr(profiles_cfg, "reset_now", False))
+
+            if export_on_shutdown:
+                export_profiles(str(Path(".pipeline") / "profiles" / "exports"))
+
+            if allow_reset and reset_now:
+                reset_profiles()
+                try:
+                    profiles_cfg.reset_now = False
+                except Exception:
+                    pass
+
+    finally:
+        # This block will run whether the pipeline succeeded, failed, or was cancelled.
+        logger.info("Running post-pipeline cleanup and finalization...")
+        _run_lexicon_updater()
+        
+        # Health Check
+        try:
+            from tools.health_check import HealthCheck
+            health_checker = HealthCheck(str(pipeline_json), file_id)
+            health_report = health_checker.run()
+            if health_report["status"] == "unhealthy":
+                print_panel(
+                    "[bold red]Health Check Report:[/bold red]\n" + "\n".join(f"- {i}" for i in health_report["issues"]),
+                    "POST-RUN HEALTH CHECK",
+                    "red"
+                )
+            else:
+                print_panel("[bold green]Health Check OK[/bold green]", "POST-RUN HEALTH CHECK", "green")
+        except ImportError:
+            logger.warning("HealthCheck tool not found, skipping post-run health check.")
+        except Exception as e:
+            logger.error(f"Error running health check: {e}")
 
     return {
         "success": True,
@@ -4532,6 +4691,11 @@ Examples:
         action="store_true",
         help="Reuse existing enhanced WAVs and only concatenate/encode MP3 in Phase 5",
     )
+    parser.add_argument(
+        "--use-director",
+        action="store_true",
+        help="Enable Phase 0: Run the Audiobook Director to create a Production Bible before starting the pipeline.",
+    )
 
     args = parser.parse_args()
 
@@ -4568,6 +4732,17 @@ Examples:
 
     # Resolve pipeline.json path
     pipeline_json = (args.pipeline_json or orchestrator_config.pipeline_path).resolve()
+    
+    # --- Audiobook Director (Phase 0) ---
+    if args.use_director:
+        print_status("\n[bold magenta]> Running Phase 0 (Audiobook Director)...[/bold magenta]")
+        director_success = run_phase_0_director(file_id, file_path, pipeline_json)
+        if not director_success:
+            print_panel("Audiobook Director (Phase 0) failed. Aborting.", "PIPELINE FAILED", "bold red")
+            return 1
+        print_status("[green]OK Phase 0 completed successfully[/green]")
+    # ------------------------------------
+
     state = PipelineState(pipeline_json, validate_on_read=False)
     policy_config = orchestrator_config.policy_engine or {}
     policy_engine = PolicyEngine(

@@ -1,0 +1,137 @@
+# Phase 6 Orchestrator Configuration (Sane Defaults)
+# This configuration provides a stable, predictable pipeline without experimental features.
+
+pipeline_json: "../pipeline.json"
+phases_to_run: [1, 2, 3, 4, 5]
+resume_enabled: true
+log_level: "INFO"
+log_file: "orchestrator.log"
+
+# Per-phase timeouts (in seconds)
+phase_timeouts:
+  phase1: 18000       # 5 hours - validation
+  phase2: 18000       # 5 hours - extraction
+  phase3: 3600        # 1 hour - chunking
+  phase4: 259200      # 3 days - TTS synthesis
+  phase5: 7200        # 2 hours - enhancement
+  phase5_5: 14400     # 4 hours - subtitles
+  poetry_install: 300 # 5 minutes - dependency install
+
+# Runtime switches
+pipeline_mode: "personal"
+
+# Engine Selection Strategy
+# We recommend starting with a single, stable engine.
+# Kokoro is fast and good for narration. XTTS is good for voice cloning.
+tts_engine: "kokoro"
+tts_engines:
+  primary: "kokoro"
+  secondary: "xtts"
+per_chunk_fallback: true  # Allow falling back to the secondary engine for failed chunks
+phase4_reuse_enabled: true
+max_tts_workers: 1
+strict_chunk_integrity: true
+
+# Subtitle generation
+subtitles:
+  enable_backup_align: true
+  max_drift_sec: 2.0
+  min_coverage_ratio: 0.95
+
+# --- Disabled Autonomous and Experimental Features ---
+
+# All autonomy features are disabled for stability.
+# You can selectively enable these later.
+autonomy:
+  enable: false
+  supervised_mode: true
+  enable_self_repair: false
+  use_reasoner: false
+  planner_mode: "disabled"
+  memory_enabled: false
+  mode: "disabled"
+  enable_policy_engine: false
+  enable_engine_retry: false
+  enable_experiments: false
+  enable_memory_feedback: false
+  enable_stability_profiles: false
+  enable_confidence_calibration: false
+  enable_self_evaluation: false
+  enable_planner_feedback: false
+  enable_self_review: false
+  enable_rewards: false
+  enable_budget: false
+  enable_stability_bounds: false
+  enable_safety_envelope: false
+  enable_safety_escalation: false
+
+# Self-repair is disabled.
+self_repair:
+  enable: false
+  enable_text_rewrite: false
+  enable_repair_loop: false
+  enable_log_parser: false
+  enable_engine_retry: false
+
+# LLM (Ollama) is disabled for now.
+# You can enable this to use features like the Audiobook Director.
+llm:
+  enable: false
+  model: "llama3.1:8b-instruct-q4_K_M"
+  auto_start_server: true
+  auto_pull_model: true
+
+# All other experimental phases and features are disabled.
+reasoning:
+  enable: false
+experiments:
+  enable: false
+genre:
+  enable_classifier: false
+rewriter:
+  enable_policies: false
+adaptive_chunking:
+  enable: false
+patches:
+  enable_simulation: false
+dashboard:
+  enable_data_api: false
+introspection:
+  enable: false
+policy_engine:
+  logging: false
+  learning_mode: "observe"
+metadata:
+  enable: false
+capabilities:
+  enable_safe_modes: false
+
+# All research and experimental phases are disabled by default.
+research: { enable: false }
+phaseA: { enable: false }
+phaseB: { enable: false }
+phaseC: { enable: false }
+phaseAA: { enable: false }
+phaseR: { enable: false }
+phaseS: { enable: false }
+phaseT: { enable: false }
+phaseU: { enable: false }
+phaseV: { enable: false }
+phaseW: { enable: false }
+phaseX: { enable: false }
+phaseY: { enable: false }
+phaseZ: { enable: false }
+phaseAC: { enable: false }
+phaseAD: { enable: false }
+phaseQ_self_eval: { enable: false }
+phaseQ_self_evaluation: { enable: false }
+phaseJ: { enable: false }
+phaseK: { enable: false }
+phaseL: { enable:false }
+phaseM: { enable: false }
+phaseN: { enable: false }
+phaseO: { enable: false }
+phaseAB: { enable: false }
+ui:
+  show_autonomy_features: false
+  allow_toggle: false

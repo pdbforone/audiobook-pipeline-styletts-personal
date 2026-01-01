@@ -1103,21 +1103,20 @@ def _chunk_by_char_count_optimized(
                         current_chunk = []
                         current_char_count = 0
                     else:
-                        # Could not complete - merge backwards
-                        logger.warning(
-                            "⚠️  Cannot complete chunk, merging backwards"
-                        )
-                        chunks = merge_backwards(
-                            chunks,
-                            completed_text,
-                            emergency_limit,
-                            emergency_duration,
-                        )
-                        # Start fresh chunk with the sentence that couldn't fit
-                        current_chunk = [sent]
-                        current_char_count = sent_len
-                        i += 1
-                else:
+                                            # Could not complete - merge backwards
+                                            logger.warning(
+                                                "⚠️  Cannot complete chunk, merging backwards"
+                                            )
+                                            chunks = merge_backwards(
+                                                chunks,
+                                                completed_text,
+                                                emergency_limit,
+                                                emergency_duration,
+                                            )
+                                            # After merging, the current chunk should be empty, and we should continue with the next sentence.
+                                            current_chunk = []
+                                            current_char_count = 0
+                                            # i is already at the correct position to process the next sentence                else:
                     # Complete chunk - flush it
                     chunks.append(chunk_text)
                     logger.debug(

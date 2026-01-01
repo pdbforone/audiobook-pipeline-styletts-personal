@@ -18,6 +18,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from .llama_base import LlamaAgent
+from .llama_pronunciation_assistant import LlamaPronunciationAssistant
 
 logger = logging.getLogger(__name__)
 
@@ -582,6 +583,7 @@ class LlamaPreValidator(LlamaAgent):
         expand_abbreviations: bool = True,
         expand_numbers: bool = True,
         normalize_punctuation: bool = True,
+        check_pronunciation: bool = True,
     ) -> str:
         """
         Apply all TTS preprocessing in recommended order.
@@ -594,11 +596,16 @@ class LlamaPreValidator(LlamaAgent):
             expand_abbreviations: Whether to expand abbreviations
             expand_numbers: Whether to convert numbers to words
             normalize_punctuation: Whether to normalize punctuation
+            check_pronunciation: Whether to check for and generate pronunciations
 
         Returns:
             TTS-ready text
         """
         result = text
+
+        if check_pronunciation:
+            pronunciation_assistant = LlamaPronunciationAssistant()
+            pronunciation_assistant.process_text(result)
 
         if expand_abbreviations:
             result = self.auto_expand_abbreviations(result)

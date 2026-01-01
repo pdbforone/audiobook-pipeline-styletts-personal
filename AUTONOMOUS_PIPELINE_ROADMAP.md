@@ -5,6 +5,58 @@
 
 ---
 
+## Latest Updates (2025-12-27)
+
+### ✅ Director's Cut Integration and Predictive Failure Avoidance
+
+**Feature:** Expanded the "Director's Cut" feature and introduced a new "Predictive Failure Avoidance" agent to make the pipeline more intelligent and resilient.
+
+#### 1. Director's Cut Deep Integration
+
+The `production_bible.json` now guides creative decisions across the entire pipeline:
+
+| Phase | Integration Point | Purpose |
+|-------|-------------------|---------|
+| **Phase 4 (TTS)** | `main_multi_engine.py` | Uses the `casting_guide` to select voices for characters, ensuring a consistent cast. |
+| **Phase 5 (Enhancement)** | `main.py` | Uses the `mastering_guide` to adjust audio mastering parameters (e.g., noise reduction, crossfade) based on the director's intent. |
+
+**Files Modified:**
+- `phase4_tts/src/main_multi_engine.py` - Now loads and passes the production bible to the voice selection logic.
+- `phase5_enhancement/src/phase5_enhancement/main.py` - Now loads the production bible and adjusts the `EnhancementConfig` based on the mastering guide.
+
+#### 2. Predictive Failure Avoidance Agent
+
+A new agent, `PredictiveFailureAgent`, has been introduced to proactively identify potential issues before a pipeline run begins.
+
+| Agent | Location | Purpose | Integration Point |
+|-------|----------|---------|-------------------|
+| **PredictiveFailureAgent** | `agents/predictive_failure_agent.py` | Pre-flight check for common failure modes. | `phase6_orchestrator/orchestrator.py` |
+
+**Agent Capabilities:**
+- Analyzes `pipeline.json` and `production_bible.json`.
+- Detects potential issues such as excessively long text chunks that could cause TTS failures.
+- Verifies that all characters in the script have been assigned a voice in the `casting_guide`.
+- Provides warnings and recommendations to the user before the pipeline starts.
+
+**Files Modified:**
+- `agents/predictive_failure_agent.py` (new)
+- `phase6_orchestrator/orchestrator.py` - Integrated the agent to run at the start of the pipeline.
+
+#### 3. Self-Improving Pronunciation System (Complete)
+
+The feedback loop for pronunciation is now fully implemented.
+
+| Component | Location | Contribution |
+|-----------|----------|--------------|
+| **ASR Validator** | `phase4_tts/src/asr_validator.py` | Identifies and logs mispronounced words. |
+| **Lexicon Updater** | `tools/update_lexicon.py` | Uses an LLM to generate "say-as" pronunciations for logged words. |
+| **Orchestrator Hook** | `phase6_orchestrator/orchestrator.py` | Automatically runs the lexicon updater at the end of each pipeline run. |
+| **TTS Sanitizer** | `phase4_tts/src/utils.py` | Loads and applies the central `custom_pronunciations.json` lexicon before synthesis. |
+
+**Result:** The pipeline can now learn from its mistakes, continuously improving its pronunciation accuracy over time without manual intervention.
+
+---
+
 ## Latest Updates (2025-12-25)
 
 ### ✅ Post-Coqui Era XTTS Hardening

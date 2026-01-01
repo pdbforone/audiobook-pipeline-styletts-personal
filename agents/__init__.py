@@ -27,6 +27,9 @@ from .llama_diagnostics import LlamaDiagnostics
 from .llama_voice_matcher import LlamaVoiceMatcher
 from .llama_chunk_reviewer import LlamaChunkReviewer
 from .llama_semantic_repetition import LlamaSemanticRepetition
+from .llama_pronunciation_assistant import LlamaPronunciationAssistant
+from .llama_pacing_agent import LlamaPacingAgent
+from .audiobook_director import AudiobookDirector
 
 __all__ = [
     "LlamaAgent",
@@ -41,5 +44,8 @@ __all__ = [
     "LlamaVoiceMatcher",
     "LlamaChunkReviewer",
     "LlamaSemanticRepetition",
+    "LlamaPronunciationAssistant",
+    "LlamaPacingAgent",
     "get_agent",
+    "AudiobookDirector",
 ]

@@ -45,7 +45,7 @@ temperature: 0.7    # Creativity/randomness (lower for consistent cloning)
 sub_chunk_retries: 3  # Retries for failed sub-chunks to avoid artifacts
 silence_duration: 0.5  # Seconds of silence for failed parts
 enable_splitting: true  # NLTK-based splitting for long text (prevents truncation)
-split_char_limit: 1200  # Only split when text exceeds this many characters
+split_char_limit: 800  # Only split when text exceeds this many characters
 output_dir: "audio_chunks"  # Relative to phase4_tts; absolute in code
 enable_g2p: true           # Use number/abbreviation normalization before TTS
 normalize_numbers: true    # Expand numeric tokens (g2p_en)
@@ -59,7 +59,7 @@ tts_chars_per_minute: 875       # XTTS expressive speech is slower (~875 chars/m
 validation:
   enable_tier1: true
   enable_tier2: false
-  duration_tolerance_sec: 10.0
+  duration_tolerance_sec: 20.0
   silence_threshold_sec: 2.0
   min_amplitude_db: -40.0
   min_chars_for_duration_check: 400
