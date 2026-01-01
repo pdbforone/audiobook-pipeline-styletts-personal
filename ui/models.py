@@ -18,6 +18,11 @@ class UISettings:
     audio_volume: float = 0.5
     show_detailed_progress: bool = True
     theme_mode: str = "dark"  # "dark" or "light"
+    # LLM/Ollama settings
+    llm_enable: bool = True
+    llm_model: str = "llama3.1:8b-instruct-q4_K_M"
+    llm_auto_start_server: bool = True
+    llm_auto_pull_model: bool = True
 
     @classmethod
     def from_dict(
@@ -49,6 +54,10 @@ class UISettings:
             audio_volume=float(data.get("audio_volume", defaults.audio_volume)),
             show_detailed_progress=bool(data.get("show_detailed_progress", defaults.show_detailed_progress)),
             theme_mode=str(data.get("theme_mode", defaults.theme_mode)),
+            llm_enable=bool(data.get("llm_enable", defaults.llm_enable)),
+            llm_model=str(data.get("llm_model", defaults.llm_model)),
+            llm_auto_start_server=bool(data.get("llm_auto_start_server", defaults.llm_auto_start_server)),
+            llm_auto_pull_model=bool(data.get("llm_auto_pull_model", defaults.llm_auto_pull_model)),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -63,6 +72,10 @@ class UISettings:
             "audio_volume": self.audio_volume,
             "show_detailed_progress": self.show_detailed_progress,
             "theme_mode": self.theme_mode,
+            "llm_enable": self.llm_enable,
+            "llm_model": self.llm_model,
+            "llm_auto_start_server": self.llm_auto_start_server,
+            "llm_auto_pull_model": self.llm_auto_pull_model,
         }
 
 

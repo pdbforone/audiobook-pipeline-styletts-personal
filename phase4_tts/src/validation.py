@@ -12,7 +12,8 @@ import logging
 import re
 import time
 import random
-from typing import Any, Tuple, Dict, Optional
+from collections import Counter
+from typing import Any, Tuple, Dict, Optional, List
 import librosa
 import numpy as np
 from dataclasses import dataclass
@@ -218,6 +219,14 @@ class ValidationConfig:
     # Known error phrases to detect
     error_phrases: list = None
 
+    # Pre-synthesis validation (proactive)
+    enable_llama_pre_validator: bool = True  # Scan text before TTS
+    pre_validator_auto_expand: bool = True   # Auto-expand abbreviations
+    pre_validator_use_llm: bool = False      # Use LLM for complex rewrites
+
+    # ASR-driven rewriting (reactive)
+    enable_llama_asr_rewrite: bool = True    # Use LlamaRewriter for ASR issues
+
     def __post_init__(self):
         if self.error_phrases is None:
             self.error_phrases = [
@@ -289,6 +298,101 @@ def predict_expected_duration(
     duration_seconds = duration_minutes * 60
 
     return duration_seconds
+
+
+def deduplicate_sentences(text: str) -> Tuple[str, int]:
+    """
+    Remove duplicate sentences from text.
+
+    When Phase 3 chunking creates duplicates (e.g., same sentence appears 2x),
+    this function removes the duplicates while preserving order.
+
+    Args:
+        text: Input text with potential duplicate sentences
+
+    Returns:
+        Tuple of (cleaned_text, number_of_duplicates_removed)
+    """
+    # Split into sentences, preserving the delimiter
+    sentence_pattern = r'([.!?]+\s*)'
+    parts = re.split(sentence_pattern, text)
+
+    # Reconstruct sentences with their delimiters
+    sentences = []
+    i = 0
+    while i < len(parts):
+        sentence = parts[i].strip()
+        delimiter = parts[i + 1] if i + 1 < len(parts) else ""
+        if sentence:
+            sentences.append((sentence, delimiter))
+        i += 2
+
+    # Track seen sentences (normalized for comparison)
+    seen = set()
+    unique_sentences = []
+    duplicates_removed = 0
+
+    for sentence, delimiter in sentences:
+        # Normalize for comparison (lowercase, collapse whitespace)
+        normalized = re.sub(r'\s+', ' ', sentence.lower().strip())
+
+        if normalized not in seen:
+            seen.add(normalized)
+            unique_sentences.append(sentence + delimiter)
+        else:
+            duplicates_removed += 1
+
+    cleaned_text = "".join(unique_sentences).strip()
+    return cleaned_text, duplicates_removed
+
+
+def normalize_spaced_abbreviations(text: str) -> str:
+    """
+    Normalize spaced abbreviations back to compact form.
+
+    Converts "I E P" -> "IEP", "R E E D" -> "REED", etc.
+    These spaced forms cause XTTS to pronounce each letter slowly.
+
+    Args:
+        text: Input text with potential spaced abbreviations
+
+    Returns:
+        Text with normalized abbreviations
+    """
+    # Common education/special-ed abbreviations
+    known_abbrevs = {
+        "I E P": "IEP",
+        "A R D": "ARD",
+        "R E E D": "REED",
+        "B I P": "BIP",
+        "F B A": "FBA",
+        "L R E": "LRE",
+        "F A P E": "FAPE",
+        "I D E A": "IDEA",
+        "S L D": "SLD",
+        "O H I": "OHI",
+        "E S Y": "ESY",
+        "P W N": "PWN",
+        "N O D": "NOD",
+    }
+
+    result = text
+    for spaced, compact in known_abbrevs.items():
+        result = result.replace(spaced, compact)
+
+    # Generic pattern: single uppercase letters separated by spaces (3+ letters)
+    # "A B C D" -> "ABCD"
+    def compact_spaced(match):
+        letters = match.group().replace(" ", "")
+        # Only compact if it looks like an abbreviation (all caps)
+        if letters.isupper() and len(letters) >= 3:
+            return letters
+        return match.group()
+
+    # Pattern: 3+ single uppercase letters separated by single spaces
+    result = re.sub(r'\b([A-Z] ){2,}[A-Z]\b', compact_spaced, result)
+
+    return result
 
 
 def has_silence_gap(
@@ -474,11 +578,20 @@ def tier1_validate(
             chunk_text, chars_per_minute=effective_cpm
         )
         duration_diff = abs(expected_duration - actual_duration)
-        allowed_diff = config.duration_tolerance_sec
+
+        # Proportional tolerance: allow more variance for longer chunks
+        # - Short chunks (<20s): up to 80% variance (current behavior)
+        # - Medium chunks (20-60s): up to 25% variance
+        # - Long chunks (60s+): up to 20% variance
+        # Always at least config.duration_tolerance_sec (default 120s)
         if expected_duration < 20.0:
-            allowed_diff = max(
-                config.duration_tolerance_sec, expected_duration * 0.8
-            )
+            proportional_tolerance = expected_duration * 0.8
+        elif expected_duration < 60.0:
+            proportional_tolerance = expected_duration * 0.25
+        else:
+            proportional_tolerance = expected_duration * 0.20
+
+        allowed_diff = max(config.duration_tolerance_sec, proportional_tolerance)
 
         if duration_diff > allowed_diff:
             elapsed = time.perf_counter() - start

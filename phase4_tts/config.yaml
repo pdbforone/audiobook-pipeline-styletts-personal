@@ -16,7 +16,27 @@
 
 sample_rate: 24000  # Matches model default; for high-quality audio
 language: "en"      # Language ID for multilingual model
-engine: "xtts"      # Default engine (xtts, kokoro, auto)
+
+# Engine Selection Strategy (Post-Coqui Era - Dec 2024)
+# Kokoro-82M is now the default for non-cloning use cases:
+#   - 5.7x smaller (82M vs 467M params)
+#   - 2-3x faster on CPU
+#   - Apache 2.0 licensed (vs CPML with defunct Coqui)
+#   - <1GB VRAM (vs 4-8GB for XTTS)
+# Use XTTS only when voice cloning from custom reference audio is required.
+engine: "kokoro"    # Default engine (kokoro for speed/stability, xtts for cloning)
+
+# Best Kokoro Voices for Audiobooks (English)
+# Female - Audiobook Narration:
+#   af_bella  - warm and expressive (DEFAULT for fiction/memoir)
+#   af_sarah  - clear and professional (best for academic/philosophy)
+#   bf_emma   - British, elegant (classic literature)
+# Male - Audiobook Narration:
+#   am_adam   - deep and authoritative (philosophy/theology)
+#   bm_george - British, refined (academic content)
+#   bm_daniel - British, measured (classic literature)
+kokoro_voice: "af_bella"  # Default Kokoro voice for audiobooks
+
 workers: 2          # Default parallel workers
 ref_url: "https://www.archive.org/download/roughing_it_jg/rough_09_twain.mp3"  # HQ public domain ref; download and trim in code
 exaggeration: 0.5   # Emotion intensity (0.0 neutral, 1.0 dramatic)
@@ -33,7 +53,7 @@ enable_latency_fallback: true   # Allow auto-switch to Kokoro when RT is too slo
 slow_rt_threshold: 4.0          # Trigger Kokoro when RT factor exceeds this value
 rt_xtts_factor: 3.2             # Estimated RT factor for XTTS on CPU (used for auto-engine planning)
 rt_kokoro_factor: 1.3           # Estimated RT factor for Kokoro-onnx on CPU
-tts_chars_per_minute: 1050      # Shared speaking cadence for throughput + validation (chars/min)
+tts_chars_per_minute: 875       # XTTS expressive speech is slower (~875 chars/min vs 1050 for neutral)
 
 # Validation defaults (used by main_multi_engine.py)
 validation:
@@ -50,3 +70,15 @@ validation:
   max_wer: 0.10
   # AI-powered text rewriting for ASR-detected issues (requires Ollama + agents)
   enable_llama_asr_rewrite: true  # Use LlamaRewriter to fix text when ASR detects problems
+  # Pre-synthesis text validation (proactive issue detection)
+  enable_llama_pre_validator: true  # Scan text BEFORE TTS to detect abbreviations, numbers, etc.
+  pre_validator_auto_expand: true   # Auto-expand common abbreviations without LLM
+  pre_validator_use_llm: false      # Use LLM for complex rewrites (slower but smarter)
+
+# Process Recycling (Post-Coqui Era stability for long batch jobs)
+# Recycles worker processes to prevent CUDA context corruption and memory leaks
+# Enable via ENABLE_PROCESS_RECYCLING=true environment variable
+process_recycling:
+  enabled: false                    # Set to true for very long audiobooks (500+ chunks)
+  recycle_interval: 50              # Recycle each worker after this many chunks
+  force_gc_interval: 100            # Force garbage collection every N chunks

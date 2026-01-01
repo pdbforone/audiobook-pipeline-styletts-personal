@@ -6,11 +6,19 @@ Enhanced with segment-level synthesis to prevent repetition/hallucination
 issues that occur when XTTS processes text exceeding its ~400 token limit.
 """
 
+import gc
 import logging
+import random
 import re
 import numpy as np
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional, List
+
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
 
 from . import TTSEngine
 
@@ -22,6 +30,22 @@ logger = logging.getLogger(__name__)
 XTTS_SAFE_SEGMENT_CHARS = 220  # Stay well under 250 char warning
 XTTS_MAX_SEGMENT_CHARS = 280   # Absolute max before we force split
 XTTS_SEGMENT_SILENCE_MS = 80   # Silence between segments (ms)
+
+# Post-Coqui Era optimized parameters (from community research Dec 2024)
+# The "underscore trick" prevents end-of-sentence hallucinations
+XTTS_USE_UNDERSCORE_TRICK = True
+
+# Optimized repetition/length penalties for audiobook synthesis
+# Research: rep_penalty 2.0-5.0 with length_penalty > 1.0 is the sweet spot
+# Too high (10.0) causes terse output; too low causes loops
+XTTS_REPETITION_PENALTY = 3.5   # Was 10.0 - more natural prosody
+XTTS_LENGTH_PENALTY = 1.2       # Was 1.0 - encourages natural sequence length
+
+# Deterministic synthesis seed (set to None for non-deterministic)
+XTTS_SYNTHESIS_SEED = 42
+
+# Memory cleanup interval (chunks between gc.collect calls)
+XTTS_MEMORY_CLEANUP_INTERVAL = 50
 
 
 class XTTSEngine(TTSEngine):
@@ -47,6 +71,139 @@ class XTTSEngine(TTSEngine):
         # Built-in speaker latents loaded from speakers_xtts.pth
         # Contains {speaker_name: {'gpt_cond_latent': tensor, 'speaker_embedding': tensor}}
         self.builtin_speakers_data = None
+        # Counter for memory cleanup interval
+        self._synthesis_counter = 0
+
+        # Master Reference Session (Post-Coqui Era voice consistency)
+        # Precompute speaker embedding once and reuse for all chunks
+        self._master_gpt_cond_latent = None
+        self._master_speaker_embedding = None
+        self._master_reference_path = None
+
+    def _set_deterministic_seed(self, seed: int = XTTS_SYNTHESIS_SEED) -> None:
+        """
+        Set random seeds for deterministic synthesis.
+
+        Post-Coqui Era Fix: XTTS is non-deterministic by default. Without seed
+        management, the same text may produce different pronunciations each time
+        (e.g., "Cave" → "Cavave" on retry). This is disastrous for audiobook editing.
+
+        Must be called before EVERY inference call for consistent results.
+        """
+        if seed is None:
+            return  # Skip if non-deterministic mode desired
+
+        random.seed(seed)
+        np.random.seed(seed)
+        if TORCH_AVAILABLE:
+            import torch
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed(seed)
+                torch.cuda.manual_seed_all(seed)
+
+    def _cleanup_synthesis_memory(self, force: bool = False) -> None:
+        """
+        Prevent VRAM/RAM creep during long audiobook generation.
+
+        Post-Coqui Era Fix: CUDA context corruption and memory leaks are common
+        in long-running XTTS synthesis. Explicit garbage collection and cache
+        clearing prevents crashes in 10+ hour audiobook runs.
+
+        Args:
+            force: If True, cleanup immediately. Otherwise, only cleanup every
+                   XTTS_MEMORY_CLEANUP_INTERVAL chunks.
+        """
+        self._synthesis_counter += 1
+
+        if not force and self._synthesis_counter % XTTS_MEMORY_CLEANUP_INTERVAL != 0:
+            return
+
+        gc.collect()
+        if TORCH_AVAILABLE:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                logger.debug(
+                    f"XTTS memory cleanup after {self._synthesis_counter} segments"
+                )
+
+    def setup_master_reference(self, reference_path: Path) -> bool:
+        """
+        Precompute and cache speaker embedding from a master reference audio.
+
+        Post-Coqui Era Fix: For long audiobooks (500+ chunks), speaker drift
+        is common when re-extracting embeddings per chunk. By precomputing
+        the embedding once from a high-quality 6-10s reference, we ensure
+        consistent voice across the entire book.
+
+        Args:
+            reference_path: Path to the master reference audio (6-10s recommended)
+
+        Returns:
+            True if setup succeeded, False otherwise
+        """
+        if self.model is None:
+            logger.warning("Model not loaded - cannot setup master reference")
+            return False
+
+        reference_path = Path(reference_path)
+        if not reference_path.exists():
+            logger.warning(f"Master reference not found: {reference_path}")
+            return False
+
+        try:
+            # Get the underlying TTS model
+            tts_model = self.model.synthesizer.tts_model
+
+            # Extract speaker conditioning
+            gpt_cond_latent, speaker_embedding = tts_model.get_conditioning_latents(
+                audio_path=[str(reference_path)]
+            )
+
+            # Cache for reuse
+            self._master_gpt_cond_latent = gpt_cond_latent
+            self._master_speaker_embedding = speaker_embedding
+            self._master_reference_path = reference_path
+
+            logger.info(
+                f"Master reference session initialized: {reference_path.name} "
+                f"(latent shape: {gpt_cond_latent.shape}, embedding shape: {speaker_embedding.shape})"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to setup master reference: {e}")
+            return False
+
+    def clear_master_reference(self) -> None:
+        """Clear the cached master reference (call between different books)."""
+        self._master_gpt_cond_latent = None
+        self._master_speaker_embedding = None
+        self._master_reference_path = None
+        logger.debug("Master reference session cleared")
+
+    def has_master_reference(self) -> bool:
+        """Check if a master reference session is active."""
+        return self._master_gpt_cond_latent is not None
+
+    def _apply_underscore_trick(self, text: str) -> str:
+        """
+        Apply the 'underscore trick' to prevent end-of-sentence hallucinations.
+
+        Post-Coqui Era Fix: The GPT-2 backbone fails to predict EOS token correctly,
+        causing gibberish/breathing at sentence end. Appending '_' biases the
+        attention mechanism toward a 'silence' or 'stop' state.
+
+        Research source: Coqui TTS community discussions, Dec 2024.
+        """
+        if not XTTS_USE_UNDERSCORE_TRICK:
+            return text
+
+        text = text.rstrip()
+        if not text.endswith('_'):
+            text = text + '_'
+        return text
 
     @property
     def name(self) -> str:
@@ -488,18 +645,25 @@ class XTTSEngine(TTSEngine):
 
         for i, segment_text in enumerate(segments):
             try:
+                # Post-Coqui Era Fix: Apply the underscore trick for EOS handling
+                # This is more effective than period→comma replacement
+                synthesis_text = self._apply_underscore_trick(segment_text)
+
+                # Set deterministic seed before each inference for consistent pronunciation
+                self._set_deterministic_seed()
+
                 # Estimate expected duration (~15 chars/second for speech)
-                expected_dur = len(segment_text) / 15.0
+                expected_dur = len(synthesis_text) / 15.0
                 total_expected_dur += expected_dur
 
                 if len(segments) > 1:
                     logger.debug(
                         f"Synthesizing segment {i+1}/{len(segments)}: "
-                        f"{len(segment_text)} chars, expected ~{expected_dur:.1f}s"
+                        f"{len(synthesis_text)} chars, expected ~{expected_dur:.1f}s"
                     )
 
                 wav = self._synthesize_single_segment(
-                    segment_text,
+                    synthesis_text,
                     ref_to_use=ref_to_use,
                     active_speaker=active_speaker,
                     language=language,
@@ -541,6 +705,9 @@ class XTTSEngine(TTSEngine):
                     )
 
                 audio_segments.append(audio)
+
+                # Post-Coqui Era Fix: Periodic memory cleanup to prevent VRAM creep
+                self._cleanup_synthesis_memory()
 
             except Exception as e:
                 logger.error(
@@ -602,6 +769,50 @@ class XTTSEngine(TTSEngine):
         Returns:
             Raw audio array from XTTS
         """
+        # Mode 0: Master Reference Session (HIGHEST PRIORITY)
+        # Post-Coqui Era Fix: Use precomputed speaker embedding for voice consistency
+        # across long audiobooks. This prevents speaker drift.
+        if self.has_master_reference():
+            tts_model = self.model.synthesizer.tts_model
+            hf_kwargs = {"no_repeat_ngram_size": 4}
+
+            try:
+                result = tts_model.inference(
+                    text=text,
+                    language=language,
+                    gpt_cond_latent=self._master_gpt_cond_latent,
+                    speaker_embedding=self._master_speaker_embedding,
+                    temperature=temperature,
+                    speed=speed,
+                    repetition_penalty=XTTS_REPETITION_PENALTY,
+                    length_penalty=XTTS_LENGTH_PENALTY,
+                    top_k=50,
+                    top_p=0.85,
+                    enable_text_splitting=False,
+                    **hf_kwargs,
+                )
+            except TypeError:
+                result = tts_model.inference(
+                    text=text,
+                    language=language,
+                    gpt_cond_latent=self._master_gpt_cond_latent,
+                    speaker_embedding=self._master_speaker_embedding,
+                    temperature=temperature,
+                    speed=speed,
+                    repetition_penalty=XTTS_REPETITION_PENALTY,
+                    length_penalty=XTTS_LENGTH_PENALTY,
+                    top_k=50,
+                    top_p=0.85,
+                    enable_text_splitting=False,
+                )
+
+            if isinstance(result, dict) and "wav" in result:
+                wav = result["wav"]
+                if hasattr(wav, "cpu"):
+                    wav = wav.cpu().numpy()
+                return wav
+            return result
+
         # Mode 1: Built-in voice using pre-computed latents (PRIORITY)
         # The high-level model.tts() API doesn't work with built-in speakers
         # (it always requires speaker_wav). We must use the low-level
@@ -620,20 +831,45 @@ class XTTSEngine(TTSEngine):
 
             # Call the low-level inference API directly
             tts_model = self.model.synthesizer.tts_model
-            result = tts_model.inference(
-                text=text,
-                language=language,
-                gpt_cond_latent=gpt_cond_latent,
-                speaker_embedding=speaker_embedding,
-                temperature=temperature,
-                speed=speed,
-                # Prevent repetition/truncation issues
-                repetition_penalty=10.0,  # Default, but explicit to ensure it's used
-                length_penalty=1.0,
-                top_k=50,
-                top_p=0.85,
-                enable_text_splitting=False,  # We already split externally - CRITICAL
-            )
+
+            # HuggingFace generation kwargs to prevent phrase repetition
+            # no_repeat_ngram_size=4 blocks any 4-word sequence from repeating
+            hf_kwargs = {"no_repeat_ngram_size": 4}
+
+            try:
+                result = tts_model.inference(
+                    text=text,
+                    language=language,
+                    gpt_cond_latent=gpt_cond_latent,
+                    speaker_embedding=speaker_embedding,
+                    temperature=temperature,
+                    speed=speed,
+                    # Post-Coqui Era optimized penalties (research Dec 2024)
+                    # Sweet spot: 2.0-5.0 rep_penalty with length_penalty > 1.0
+                    repetition_penalty=XTTS_REPETITION_PENALTY,
+                    length_penalty=XTTS_LENGTH_PENALTY,
+                    top_k=50,
+                    top_p=0.85,
+                    enable_text_splitting=False,  # We already split externally - CRITICAL
+                    # Pass to HuggingFace generate() to block phrase looping
+                    **hf_kwargs,
+                )
+            except TypeError:
+                # Fallback if XTTS version doesn't support extra kwargs
+                logger.debug("XTTS inference doesn't accept hf_generate_kwargs, using defaults")
+                result = tts_model.inference(
+                    text=text,
+                    language=language,
+                    gpt_cond_latent=gpt_cond_latent,
+                    speaker_embedding=speaker_embedding,
+                    temperature=temperature,
+                    speed=speed,
+                    repetition_penalty=XTTS_REPETITION_PENALTY,
+                    length_penalty=XTTS_LENGTH_PENALTY,
+                    top_k=50,
+                    top_p=0.85,
+                    enable_text_splitting=False,
+                )
 
             # Result is a dict with 'wav' key
             if isinstance(result, dict) and "wav" in result:

@@ -5,19 +5,23 @@ Produces structured reflections about a run without altering behavior.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict
 
-try:
-    from agents import LlamaAgent
-except Exception:  # noqa: BLE001
-    LlamaAgent = None  # type: ignore
+from .llama_base import LlamaAgent
+
+logger = logging.getLogger(__name__)
 
 
 class LlamaSelfReview:
     """Reflective LLM agent for post-run analysis (opt-in)."""
 
     def __init__(self) -> None:
-        self.agent = LlamaAgent() if LlamaAgent else None
+        try:
+            self.agent = LlamaAgent()
+        except Exception as exc:
+            logger.warning("LlamaSelfReview: LlamaAgent unavailable: %s", exc)
+            self.agent = None
 
     def analyze_run(
         self,

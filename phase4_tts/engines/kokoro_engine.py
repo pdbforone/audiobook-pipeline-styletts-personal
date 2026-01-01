@@ -121,7 +121,8 @@ class KokoroEngine(TTSEngine):
 
         # Extract parameters
         speed = kwargs.get("speed", 1.0)
-        voice = kwargs.get("voice", "af_sarah")  # Default female voice
+        # Default to af_bella (warm, expressive) - better for audiobooks than af_sarah
+        voice = kwargs.get("voice", "af_bella")
 
         # Map language code to kokoro format
         lang_map = {
