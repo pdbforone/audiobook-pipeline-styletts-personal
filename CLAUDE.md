@@ -2,7 +2,18 @@
 
 > *"The people who are crazy enough to think they can change the world are the ones who do."*
 
-This document is the first thing you should read when working on this codebase. It captures the philosophy, architecture, and patterns that make this project work.
+## READ FIRST: The Canon
+
+**[AUTONOMOUS_PIPELINE_ROADMAP.md](AUTONOMOUS_PIPELINE_ROADMAP.md)** is the project canon — 1500+ lines defining the vision, implementation status, and technical decisions. Read it before making significant changes.
+
+**Key sections in the roadmap:**
+- Latest Updates (Post-Coqui XTTS hardening, Kokoro as default)
+- 12 LLM Agents and their integration points
+- Self-healing architecture
+- Implementation status matrix
+- Phase A-F + G-H + L-M + AA-AB breakdown
+
+---
 
 ## The Philosophy
 
@@ -10,13 +21,50 @@ This document is the first thing you should read when working on this codebase. 
 
 Marcus Aurelius doesn't *read* his Meditations — he *reflects* them. The difference between 2 hours and 5 hours is irrelevant because you'll listen for 10+.
 
-**Always choose quality.**
+**Always choose quality.** We think like craftsmen, designer-engineers, and research scientists. Elegant, minimal, inevitable solutions.
 
-We think like craftsmen, designer-engineers, and research scientists. We produce elegant, minimal, inevitable solutions. We treat tests and documentation as part of the craft. We always iterate toward clarity and simplicity.
+---
 
-## The Architecture
+## Quick Reference
 
-Seven phases. Five layers. Zero compromise.
+### TTS Engines (Current Status)
+
+| Engine | Role | Notes |
+|--------|------|-------|
+| **Kokoro** | **DEFAULT** | CPU-optimized, Apache 2.0, best for most use cases |
+| **XTTS** | Voice cloning | Use only when zero-shot cloning required; Post-Coqui hardening applied |
+| Piper | **DISABLED** | Intentionally disabled — project standardizes on Kokoro/XTTS only |
+
+### Best Kokoro Voices for Audiobooks
+
+| Voice | Gender | Accent | Best For |
+|-------|--------|--------|----------|
+| `af_bella` | Female | American | Fiction, memoir (DEFAULT) |
+| `af_sarah` | Female | American | Academic, philosophy |
+| `bf_emma` | Female | British | Classic literature |
+| `am_adam` | Male | American | Philosophy, theology |
+| `bm_george` | Male | British | Academic content |
+
+### The 12 LLM Agents
+
+| Agent | Location | Purpose |
+|-------|----------|---------|
+| **LlamaChunker** | `agents/llama_chunker.py` | Semantic chunk boundary detection |
+| **LlamaReasoner** | `agents/llama_reasoner.py` | Pipeline failure analysis |
+| **LlamaRewriter** | `agents/llama_rewriter.py` | TTS-friendly text rewriting |
+| **LlamaMetadataGenerator** | `agents/llama_metadata.py` | Audiobook metadata generation |
+| **LlamaPreValidator** | `agents/llama_pre_validator.py` | Pre-synthesis text analysis |
+| **LlamaVoiceMatcher** | `agents/llama_voice_matcher.py` | Intelligent voice selection |
+| **LlamaChunkReviewer** | `agents/llama_chunk_reviewer.py` | Post-batch quality analysis |
+| **LlamaSemanticRepetition** | `agents/llama_semantic_repetition.py` | Deep repetition detection |
+| **LlamaSelfReview** | `agents/llama_self_review.py` | Post-run reflection |
+| **LlamaDiagnostics** | `agents/llama_diagnostics.py` | Run diagnostics |
+
+All agents have graceful fallback when Ollama unavailable.
+
+---
+
+## Architecture
 
 ```
 Source Text ──► [7 Sacred Phases] ──► Voice That Sings
@@ -41,29 +89,30 @@ Source Text ──► [7 Sacred Phases] ──► Voice That Sings
 
 ### The Seven Phases
 
-| Phase | Purpose | Key Entry Point |
-|-------|---------|-----------------|
-| **1: Validate** | Verify integrity, repair issues, extract metadata | `phase1_validation.validation.validate_and_repair()` |
-| **2: Extract** | Multi-format ingest, OCR when needed, normalization | `phase2_extraction.extraction.extract_text_universal()` |
-| **3: Chunk** | Genre-aware segmentation, voice suggestion | `phase3_chunking.main.run_phase3()` |
-| **4: TTS** | Voice synthesis with XTTS/Kokoro fallback | `phase4_tts.engine_runner` |
-| **5: Master** | Audio enhancement, LUFS normalization | `phase5_enhancement.main.run_phase5()` |
-| **5.5: Subtitles** | Whisper transcription, SRT/VTT generation | Optional |
+| Phase | Purpose | Entry Point |
+|-------|---------|-------------|
+| **1: Validate** | Integrity, repair, metadata | `phase1_validation.validation` |
+| **2: Extract** | Multi-format ingest, OCR | `phase2_extraction.extraction` |
+| **3: Chunk** | Genre-aware segmentation | `phase3_chunking.main` |
+| **4: TTS** | Kokoro/XTTS synthesis | `phase4_tts.engine_runner` |
+| **5: Master** | Audio enhancement, LUFS | `phase5_enhancement.main` |
+| **5.5: Subtitles** | Whisper transcription | Optional |
 | **6: Orchestrate** | Single-file coordination | `phase6_orchestrator.orchestrator` |
-| **7: Batch** | Multi-file parallel processing | `phase7_batch.main` |
+| **7: Batch** | Multi-file parallel | `phase7_batch.main` |
+
+---
 
 ## The Schema — pipeline.json
 
-`pipeline.json` is the **single source of truth**. Every phase reads from it. Every phase writes to it. It is the nervous system of the entire studio.
+`pipeline.json` is the **single source of truth**. Schema v4.0.0.
 
-### Schema Location
-- **JSON Schema**: `pipeline_common/schema.json` (v4.0.0)
+### Key Files
+- **JSON Schema**: `pipeline_common/schema.json`
 - **Pydantic Models**: `pipeline_common/models.py`
-- **Validation Utils**: `pipeline_common/schema.py`
+- **Validation**: `pipeline_common/schema.py`
 - **Documentation**: `PIPELINE_JSON_SCHEMA.md`
 
-### Using the Schema
-
+### Usage Pattern
 ```python
 from pipeline_common.schema import canonicalize_state, validate_pipeline_schema
 from pipeline_common.state_manager import PipelineState
@@ -106,10 +155,11 @@ Every phase block follows this contract:
 }
 ```
 
+---
+
 ## Code Patterns
 
 ### DO
-
 ```python
 # Use type hints from the schema models
 from pipeline_common.models import Phase4ChunkModel, StatusEnum
@@ -122,62 +172,40 @@ def process_chunk(chunk: Phase4ChunkModel) -> Phase4ChunkModel:
 with PipelineState(pipeline_json) as state:
     state.update_phase("phase4", file_id, updates)
 
-# Return early, handle errors explicitly
+# Handle errors explicitly
 if not audio_path.exists():
     return {"status": "failed", "errors": ["Audio file not found"]}
-
-# Keep functions pure when possible
-def calculate_rt_factor(wall_time: float, audio_duration: float) -> float:
-    return wall_time / audio_duration if audio_duration > 0 else float('inf')
 ```
 
 ### DON'T
-
 ```python
 # Don't mutate pipeline.json directly
-with open(pipeline_json, 'r') as f:
-    data = json.load(f)
-data["phase4"]["status"] = "success"  # BAD: No locking, no backup
+data["phase4"]["status"] = "success"  # BAD: No locking
 
 # Don't hardcode status strings
-chunk["status"] = "complete"  # BAD: Use "success" (schema-defined)
-
-# Don't ignore errors silently
-try:
-    synthesize(text)
-except Exception:
-    pass  # BAD: Log it, record it, handle it
+chunk["status"] = "complete"  # BAD: Use "success"
 
 # Don't couple phases
 from phase4_tts import some_internal  # BAD: Phases are independent
 ```
 
-## Voice System
+---
 
-### Voice Selection Hierarchy
-1. CLI override (`--voice` flag)
-2. File-level override (`pipeline.json → voice_overrides.{file_id}`)
-3. Global override (`pipeline.json → tts_voice`)
-4. Genre-matched voice (from Phase 3)
-5. Default voice fallback
+## Latest Critical Fixes (2025-12)
 
-### Voice Configuration
-- **Registry**: `configs/voices.json`
-- **Reference Audio**: `Voices/` directory
+### XTTS Post-Coqui Hardening
+- **Underscore Trick**: Append `_` to text → fixes EOS prediction
+- **Optimized Penalties**: `repetition_penalty=3.5`, `length_penalty=1.2`
+- **Seed Management**: Deterministic synthesis via `XTTS_SYNTHESIS_SEED=42`
+- **Segment-Level Synthesis**: Pre-split text <220 chars to avoid internal XTTS splitting
 
-## TTS Engines
+### Phase 3 Chunk Duplication Fix
+Fixed critical bug where sentences appeared in multiple consecutive chunks.
 
-| Engine | Primary Use | Strengths |
-|--------|-------------|-----------|
-| **Kokoro** | Default, fast drafts | CPU-optimized, real-time on modern CPUs |
-| **XTTS** | Production, cloning | 16 languages, emotion via reference audio |
+### Process Recycling
+For 500+ chunk books: `RecyclingProcessPool` restarts workers every N tasks.
 
-### Engine Selection
-```python
-# Kokoro is default (fast, reliable)
-# XTTS for voice cloning or when Kokoro struggles
-# Auto-fallback: If primary fails, try secondary
-```
+---
 
 ## Audio Quality Standards
 
@@ -188,73 +216,54 @@ from phase4_tts import some_internal  # BAD: Phases are independent
 | Sample Rate | 24kHz |
 | Format | WAV (processing), MP3 (final) |
 
-## Testing
+---
+
+## Common Commands
 
 ```bash
-# Run schema validation tests
-pytest tests/test_schema_v4_validation.py -v
+# Launch the UI
+python ui/app.py
 
-# Run integration tests (requires RUN_PHASE_O_FULL=1)
-RUN_PHASE_O_FULL=1 pytest tests/integration/ -v
-
-# Quick smoke test for Phase 4
-python phase4_tts/test_simple_text.py --run
-```
-
-## Common Tasks
-
-### Process a Single Book
-```bash
+# Process a single book
 python -m phase6_orchestrator.orchestrator \
   --input input/meditations.epub \
   --pipeline pipeline.json \
-  --voice george_mckayland \
-  --engine xtts
+  --voice af_bella \
+  --engine kokoro
+
+# Run schema tests
+pytest tests/test_schema_v4_validation.py -v
+
+# Run integration tests
+RUN_PHASE_O_FULL=1 pytest tests/integration/ -v
 ```
 
-### Launch the UI
-```bash
-python ui/app.py
-# Opens at http://localhost:7860
-```
-
-### Debug a Failure
-1. Check `pipeline.json` for the failing phase's `errors` array
-2. Look for `status: "failed"` in the file's entry
-3. Check chunk-level errors if Phase 4/5
-4. Review logs in the phase's output directory
+---
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `pipeline.json` | **CRITICAL** — Master state file |
+| `AUTONOMOUS_PIPELINE_ROADMAP.md` | **THE CANON** — Read this first |
+| `pipeline.json` | Master state file |
+| `pipeline_common/schema.json` | Schema v4.0.0 |
 | `pipeline_common/state_manager.py` | Atomic state operations |
-| `pipeline_common/schema.json` | Canonical schema v4.0.0 |
-| `pipeline_common/models.py` | Pydantic type definitions |
-| `configs/voices.json` | Voice registry |
-| `phase6_orchestrator/orchestrator.py` | Main orchestration logic |
-| `ui/app.py` | Gradio web interface |
-
-## Principles for Changes
-
-1. **Read before writing** — Understand existing patterns before adding code
-2. **Use the schema** — Type hints from models.py, validation from schema.py
-3. **Keep phases independent** — No cross-phase imports of internals
-4. **State via PipelineState** — Never write pipeline.json directly
-5. **Test with real data** — Run against actual audiobooks, not just unit tests
-6. **Simplify ruthlessly** — If you can remove complexity without losing power, do it
-
-## When in Doubt
-
-- **Schema question?** → `PIPELINE_JSON_SCHEMA.md`
-- **Architecture question?** → `DESIGN_FIRST_REFACTOR_PLAN.md`
-- **Philosophy question?** → `CRAFT_EXCELLENCE_VISION.md`
-- **Voice question?** → `VOICE_SELECTION_GUIDE.md`
-- **Phase question?** → Each phase has its own `README.md`
+| `phase6_orchestrator/orchestrator.py` | Main orchestration |
+| `agents/` | 12 LLM agents |
+| `ui/app.py` | Gradio interface |
 
 ---
 
-*Craft, not production. Quality, not speed. Elegance, not complexity.*
+## When in Doubt
 
-*Made with obsessive attention to detail.*
+| Question | Document |
+|----------|----------|
+| **Roadmap/Status?** | `AUTONOMOUS_PIPELINE_ROADMAP.md` |
+| **Schema?** | `PIPELINE_JSON_SCHEMA.md` |
+| **Architecture?** | `DESIGN_FIRST_REFACTOR_PLAN.md` |
+| **Philosophy?** | `CRAFT_EXCELLENCE_VISION.md` |
+| **Voices?** | `VOICE_SELECTION_GUIDE.md` |
+
+---
+
+*Craft, not production. Quality, not speed. Local-first, CPU-friendly, no external API dependencies.*
