@@ -66,7 +66,8 @@
       "Bash(git push:*)",
       "Bash(git fetch:*)",
       "Bash(git merge:*)",
-      "Bash(claude auth status:*)"
+      "Bash(claude auth status:*)",
+      "Bash(\"c:\\\\Users\\\\myson\\\\Pipeline\\\\audiobook-pipeline-personal\\\\audiobook-pipeline-styletts-personal\\\\phase4_tts\\\\.engine_envs\\\\kokoro\\\\Scripts\\\\python.exe\" -c \"import kokoro_onnx; print\\(kokoro_onnx.__file__\\)\")"
     ],
     "deny": [],
     "ask": []

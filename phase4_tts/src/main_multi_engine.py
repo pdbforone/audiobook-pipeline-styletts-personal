@@ -77,6 +77,24 @@ try:
 except ImportError:
     LlamaPacingAgent = None  # type: ignore
 
+# Audio mastering for ACX compliance (2026-01 addition)
+# Reference: TTS_VALIDATION_RESEARCH_FINDINGS.md
+try:
+    from phase4_tts.src.audio_mastering import master_audio_chunk, ACX_TARGET_LUFS
+    MASTERING_AVAILABLE = True
+except ImportError:
+    MASTERING_AVAILABLE = False
+    ACX_TARGET_LUFS = -20.0
+
+# Smart retry strategies for validation failures (2026-01 addition)
+# Reference: TTS_VALIDATION_RESEARCH_FINDINGS.md Phase 3
+try:
+    from phase4_tts.src.retry_strategies import analyze_failure_and_recommend
+    RETRY_STRATEGIES_AVAILABLE = True
+except ImportError:
+    RETRY_STRATEGIES_AVAILABLE = False
+    analyze_failure_and_recommend = None  # type: ignore
+
 MODULE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = MODULE_ROOT.parent.parent
 DEFAULT_CHARS_PER_MINUTE = 1050  # Shared speaking cadence assumption
@@ -754,6 +772,7 @@ def synthesize_chunk_with_engine(
     pacing_hint: Optional[str] = None
     effective_cpm = chars_per_minute or DEFAULT_CHARS_PER_MINUTE
     text_len = len(chunk.text)
+    retry_count = 0  # Track retry attempts for smart retry strategies
 
     if chunk.voice_override and voice_assets:
         # BUGFIX: Normalize voice override for lookup (voice_assets uses normalized keys)
@@ -1094,18 +1113,34 @@ def synthesize_chunk_with_engine(
         rtf_threshold: Optional[float],
         *,
         text_override: Optional[str] = None,
+        voice_override: Optional[str] = None,
+        kwargs_override: Optional[Dict[str, Any]] = None,
     ) -> Tuple[np.ndarray, str, int, float, float]:
         synth_start = time.time()
+        # Merge parameter adjustments from retry strategy
+        synthesis_kwargs = dict(chunk_kwargs)
+        if kwargs_override:
+            synthesis_kwargs.update(kwargs_override)
+        # Handle voice override for retry strategies
+        ref_audio = reference
+        if voice_override and voice_assets:
+            normalized_override = normalize_voice_id(voice_override)
+            voice_asset = voice_assets.get(normalized_override)
+            if voice_asset:
+                if voice_asset.engine_params:
+                    synthesis_kwargs.update(voice_asset.engine_params)
+                if voice_asset.reference_audio:
+                    ref_audio = voice_asset.reference_audio
         audio_out, selected_engine = engine_manager.synthesize(
             text=text_override or synthesis_text,  # Use deduped/pre-validated text
-            reference_audio=reference,
+            reference_audio=ref_audio,
             engine=target_engine,
             language=language,
             fallback=allow_fb,
             return_engine=True,
             est_dur_sec=est_dur_sec,
             rtf_fallback_threshold=rtf_threshold,
-            **chunk_kwargs,
+            **synthesis_kwargs,
         )
         elapsed = time.time() - synth_start
         standardized, sample_rate, audio_duration, rt_factor = (
@@ -1369,6 +1404,36 @@ def synthesize_chunk_with_engine(
         )
 
     output_path = output_dir / f"{chunk.chunk_id}.wav"
+
+    # Apply ACX-compliant mastering chain before writing
+    # This ensures consistent loudness and prevents too_quiet failures
+    # Reference: TTS_VALIDATION_RESEARCH_FINDINGS.md
+    mastering_metrics = None
+    if MASTERING_AVAILABLE:
+        try:
+            # Apply mastering: loudness normalization + peak limiting
+            # Use gate for XTTS to reduce room tone cloning
+            apply_gate = (used_engine == "xtts")
+            audio, mastering_metrics = master_audio_chunk(
+                audio,
+                sample_rate,
+                target_lufs=ACX_TARGET_LUFS,
+                apply_gate=apply_gate
+            )
+            logger.debug(
+                "Chunk %s mastered: LUFS %.1f → %.1f, peak %.1fdB",
+                chunk.chunk_id,
+                mastering_metrics.get("input_lufs", 0),
+                mastering_metrics.get("output_lufs", 0),
+                mastering_metrics.get("output_peak_db", 0),
+            )
+        except Exception as mastering_exc:
+            logger.warning(
+                "Chunk %s mastering failed (proceeding with unmastered audio): %s",
+                chunk.chunk_id,
+                mastering_exc,
+            )
+
     sf.write(output_path, audio, sample_rate)
     try:
         validate_audio_file(output_path)
@@ -1399,6 +1464,17 @@ def synthesize_chunk_with_engine(
     validation_success = True
     collected_validation_details: Dict[str, Any] = {}
 
+    # Include mastering metrics if applied
+    if mastering_metrics:
+        collected_validation_details["mastering"] = {
+            "input_lufs": mastering_metrics.get("input_lufs"),
+            "output_lufs": mastering_metrics.get("output_lufs"),
+            "input_rms_db": mastering_metrics.get("input_rms_db"),
+            "output_rms_db": mastering_metrics.get("output_rms_db"),
+            "output_peak_db": mastering_metrics.get("output_peak_db"),
+            "gate_applied": mastering_metrics.get("gate_applied", False),
+        }
+
     # Include pre-validation details if text was modified
     if pre_validation_details:
         collected_validation_details["pre_validation"] = pre_validation_details
@@ -1423,64 +1499,185 @@ def synthesize_chunk_with_engine(
                 tier1_result.reason,
             )
 
-            if (
-                not tier1_result.is_valid
-                and allow_fallback
-                and kokoro_available
-                and used_engine != "kokoro"
-            ):
-                logger.warning(
-                    "Chunk %s Tier1 failed (%s); retrying synthesis on Kokoro for validation recovery.",
-                    chunk.chunk_id,
-                    tier1_result.reason,
-                )
-                try:
-                    kokoro_limit = text_length_limit("kokoro")
-                    if kokoro_limit and len(synthesis_text) > kokoro_limit:
-                        logger.error(
-                            "Chunk %s cannot retry on Kokoro because text length %d exceeds max %d",
+            # Smart retry logic with engine-specific parameter tuning
+            if not tier1_result.is_valid and allow_fallback:
+                retry_count += 1
+
+                # Use smart retry strategies if available
+                if RETRY_STRATEGIES_AVAILABLE and analyze_failure_and_recommend:
+                    strategy = analyze_failure_and_recommend(
+                        validation_reason=tier1_result.reason,
+                        validation_details=tier1_result.details,
+                        engine_used=used_engine,
+                        current_voice=voice_used or default_voice_id or "",
+                        retry_count=retry_count,
+                        engine_kwargs=chunk_kwargs,
+                    )
+                    logger.info(
+                        "Chunk %s retry strategy: %s",
+                        chunk.chunk_id,
+                        strategy.reason,
+                    )
+
+                    if strategy.should_retry:
+                        try:
+                            # Determine target engine
+                            if strategy.use_fallback_engine:
+                                # Switch to fallback engine (legacy behavior)
+                                target_engine = "kokoro" if used_engine != "kokoro" else "xtts"
+                                if target_engine not in engine_manager.engines:
+                                    logger.error(
+                                        "Chunk %s fallback engine '%s' not available",
+                                        chunk.chunk_id,
+                                        target_engine,
+                                    )
+                                    validation_success = False
+                                    validation_reason = validation_reason or "fallback_engine_unavailable"
+                                else:
+                                    # Check text length for target engine
+                                    target_limit = text_length_limit(target_engine)
+                                    if target_limit and len(synthesis_text) > target_limit:
+                                        logger.error(
+                                            "Chunk %s cannot retry on %s because text length %d exceeds max %d",
+                                            chunk.chunk_id,
+                                            target_engine,
+                                            len(synthesis_text),
+                                            target_limit,
+                                        )
+                                        validation_success = False
+                                    else:
+                                        (
+                                            audio,
+                                            used_engine,
+                                            sample_rate,
+                                            audio_duration,
+                                            rt_factor,
+                                        ) = attempt_synthesis(
+                                            target_engine,
+                                            False,
+                                            None,
+                                            voice_override=strategy.fallback_voice,
+                                            kwargs_override=strategy.parameter_adjustments,
+                                        )
+                                        if strategy.fallback_voice:
+                                            voice_used = strategy.fallback_voice
+                                        sf.write(output_path, audio, sample_rate)
+                                        tier1_result = tier1_validate(
+                                            synthesis_text,
+                                            str(output_path),
+                                            validation_config,
+                                            chars_per_minute=effective_cpm,
+                                        )
+                                        validation_tier = tier1_result.tier
+                                        validation_reason = tier1_result.reason
+                                        validation_details = tier1_result.details
+                                        collected_validation_details["tier1_retry"] = tier1_result.details
+                                        validation_success = tier1_result.is_valid
+                                        logger.info(
+                                            "Chunk %s Tier1 validation after %s retry %s (%s)",
+                                            chunk.chunk_id,
+                                            target_engine,
+                                            "PASS" if tier1_result.is_valid else "FAIL",
+                                            tier1_result.reason,
+                                        )
+                            else:
+                                # Retry same engine with adjusted parameters
+                                (
+                                    audio,
+                                    used_engine,
+                                    sample_rate,
+                                    audio_duration,
+                                    rt_factor,
+                                ) = attempt_synthesis(
+                                    used_engine,
+                                    False,
+                                    None,
+                                    voice_override=strategy.fallback_voice,
+                                    kwargs_override=strategy.parameter_adjustments,
+                                )
+                                if strategy.fallback_voice:
+                                    voice_used = strategy.fallback_voice
+                                sf.write(output_path, audio, sample_rate)
+                                tier1_result = tier1_validate(
+                                    synthesis_text,
+                                    str(output_path),
+                                    validation_config,
+                                    chars_per_minute=effective_cpm,
+                                )
+                                validation_tier = tier1_result.tier
+                                validation_reason = tier1_result.reason
+                                validation_details = tier1_result.details
+                                collected_validation_details["tier1_retry"] = tier1_result.details
+                                validation_success = tier1_result.is_valid
+                                logger.info(
+                                    "Chunk %s Tier1 validation after parameter-tuned retry %s (%s)",
+                                    chunk.chunk_id,
+                                    "PASS" if tier1_result.is_valid else "FAIL",
+                                    tier1_result.reason,
+                                )
+                        except Exception as exc:  # pylint: disable=broad-except
+                            logger.error(
+                                "Chunk %s smart retry failed: %s",
+                                chunk.chunk_id,
+                                exc,
+                            )
+                            validation_success = False
+                            validation_reason = validation_reason or "smart_retry_failed"
+                else:
+                    # Fallback to legacy retry behavior (simple engine switch)
+                    if kokoro_available and used_engine != "kokoro":
+                        logger.warning(
+                            "Chunk %s Tier1 failed (%s); retrying synthesis on Kokoro for validation recovery.",
                             chunk.chunk_id,
-                            len(synthesis_text),
-                            kokoro_limit,
-                        )
-                    else:
-                        (
-                            audio,
-                            used_engine,
-                            sample_rate,
-                            audio_duration,
-                            rt_factor,
-                        ) = attempt_synthesis("kokoro", False, None)
-                        sf.write(output_path, audio, sample_rate)
-                        tier1_result = tier1_validate(
-                            synthesis_text,  # Validate against the text that was synthesized
-                            str(output_path),
-                            validation_config,
-                            chars_per_minute=effective_cpm,
-                        )
-                        validation_tier = tier1_result.tier
-                        validation_reason = tier1_result.reason
-                        validation_details = tier1_result.details
-                        collected_validation_details["tier1"] = (
-                            tier1_result.details
-                        )
-                        validation_success = tier1_result.is_valid
-                        logger.info(
-                            "Chunk %s Tier1 validation after Kokoro retry %s (%s)",
-                            chunk.chunk_id,
-                            "PASS" if tier1_result.is_valid else "FAIL",
                             tier1_result.reason,
                         )
-                except Exception as exc:  # pylint: disable=broad-except
-                    logger.error(
-                        "Chunk %s validation retry failed: %s",
-                        chunk.chunk_id,
-                        exc,
-                    )
-                    validation_success = False
-                    validation_reason = (
-                        validation_reason or "validation_retry_failed"
-                    )
+                        try:
+                            kokoro_limit = text_length_limit("kokoro")
+                            if kokoro_limit and len(synthesis_text) > kokoro_limit:
+                                logger.error(
+                                    "Chunk %s cannot retry on Kokoro because text length %d exceeds max %d",
+                                    chunk.chunk_id,
+                                    len(synthesis_text),
+                                    kokoro_limit,
+                                )
+                            else:
+                                (
+                                    audio,
+                                    used_engine,
+                                    sample_rate,
+                                    audio_duration,
+                                    rt_factor,
+                                ) = attempt_synthesis("kokoro", False, None)
+                                sf.write(output_path, audio, sample_rate)
+                                tier1_result = tier1_validate(
+                                    synthesis_text,
+                                    str(output_path),
+                                    validation_config,
+                                    chars_per_minute=effective_cpm,
+                                )
+                                validation_tier = tier1_result.tier
+                                validation_reason = tier1_result.reason
+                                validation_details = tier1_result.details
+                                collected_validation_details["tier1"] = (
+                                    tier1_result.details
+                                )
+                                validation_success = tier1_result.is_valid
+                                logger.info(
+                                    "Chunk %s Tier1 validation after Kokoro retry %s (%s)",
+                                    chunk.chunk_id,
+                                    "PASS" if tier1_result.is_valid else "FAIL",
+                                    tier1_result.reason,
+                                )
+                        except Exception as exc:  # pylint: disable=broad-except
+                            logger.error(
+                                "Chunk %s validation retry failed: %s",
+                                chunk.chunk_id,
+                                exc,
+                            )
+                            validation_success = False
+                            validation_reason = (
+                                validation_reason or "validation_retry_failed"
+                            )
 
         if validation_config.enable_tier2 and (
             tier1_result is None or tier1_result.is_valid

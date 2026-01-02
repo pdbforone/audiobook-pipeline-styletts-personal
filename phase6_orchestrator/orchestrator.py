@@ -2678,7 +2678,9 @@ def run_phase4_multi_engine(
                 logger.warning("Cannot parse chunk id %s for fallback", chunk_id)
                 continue
             cleanup_partial_outputs(file_id, chunk_id, phase_dir, pipeline_json)
-            chunk_index = int(match.group(1))
+            chunk_number = int(match.group(1))
+            # chunk_0010 has number 10, but chunk_payloads is 0-indexed, so we need index 9
+            chunk_index = chunk_number - 1
             fallback_cmd = build_base_cmd(
                 secondary_engine,
                 chunk_index=chunk_index,
