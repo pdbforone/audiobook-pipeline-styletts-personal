@@ -751,6 +751,7 @@ def synthesize_chunk_with_engine(
     validation_tier: Optional[int] = None
     validation_reason: Optional[str] = None
     validation_details: Optional[Dict[str, Any]] = None
+    pacing_hint: Optional[str] = None
     effective_cpm = chars_per_minute or DEFAULT_CHARS_PER_MINUTE
     text_len = len(chunk.text)
 

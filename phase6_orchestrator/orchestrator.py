@@ -2379,10 +2379,41 @@ def run_phase4_multi_engine(
     workers = max(1, min(cfg.max_tts_workers, os.cpu_count() or cfg.max_tts_workers))
     RUN_SUMMARY["tts_workers_used"] = workers
 
+    def get_fallback_voice(primary_engine: str, fallback_engine: str) -> str:
+        """
+        Select appropriate fallback voice when switching engines.
+
+        When falling back from one engine to another, we should use the fallback
+        engine's built-in voices rather than attempting voice cloning.
+
+        Voice cloning is a specialty feature, not appropriate for fallback scenarios.
+
+        Returns:
+            Voice ID for fallback engine's built-in voice
+        """
+        # Kokoro built-in voices (always available)
+        KOKORO_DEFAULT = "af_bella"  # Best for audiobooks (fiction, memoir)
+
+        # XTTS built-in voices (always available, no cloning required)
+        XTTS_DEFAULT = "claribel_dervla"  # Marked as default in voices.json
+
+        # If falling back to Kokoro from any engine, use Kokoro's best voice
+        if fallback_engine == "kokoro":
+            return KOKORO_DEFAULT
+
+        # If falling back to XTTS, use XTTS built-in voice (NOT cloned voice)
+        if fallback_engine == "xtts":
+            return XTTS_DEFAULT
+
+        # For other engines (if any), use their sensible defaults
+        # This ensures we never attempt voice cloning during fallback
+        return KOKORO_DEFAULT
+
     def build_base_cmd(
         engine_name: str,
         chunk_index: Optional[int] = None,
         disable_fallback: bool = False,
+        override_voice: Optional[str] = None,
     ) -> List[str]:
         runner = [sys.executable]
         env_name = os.environ.get("PHASE4_CONDA_ENV") or os.environ.get("CONDA_DEFAULT_ENV")
@@ -2399,8 +2430,14 @@ def run_phase4_multi_engine(
             f"--json_path={pipeline_json}",
             f"--workers={workers}",
         ]
-        if voice_id:
-            cmd.append(f"--voice={voice_id}")
+
+        # Determine which voice to use
+        # If override_voice is provided (for fallback), use it
+        # Otherwise use the primary voice_id
+        effective_voice = override_voice if override_voice is not None else voice_id
+        if effective_voice:
+            cmd.append(f"--voice={effective_voice}")
+
         cmd.append("--config=config.yaml")
         if disable_fallback:
             cmd.append("--disable_fallback")
@@ -2412,10 +2449,15 @@ def run_phase4_multi_engine(
         return cmd
 
     def collect_failed_chunks() -> List[str]:
-        """Check Phase 4 completion by examining chunk_audio_paths, not individual chunk keys.
+        """Check Phase 4 completion by examining both validation status AND file existence.
 
-        Phase 4 writes a file-level entry with chunk_audio_paths[] containing successful outputs.
-        It does NOT write individual chunk_0001, chunk_0002 keys to pipeline.json.
+        Phase 4 writes:
+        1. chunk_audio_paths[] containing successful outputs
+        2. chunks[] containing detailed status including validation_reason
+
+        This function checks BOTH sources to identify chunks that need retry:
+        - Chunks that failed validation (status="failed")
+        - Chunks whose audio files are missing or empty
 
         Returns:
             List of chunk IDs that failed (empty if all succeeded or if phase4 entry is missing)
@@ -2427,11 +2469,38 @@ def run_phase4_multi_engine(
             if not entry:
                 return []
 
-            # Check the actual contract: Phase 4 should record a file-level
-            # `chunk_audio_paths` array listing successful outputs. For older
-            # or mixed-format pipeline.json files this key may be absent; in
-            # that case persist a one-line fallback for compatibility so
-            # downstream logic can rely on the canonical key.
+            failed_chunk_ids = []
+
+            # FIRST: Check validation status from chunks[] array
+            # This is the source of truth for which chunks passed/failed validation
+            chunks_array = entry.get("chunks", [])
+            if chunks_array:
+                for chunk_info in chunks_array:
+                    chunk_id = chunk_info.get("chunk_id")
+                    chunk_status = chunk_info.get("status")
+                    validation_reason = chunk_info.get("validation_reason")
+
+                    # If chunk failed validation (e.g., duration_mismatch, too_quiet, silence_gap)
+                    # it should be retried regardless of whether the file exists
+                    if chunk_status == "failed":
+                        if chunk_id:
+                            failed_chunk_ids.append(chunk_id)
+                            logger.debug(
+                                "Chunk %s marked for retry: validation failed (%s)",
+                                chunk_id, validation_reason or "unknown"
+                            )
+
+                # If we found validation failures, return those
+                if failed_chunk_ids:
+                    logger.info(
+                        "Found %d chunks that failed validation and need retry: %s",
+                        len(failed_chunk_ids),
+                        ", ".join(failed_chunk_ids)
+                    )
+                    return sorted(failed_chunk_ids)
+
+            # SECOND: Check for missing/empty audio files
+            # (This handles cases where Phase 4 didn't write chunk status but files are missing)
             chunk_audio_paths = entry.get("chunk_audio_paths")
             if chunk_audio_paths is None:
                 try:
@@ -2472,6 +2541,8 @@ def run_phase4_multi_engine(
                         chunk_id = Path(path).stem
                         missing.append(chunk_id)
                 # Return list of missing chunk ids (empty list => none missing)
+                if missing:
+                    logger.info("Found %d missing/empty audio files: %s", len(missing), ", ".join(missing))
                 return missing
 
             # If chunk_audio_paths is empty, scan output directory for existing audio files
@@ -2499,7 +2570,7 @@ def run_phase4_multi_engine(
                 # If chunk_audio_paths is empty and no files on disk, consider all expected chunks as failed
                 if expected_chunks > 0:
                     return [f"chunk_{i:04d}" for i in range(1, int(expected_chunks) + 1)]
-            
+
         except Exception as exc:
             logger.warning(
                 "Unable to inspect pipeline.json for failed chunks (file_id=%s): %s",
@@ -2547,19 +2618,32 @@ def run_phase4_multi_engine(
         return result
 
     # Clear stale Phase 4 state before fresh run to prevent retry logic
-    # from attempting to process chunks from previous runs with different chunking
+    # from attempting to process chunks from previous runs with different chunking.
+    # CRITICAL: Only clear if this is truly a fresh run (no audio files exist).
+    # If audio files exist, this is likely a retry after validation failure,
+    # and we should preserve valid chunks instead of reprocessing everything.
     if not resume_enabled:
         try:
-            state = PipelineState(pipeline_json, validate_on_read=False)
-            with state.transaction() as txn:
-                phase4 = txn.data.get("phase4", {}) or {}
-                files = phase4.get("files", {}) or {}
-                if file_id in files:
-                    # Clear chunk_audio_paths to prevent stale data from old runs
-                    files[file_id]["chunk_audio_paths"] = []
-                    logger.info("Cleared stale Phase 4 chunk_audio_paths for fresh run")
-                phase4["files"] = files
-                txn.data["phase4"] = phase4
+            output_dir = get_phase4_output_dir(phase_dir, pipeline_json, file_id)
+            existing_audio = list(output_dir.glob("chunk_*.wav")) if output_dir.exists() else []
+
+            # Only clear state if no audio files exist (true fresh run)
+            if not existing_audio:
+                state = PipelineState(pipeline_json, validate_on_read=False)
+                with state.transaction() as txn:
+                    phase4 = txn.data.get("phase4", {}) or {}
+                    files = phase4.get("files", {}) or {}
+                    if file_id in files:
+                        # Clear chunk_audio_paths to prevent stale data from old runs
+                        files[file_id]["chunk_audio_paths"] = []
+                        logger.info("Cleared stale Phase 4 chunk_audio_paths for fresh run")
+                    phase4["files"] = files
+                    txn.data["phase4"] = phase4
+            else:
+                logger.info(
+                    "Detected %d existing audio files; preserving state for selective retry",
+                    len(existing_audio)
+                )
         except Exception as exc:
             logger.warning(f"Failed to clear Phase 4 state: {exc}")
 
@@ -2581,6 +2665,13 @@ def run_phase4_multi_engine(
             len(failed_chunks),
             secondary_engine,
         )
+        # Get appropriate voice for fallback engine
+        fallback_voice = get_fallback_voice(engine, secondary_engine)
+        logger.info(
+            "Using fallback voice '%s' for %s engine",
+            fallback_voice, secondary_engine
+        )
+
         for chunk_id in failed_chunks:
             match = re.search(r"(\d+)", chunk_id)
             if not match:
@@ -2588,7 +2679,11 @@ def run_phase4_multi_engine(
                 continue
             cleanup_partial_outputs(file_id, chunk_id, phase_dir, pipeline_json)
             chunk_index = int(match.group(1))
-            fallback_cmd = build_base_cmd(secondary_engine, chunk_index=chunk_index)
+            fallback_cmd = build_base_cmd(
+                secondary_engine,
+                chunk_index=chunk_index,
+                override_voice=fallback_voice
+            )
             run_cmd(fallback_cmd)
         # Re-read failures after fallback attempts
         failed_chunks = collect_failed_chunks()
