@@ -63,7 +63,10 @@
       "Bash(ffmpeg:*)",
       "Bash(.engine_envs/xtts/Scripts/python:*)",
       "Bash(rm:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(git merge:*)",
+      "Bash(claude auth status:*)"
     ],
     "deny": [],
     "ask": []
