@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from .cleaner import TTSTextCleaner
+from .dedupe import dedupe_paragraphs
 from .utils import load_config
 
 try:
@@ -259,6 +260,27 @@ def normalize_text(
     for change in normalizer_metrics.get("changes", []):
         if change not in metrics["changes"]:
             metrics["changes"].append(change)
+
+    # Stage 7: Deduplication Safety Net (Defense in Depth)
+    # Removes consecutive duplicate paragraphs from any source:
+    # - Control flow bugs in extractors
+    # - Retry side-effects
+    # - Library parsing artifacts
+    pre_dedupe_length = len(normalized_text)
+    normalized_text = dedupe_paragraphs(normalized_text, min_para_length=20)
+    post_dedupe_length = len(normalized_text)
+
+    if pre_dedupe_length != post_dedupe_length:
+        duplicates_removed = pre_dedupe_length - post_dedupe_length
+        metrics["duplicates_removed"] = duplicates_removed
+        metrics["changes"].append(
+            f"Removed {duplicates_removed} chars of consecutive duplicates "
+            "(INDICATES UPSTREAM BUG)"
+        )
+        logger.warning(
+            f"⚠️  Deduplication removed {duplicates_removed} characters. "
+            "This indicates a bug in the extraction phase!"
+        )
 
     # Final metrics
     metrics["original_length"] = original_length
