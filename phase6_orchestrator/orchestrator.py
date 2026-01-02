@@ -2486,7 +2486,7 @@ def run_phase4_multi_engine(
                 if existing_chunks:
                     # Only mark chunks as failed if they don't exist on disk
                     if expected_chunks > 0:
-                        expected_ids = {f"chunk_{i:04d}" for i in range(int(expected_chunks))}
+                        expected_ids = {f"chunk_{i:04d}" for i in range(1, int(expected_chunks) + 1)}
                         missing = list(expected_ids - existing_chunks)
                         if missing:
                             logger.info("Found %d existing audio files, %d missing", len(existing_chunks), len(missing))
@@ -2498,7 +2498,7 @@ def run_phase4_multi_engine(
 
                 # If chunk_audio_paths is empty and no files on disk, consider all expected chunks as failed
                 if expected_chunks > 0:
-                    return [f"chunk_{i:04d}" for i in range(int(expected_chunks))]
+                    return [f"chunk_{i:04d}" for i in range(1, int(expected_chunks) + 1)]
             
         except Exception as exc:
             logger.warning(
@@ -2545,6 +2545,23 @@ def run_phase4_multi_engine(
         else:
             logger.info("Phase 4 command finished in %.1fs", duration)
         return result
+
+    # Clear stale Phase 4 state before fresh run to prevent retry logic
+    # from attempting to process chunks from previous runs with different chunking
+    if not resume_enabled:
+        try:
+            state = PipelineState(pipeline_json, validate_on_read=False)
+            with state.transaction() as txn:
+                phase4 = txn.data.get("phase4", {}) or {}
+                files = phase4.get("files", {}) or {}
+                if file_id in files:
+                    # Clear chunk_audio_paths to prevent stale data from old runs
+                    files[file_id]["chunk_audio_paths"] = []
+                    logger.info("Cleared stale Phase 4 chunk_audio_paths for fresh run")
+                phase4["files"] = files
+                txn.data["phase4"] = phase4
+        except Exception as exc:
+            logger.warning(f"Failed to clear Phase 4 state: {exc}")
 
     # Primary engine run - disable fallback so we can drive per-chunk retries ourselves.
     primary_cmd = build_base_cmd(
