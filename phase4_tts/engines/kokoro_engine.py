@@ -49,6 +49,11 @@ class KokoroEngine(TTSEngine):
             # Import kokoro-onnx
             import kokoro_onnx as kokoro
 
+            # Suppress kokoro-onnx's verbose alignment warnings
+            # These "words count mismatch" warnings are informational only and spam the logs
+            kokoro_logger = logging.getLogger('kokoro_onnx')
+            kokoro_logger.setLevel(logging.ERROR)  # Only show actual errors
+
             logger.info("Loading Kokoro-82M ONNX model...")
 
             # Model files are in phase4_tts/models/kokoro/
