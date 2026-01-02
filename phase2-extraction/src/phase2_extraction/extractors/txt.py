@@ -111,7 +111,9 @@ def extract(path: Path) -> Tuple[str, Dict]:
             if next_line_stripped and next_line_stripped[0].isupper():
                 merged.append(buffer.strip())
                 buffer = ""
-                continue
+            # FIX: Continue here to avoid falling through to default case
+            # which would add the line to buffer AGAIN, causing duplication
+            continue
 
         # Default: merge with buffer
         buffer += " " + line_stripped if buffer else line_stripped
