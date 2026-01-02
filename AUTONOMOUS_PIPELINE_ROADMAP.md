@@ -5,6 +5,72 @@
 
 ---
 
+## Latest Updates (2026-01-02)
+
+### ✅ Phase 4 Retry Logic Optimization & Voice Fallback Intelligence
+
+**Feature:** Dramatically improved retry efficiency and fallback voice selection in Phase 4 TTS.
+
+#### 1. Smart State Clearing for Selective Retry
+
+**Problem:** When validation failed for a subset of chunks (e.g., 4 out of 15), the system cleared ALL state and reprocessed ALL chunks, wasting processing time.
+
+**Solution:** Implemented filesystem-aware state management:
+
+| Scenario | Detection | Behavior |
+|----------|-----------|----------|
+| **Fresh run** | No audio files in output directory | Clear all state, synthesize all chunks |
+| **Retry after validation failure** | Audio files exist in output directory | Preserve state, only retry failed chunks |
+
+**Impact:** 37% reduction in retry processing time (14 minutes saved on 15-chunk book with 4 failures)
+
+**Files Modified:**
+- `phase6_orchestrator/orchestrator.py:2549-2577` - Smart state clearing logic
+- `phase6_orchestrator/orchestrator.py:2421-2511` - Enhanced `collect_failed_chunks()` to work with preserved state
+
+#### 2. Built-in Voice Mapping for Engine Fallback
+
+**Problem:** When falling back from one engine to another, the system attempted to use custom/cloned voices that don't exist in the fallback engine.
+
+**Solution:** Created `get_fallback_voice()` function that maps to built-in voices:
+
+| Fallback Engine | Voice Used | Type |
+|----------------|------------|------|
+| **Kokoro** | `af_bella` | Built-in (Apache 2.0) |
+| **XTTS** | `claribel_dervla` | Built-in (no cloning) |
+
+**Philosophy:** Voice cloning is a specialty feature, not appropriate for fallback scenarios. Built-in voices ensure reliable synthesis during error recovery.
+
+**Files Modified:**
+- `phase6_orchestrator/orchestrator.py:2382-2410` - `get_fallback_voice()` function
+- `phase6_orchestrator/orchestrator.py:2412-2444` - Updated `build_base_cmd()` with `override_voice` parameter
+- `phase6_orchestrator/orchestrator.py:2634-2653` - Integrated fallback voice selection
+
+#### 3. Documentation
+
+**New Files:**
+- `RETRY_LOGIC_IMPROVEMENTS.md` - Complete analysis and implementation details
+
+**Example Scenarios:**
+
+**Before Fix:**
+```
+Run 1: Synthesize 15 chunks (18:45)
+Run 2: Validation fails on 4 chunks
+        → Reprocesses ALL 15 chunks (18:45)
+Total: 37:30
+```
+
+**After Fix:**
+```
+Run 1: Synthesize 15 chunks (18:45)
+Run 2: Validation fails on 4 chunks
+        → Reprocesses ONLY 4 chunks (5:00)
+Total: 23:45 (37% faster)
+```
+
+---
+
 ## Latest Updates (2025-12-27)
 
 ### ✅ Director's Cut Integration and Predictive Failure Avoidance
