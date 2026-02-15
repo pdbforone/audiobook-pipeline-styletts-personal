@@ -6,6 +6,19 @@ torch>=2.0.0
 numpy>=1.24.0
 soundfile>=0.12.0
 pyyaml>=6.0
+librosa>=0.10.0
+
+# ACX Compliance & Audio Mastering (2026-01 addition)
+# Reference: TTS_VALIDATION_RESEARCH_FINDINGS.md
+pyloudnorm>=0.1.1      # LUFS-based loudness normalization
+
+# Text Normalization
+num2words>=0.5.12      # Number-to-word expansion for TTS
+
+# Phase 2: Accuracy Improvements (Phoneme-based validation)
+# Reference: TTS_VALIDATION_RESEARCH_FINDINGS.md Phase 2
+phonemizer>=3.2.1      # Phoneme conversion (espeak-ng backend)
+silero-vad>=4.0.0      # Voice Activity Detection for silence detection
 
 # Optional TTS engines (install only what you need)
 # Uncomment the engines you want to use:

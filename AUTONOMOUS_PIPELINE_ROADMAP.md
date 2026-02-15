@@ -7,6 +7,68 @@
 
 ## Latest Updates (2026-01-02)
 
+### ✅ Deep Research: TTS Validation Failure Root Causes (ALL PHASES IMPLEMENTED)
+
+**Status:** ✅ Phases 1-3 fully implemented
+
+Gemini Deep Research completed comprehensive analysis of our TTS validation failures. All actionable phases are now live.
+
+**Root Causes Identified:**
+
+1. **Duration Mismatch**: OOD (Out-Of-Distribution) symbols confuse G2P engines, causing alignment drift
+2. **Amplitude Issues**: Neural vocoders clone reference audio loudness (not ACX standards)
+3. **Current Validation**: Uses wrong metrics (peak dB instead of RMS/LUFS)
+
+**Phase 1 Implementation (COMPLETED):**
+
+- ✅ **ACX Mastering Chain** - `phase4_tts/src/audio_mastering.py` (NEW)
+  - `master_audio_chunk()`: Normalizes to -20 LUFS, limits peaks at -3dB
+  - Auto-applies noise gate for XTTS (reduces room tone cloning)
+  - Integrated into synthesis pipeline (lines 1380-1409)
+
+- ✅ **RMS Validation** - `phase4_tts/src/validation.py`
+  - `is_too_quiet_acx()`: ACX-compliant RMS check (-23dB to -18dB)
+  - New `enable_acx_validation` config (enabled by default)
+
+- ✅ **Text Normalization** - `phase3_chunking/text_normalizer.py` (NEW)
+  - `normalize_for_tts()`: Expands $, %, em-dashes, abbreviations
+  - Prevents OOD symbols from reaching G2P engines
+
+**Expected Impact:**
+
+- Reduce `too_quiet` failures by ~80% (mastering chain)
+- Reduce `duration_mismatch` false positives by ~30% (text normalization)
+- Achieve 100% ACX compliance for passed chunks
+
+**Phase 2 Implementation (COMPLETED):**
+
+- ✅ **Phoneme-Based Duration Estimation** - `phase4_tts/src/validation.py`
+  - `count_phonemes()`: Uses espeak-ng backend via phonemizer
+  - `predict_duration_phoneme_based()`: ~20% more accurate than character-based
+  - Falls back gracefully if phonemizer unavailable
+
+- ✅ **VAD-Based Silence Detection** - `phase4_tts/src/validation.py`
+  - `detect_unnatural_pauses_vad()`: Neural voice activity detection via Silero VAD
+  - Detects synthesis errors (XTTS repetition loops) more accurately than amplitude-based
+  - Configurable via `enable_vad_silence_detection` option
+
+**Phase 3 Implementation (COMPLETED):**
+
+- ✅ **Smart Retry Strategies** - `phase4_tts/src/retry_strategies.py` (NEW)
+  - `analyze_failure_and_recommend()`: Engine-specific parameter tuning
+  - XTTS: Adjusts `repetition_penalty` based on failure type (loops vs truncation)
+  - Kokoro: Voice rotation strategy before engine fallback
+  - Integrated into `main_multi_engine.py` (lines 1502-1680)
+
+**Documentation:**
+
+- `TTS_VALIDATION_RESEARCH_FINDINGS.md` - Comprehensive analysis & implementation roadmap
+- `GEMINI_DEEP_RESEARCH_PROMPT.md` - Original research prompt
+
+**Remaining (Phase 4 - Future/Research):** Breath-group chunking, engine selection intelligence, prosody continuity validation
+
+---
+
 ### ✅ Phase 4 Retry Logic Optimization & Voice Fallback Intelligence
 
 **Feature:** Dramatically improved retry efficiency and fallback voice selection in Phase 4 TTS.
