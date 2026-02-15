@@ -1225,8 +1225,14 @@ def play_sound(success: bool = True) -> None:
 
 
 def humanize_title(file_id: str) -> str:
-    """Convert file_id or filename into a readable title."""
-    name = Path(file_id).stem
+    """Convert file_id or filename into a readable title.
+
+    Only strips recognized document extensions (.epub, .pdf, .txt, .docx, .md,
+    .html, .rtf) so that numeric suffixes like "G9 L 1.3" are preserved.
+    """
+    _DOC_EXTENSIONS = {".epub", ".pdf", ".txt", ".docx", ".md", ".html", ".rtf"}
+    p = Path(file_id)
+    name = p.stem if p.suffix.lower() in _DOC_EXTENSIONS else str(p)
     name = re.sub(r"[_\-]+", " ", name).strip()
     return name.title() if name else "Audiobook"
 
@@ -1971,6 +1977,9 @@ def run_phase_with_retry(
                 if phase_dir:
                     cleanup_partial_outputs(file_id, None, phase_dir, pipeline_json)
 
+        # On retries (attempt > 0), always enable resume to skip valid chunks
+        # This prevents re-synthesizing chunks that already have good audio
+        effective_resume = resume_enabled or (attempt > 0)
         success = run_phase(
             phase_num,
             file_path,
@@ -1982,7 +1991,7 @@ def run_phase_with_retry(
             state=state,
             runtime_overrides=runtime_overrides,
             policy_engine=policy_engine,
-            resume_enabled=resume_enabled,
+            resume_enabled=effective_resume,
         )
 
         if success:
@@ -2414,6 +2423,7 @@ def run_phase4_multi_engine(
         chunk_index: Optional[int] = None,
         disable_fallback: bool = False,
         override_voice: Optional[str] = None,
+        force_resume: bool = False,  # Force --resume for retry scenarios
     ) -> List[str]:
         runner = [sys.executable]
         env_name = os.environ.get("PHASE4_CONDA_ENV") or os.environ.get("CONDA_DEFAULT_ENV")
@@ -2443,8 +2453,9 @@ def run_phase4_multi_engine(
             cmd.append("--disable_fallback")
         if chunk_index is not None:
             cmd.append(f"--chunk_id={chunk_index}")
-        # Only enable resume if not doing a fresh run
-        if resume_enabled:
+        # Enable resume if: global resume is enabled OR this is a retry (force_resume)
+        # For retries, we ALWAYS want to skip existing valid chunks
+        if resume_enabled or force_resume:
             cmd.append("--resume")
         return cmd
 
@@ -2684,7 +2695,9 @@ def run_phase4_multi_engine(
             fallback_cmd = build_base_cmd(
                 secondary_engine,
                 chunk_index=chunk_index,
-                override_voice=fallback_voice
+                override_voice=fallback_voice,
+                disable_fallback=True,  # Prevent in-process fallback to unavailable engine
+                force_resume=True,  # Skip any chunks that already have valid audio
             )
             run_cmd(fallback_cmd)
         # Re-read failures after fallback attempts
@@ -3618,6 +3631,10 @@ def run_phase5_with_config_update(phase_dir: Path, file_id: str, pipeline_json: 
 
     # Always refresh audiobook title so metadata matches current input
     config["audiobook_title"] = humanize_title(file_id)
+
+    # Pass the raw file_id so Phase 5 can match pipeline.json keys exactly,
+    # even when humanize_title transforms the title for display purposes.
+    os.environ["PHASE5_FILE_ID"] = file_id
 
     # Write updated config
     try:
